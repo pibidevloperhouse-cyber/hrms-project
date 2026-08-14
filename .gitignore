@@ -22,7 +22,7 @@
 
 # migrations & supabase
 supabase/migrations/
-supabase/
+
 **/migrations/
 
 # misc
