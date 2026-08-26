@@ -26,6 +26,7 @@ export default function AttendanceCard() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [totalWorkingHoursToday, setTotalWorkingHoursToday] = useState(0);
   const [totalCompletedHoursToday, setTotalCompletedHoursToday] = useState(0);
+  const [dailyTargetHours, setDailyTargetHours] = useState(8.0);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
 
   // Lunch break state
@@ -40,7 +41,7 @@ export default function AttendanceCard() {
   const [earlyReason, setEarlyReason] = useState("");
   const [isLop, setIsLop] = useState(false);
   const [hrFeedback, setHrFeedback] = useState("");
-  
+
   // Modal state for early checkout reason prompt
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reasonInput, setReasonInput] = useState("");
@@ -64,10 +65,10 @@ export default function AttendanceCard() {
   const [notice, setNotice] = useState({ error: "", success: "" });
 
   // ─── Timer refs (never stale, no closure issues) ─────────────────────────────
-  const workSecondsRef  = useRef(0);
+  const workSecondsRef = useRef(0);
   const breakSecondsRef = useRef(0);
-  const isOnBreakRef    = useRef(false);
-  const timerRef        = useRef(null);
+  const isOnBreakRef = useRef(false);
+  const timerRef = useRef(null);
 
   const lastCheckedDateRef = useRef(typeof window !== "undefined" ? new Date().toDateString() : "");
 
@@ -90,6 +91,9 @@ export default function AttendanceCard() {
         setWorkDate(data.workDate || null);
         setTotalWorkingHoursToday(data.totalWorkingHoursToday || 0);
         setTotalCompletedHoursToday(data.totalCompletedHoursToday || 0);
+        if (data.dailyTargetHours) {
+          setDailyTargetHours(Number(data.dailyTargetHours) || 8.0);
+        }
         setApprovalStatus(data.approvalStatus || (data.status === "PENDING_APPROVAL" ? "PENDING" : data.status === "REJECTED_LOP" ? "REJECTED" : "APPROVED"));
         setEarlyReason(data.earlyReason || "");
         setIsLop(data.isLop || data.status === "REJECTED_LOP");
@@ -104,9 +108,9 @@ export default function AttendanceCard() {
 
         // If today is a clean new day (neither checked in nor completed today)
         if (!data.checkedIn && !data.hasCompletedToday) {
-          workSecondsRef.current  = 0;
+          workSecondsRef.current = 0;
           breakSecondsRef.current = 0;
-          isOnBreakRef.current    = false;
+          isOnBreakRef.current = false;
           setIsOnBreak(false);
           setHasCompletedBreak(false);
           setBreakStart(null);
@@ -121,13 +125,13 @@ export default function AttendanceCard() {
 
         // ─── Timer / break state — initial load OR session active ──────────────
         if (!isSilent && (data.checkedIn || data.hasCompletedToday)) {
-          const onBreak    = data.isOnBreak || false;
+          const onBreak = data.isOnBreak || false;
           const netSeconds = Number(data.netWorkingSeconds ?? data.elapsedSeconds) || 0;
-          const breakSec   = Number(data.currentBreakSeconds) || 0;
+          const breakSec = Number(data.currentBreakSeconds) || 0;
 
-          workSecondsRef.current  = netSeconds;
+          workSecondsRef.current = netSeconds;
           breakSecondsRef.current = breakSec;
-          isOnBreakRef.current    = onBreak;
+          isOnBreakRef.current = onBreak;
 
           setElapsedSeconds(netSeconds);
           setCurrentBreakSeconds(breakSec);
@@ -183,7 +187,7 @@ export default function AttendanceCard() {
     if (timerRef.current) clearInterval(timerRef.current);
 
     if (!checkedIn) {
-      workSecondsRef.current  = 0;
+      workSecondsRef.current = 0;
       breakSecondsRef.current = 0;
       setElapsedSeconds(0);
       setCurrentBreakSeconds(0);
@@ -212,7 +216,7 @@ export default function AttendanceCard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
-      
+
       if (res.status === 401) {
         window.location.href = "/login";
         return;
@@ -226,9 +230,9 @@ export default function AttendanceCard() {
       } else {
         setCheckedIn(true);
         // Reset all timer refs for the fresh session
-        workSecondsRef.current  = 0;
+        workSecondsRef.current = 0;
         breakSecondsRef.current = 0;
-        isOnBreakRef.current    = false;
+        isOnBreakRef.current = false;
         setIsOnBreak(false);
         setHasCompletedBreak(false);
         setBreakStart(null);
@@ -263,21 +267,21 @@ export default function AttendanceCard() {
     setActionLoading(true);
     setNotice({ error: "", success: "" });
 
-    const prevIsOnBreak         = isOnBreak;
-    const prevBreakStart        = breakStart;
+    const prevIsOnBreak = isOnBreak;
+    const prevBreakStart = breakStart;
     const prevTotalBreakSeconds = totalBreakSeconds;
     const prevHasCompletedBreak = hasCompletedBreak;
-    const prevWorkSeconds       = workSecondsRef.current;
-    const prevBreakSeconds      = breakSecondsRef.current;
+    const prevWorkSeconds = workSecondsRef.current;
+    const prevBreakSeconds = breakSecondsRef.current;
 
     if (actionType === "START") {
-      isOnBreakRef.current    = true;
+      isOnBreakRef.current = true;
       breakSecondsRef.current = 0;
       setIsOnBreak(true);
       setBreakStart(new Date().toISOString());
       setCurrentBreakSeconds(0);
     } else {
-      isOnBreakRef.current    = false;
+      isOnBreakRef.current = false;
       breakSecondsRef.current = 0;
       setIsOnBreak(false);
       setElapsedSeconds(workSecondsRef.current);
@@ -298,8 +302,8 @@ export default function AttendanceCard() {
       const data = await res.json();
 
       if (!res.ok) {
-        isOnBreakRef.current    = prevIsOnBreak;
-        workSecondsRef.current  = prevWorkSeconds;
+        isOnBreakRef.current = prevIsOnBreak;
+        workSecondsRef.current = prevWorkSeconds;
         breakSecondsRef.current = prevBreakSeconds;
         setIsOnBreak(prevIsOnBreak);
         setBreakStart(prevBreakStart);
@@ -320,8 +324,8 @@ export default function AttendanceCard() {
         if (typeof window !== "undefined") window.dispatchEvent(new Event("attendance-updated"));
       }
     } catch {
-      isOnBreakRef.current    = prevIsOnBreak;
-      workSecondsRef.current  = prevWorkSeconds;
+      isOnBreakRef.current = prevIsOnBreak;
+      workSecondsRef.current = prevWorkSeconds;
       breakSecondsRef.current = prevBreakSeconds;
       setIsOnBreak(prevIsOnBreak);
       setBreakStart(prevBreakStart);
@@ -338,7 +342,7 @@ export default function AttendanceCard() {
   const initiateCheckOut = () => {
     const runtimeHours = Number((elapsedSeconds / 3600).toFixed(2));
     const totalHours = Number((totalWorkingHoursToday + (checkedIn ? runtimeHours : 0)).toFixed(2));
-    if (runtimeHours < 8.0 || totalHours < 8.0) {
+    if (runtimeHours < dailyTargetHours || totalHours < dailyTargetHours) {
       setReasonInput("");
       setModalError("");
       setShowReasonModal(true);
@@ -387,7 +391,7 @@ export default function AttendanceCard() {
         if (data.isEarly) {
           setNotice({
             error: "",
-            success: `Early Check-Out Recorded (${data.workingHours} net hrs, <8h). Reason sent to HR for approval.`,
+            success: `Early Check-Out Recorded (${data.workingHours} net hrs, <${dailyTargetHours}h). Reason sent to HR for approval.`,
           });
         } else {
           setNotice({
@@ -407,7 +411,7 @@ export default function AttendanceCard() {
   const handleReasonSubmit = (e) => {
     e.preventDefault();
     if (!reasonInput.trim()) {
-      setModalError("Please specify a reason for early check-out (< 8 hours).");
+      setModalError(`Please specify a reason for early check-out (< ${dailyTargetHours} hours).`);
       return;
     }
     executeCheckOut(reasonInput.trim());
@@ -421,8 +425,8 @@ export default function AttendanceCard() {
     ? new Date(checkOutTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : null;
 
-  // Real-time progress calculations towards 8 hours (28,800 seconds)
-  const targetSeconds = 8 * 3600;
+  // Real-time progress calculations towards company daily target hours
+  const targetSeconds = dailyTargetHours * 3600;
   const totalEffectiveSeconds = checkedIn ? elapsedSeconds : (totalWorkingHoursToday * 3600);
   const progressRatio = Math.min(1.0, Math.max(0, totalEffectiveSeconds / targetSeconds));
   const progressPercentInt = Math.min(100, Math.round(progressRatio * 100));
@@ -434,43 +438,42 @@ export default function AttendanceCard() {
 
   return (
     <div className="bg-white border border-sky-100 rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-2xs hover:border-sky-300 transition-all duration-300 relative">
-      
+
       {/* Header Bar */}
       <div className="flex items-center justify-between border-b border-sky-100 pb-4">
         <div>
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <span>⏱️</span> Daily Attendance
           </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Overall company working time: 8 Hours</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Overall company working time: {dailyTargetHours} Hours</p>
         </div>
-        
+
         {/* Dynamic Status Badge */}
         <span
-          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors ${
-            isOnBreak
+          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors ${isOnBreak
               ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
               : checkedIn
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
-              : hasCompletedToday && approvalStatus === "PENDING"
-              ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
-              : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-              ? "bg-rose-50 text-rose-700 border-rose-200"
-              : hasCompletedToday
-              ? "bg-sky-50 text-sky-700 border-sky-200"
-              : "bg-slate-100 text-slate-600 border-slate-200"
-          }`}
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
+                : hasCompletedToday && approvalStatus === "PENDING"
+                  ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                  : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                    ? "bg-rose-50 text-rose-700 border-rose-200"
+                    : hasCompletedToday
+                      ? "bg-sky-50 text-sky-700 border-sky-200"
+                      : "bg-slate-100 text-slate-600 border-slate-200"
+            }`}
         >
           {isOnBreak
             ? "🍱 ON LUNCH BREAK (PAUSED)"
             : checkedIn
-            ? "● ON DUTY"
-            : hasCompletedToday && approvalStatus === "PENDING"
-            ? "⌛ PENDING HR APPROVAL (<8h)"
-            : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-            ? "✖ REJECTED (LOSS OF PAY / LOP)"
-            : hasCompletedToday
-            ? "✓ SHIFT COMPLETED (APPROVED)"
-            : "○ OFF DUTY"}
+              ? "● ON DUTY"
+              : hasCompletedToday && approvalStatus === "PENDING"
+                ? "⌛ PENDING HR APPROVAL (<8h)"
+                : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                  ? "✖ REJECTED (LOSS OF PAY / LOP)"
+                  : hasCompletedToday
+                    ? "✓ SHIFT COMPLETED (APPROVED)"
+                    : "○ OFF DUTY"}
         </span>
       </div>
 
@@ -522,15 +525,14 @@ export default function AttendanceCard() {
                   cx="60"
                   cy="60"
                   r={circleRadius}
-                  className={`transition-all duration-1000 ease-out ${
-                    isOnBreak
+                  className={`transition-all duration-1000 ease-out ${isOnBreak
                       ? "stroke-amber-500 opacity-90"
                       : checkedIn
-                      ? "stroke-emerald-500"
-                      : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                      ? "stroke-rose-500"
-                      : "stroke-sky-500"
-                  }`}
+                        ? "stroke-emerald-500"
+                        : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                          ? "stroke-rose-500"
+                          : "stroke-sky-500"
+                    }`}
                   strokeWidth="8"
                   strokeDasharray={circleCircumference}
                   strokeDashoffset={checkedIn || hasCompletedToday ? strokeDashoffset : circleCircumference}
@@ -561,13 +563,12 @@ export default function AttendanceCard() {
                   </>
                 ) : hasCompletedToday ? (
                   <>
-                    <span className={`text-xl font-bold font-mono ${
-                      isLop || approvalStatus === "REJECTED"
+                    <span className={`text-xl font-bold font-mono ${isLop || approvalStatus === "REJECTED"
                         ? "text-rose-700"
                         : approvalStatus === "PENDING"
-                        ? "text-amber-700"
-                        : "text-sky-700"
-                    }`}>
+                          ? "text-amber-700"
+                          : "text-sky-700"
+                      }`}>
                       {totalWorkingHoursToday.toFixed(2)}
                     </span>
                     <span className="text-[10px] text-slate-500 font-bold">/ 8.0 hrs net</span>
@@ -599,18 +600,17 @@ export default function AttendanceCard() {
                 </>
               ) : hasCompletedToday ? (
                 <>
-                  <p className={`text-xs font-bold ${
-                    isLop || approvalStatus === "REJECTED"
+                  <p className={`text-xs font-bold ${isLop || approvalStatus === "REJECTED"
                       ? "text-rose-700"
                       : approvalStatus === "PENDING"
-                      ? "text-amber-700"
-                      : "text-sky-700"
-                  }`}>
+                        ? "text-amber-700"
+                        : "text-sky-700"
+                    }`}>
                     {approvalStatus === "PENDING"
                       ? "Early Check-Out Sent to HR for Approval"
                       : isLop || approvalStatus === "REJECTED"
-                      ? "Early Check-Out Rejected — Loss of Pay (LOP)"
-                      : "Shift Completed & Approved"}
+                        ? "Early Check-Out Rejected — Loss of Pay (LOP)"
+                        : "Shift Completed & Approved"}
                   </p>
                   <p className="text-[11px] text-slate-500">
                     In: {formattedCheckInTime || "—"} | Out: {formattedCheckOutTime || "—"}
@@ -706,7 +706,7 @@ export default function AttendanceCard() {
                     <span>🍱</span>
                     <span>Start Lunch</span>
                   </button>
-                  
+
                   <button
                     type="button"
                     onClick={initiateCheckOut}
@@ -722,36 +722,34 @@ export default function AttendanceCard() {
           ) : hasCompletedToday ? (
             <button
               disabled
-              className={`w-full py-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-not-allowed opacity-90 ${
-                isLop || approvalStatus === "REJECTED"
+              className={`w-full py-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-not-allowed opacity-90 ${isLop || approvalStatus === "REJECTED"
                   ? "bg-rose-50 border-rose-200 text-rose-700"
                   : approvalStatus === "PENDING"
-                  ? "bg-amber-50 border-amber-200 text-amber-700"
-                  : "bg-slate-100 border-slate-200 text-slate-600"
-              }`}
+                    ? "bg-amber-50 border-amber-200 text-amber-700"
+                    : "bg-slate-100 border-slate-200 text-slate-600"
+                }`}
             >
               <span>{isLop ? "✖" : approvalStatus === "PENDING" ? "⌛" : "✓"}</span>
               <span>
                 {isLop
                   ? "Attendance Completed (Loss of Pay)"
                   : approvalStatus === "PENDING"
-                  ? "Early Check-Out Awaiting HR Approval"
-                  : "Attendance Completed For Today"}
+                    ? "Early Check-Out Awaiting HR Approval"
+                    : "Attendance Completed For Today"}
               </span>
             </button>
           ) : (
             <button
               onClick={handleCheckIn}
               disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-              className={`w-full py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2 ${
-                isHoliday
+              className={`w-full py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2 ${isHoliday
                   ? "bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                   : isOnLeaveToday
-                  ? "bg-sky-50 border border-sky-200 text-sky-700 cursor-not-allowed"
-                  : isNonWorkingDay
-                  ? "bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
-                  : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
-              }`}
+                    ? "bg-sky-50 border border-sky-200 text-sky-700 cursor-not-allowed"
+                    : isNonWorkingDay
+                      ? "bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
+                      : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+                }`}
             >
               {actionLoading ? (
                 <>
@@ -793,11 +791,10 @@ export default function AttendanceCard() {
 
             <div className="w-full h-2 bg-sky-100 rounded-full overflow-hidden border border-sky-200/60">
               <div
-                className={`h-full transition-all duration-500 rounded-full ${
-                  isOnBreak
+                className={`h-full transition-all duration-500 rounded-full ${isOnBreak
                     ? "bg-gradient-to-r from-amber-400 to-amber-500 opacity-90"
                     : "bg-gradient-to-r from-sky-500 via-emerald-500 to-teal-500"
-                }`}
+                  }`}
                 style={{ width: `${progressPercentInt}%` }}
               />
             </div>
@@ -825,10 +822,10 @@ export default function AttendanceCard() {
 
             <div className="text-xs text-slate-600 space-y-2">
               <p className="leading-relaxed">
-                Company standard overall working time is <strong className="text-amber-700">8 Hours</strong>. Your net shift duration (deducting lunch break) is <strong className="text-slate-900 font-mono">{runtimeWorkingHoursDecimal} hrs</strong>.
+                Company standard overall working time is <strong className="text-amber-700">{dailyTargetHours} Hours</strong>. Your net shift duration (deducting lunch break) is <strong className="text-slate-900 font-mono">{runtimeWorkingHoursDecimal} hrs</strong>.
               </p>
               <p className="text-slate-500 text-[11px]">
-                Please enter a reason for checking out before 8 hours. This message will be delivered to HR for approval or rejection (Loss of Pay).
+                Please enter a reason for checking out before {dailyTargetHours} hours. This message will be delivered to HR for approval or rejection (Loss of Pay).
               </p>
             </div>
 

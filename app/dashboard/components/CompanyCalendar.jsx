@@ -20,6 +20,24 @@ const HOLIDAY_TYPES = [
   "Optional Holiday",
 ];
 
+function calculateHoursFromTimes(startStr, endStr) {
+  if (!startStr || !endStr) return null;
+  const [sh, sm] = startStr.split(":").map(Number);
+  const [eh, em] = endStr.split(":").map(Number);
+  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return null;
+
+  let startMinutes = sh * 60 + sm;
+  let endMinutes = eh * 60 + em;
+
+  if (endMinutes <= startMinutes) {
+    endMinutes += 24 * 60;
+  }
+
+  const diffMinutes = endMinutes - startMinutes;
+  const diffHours = Number((diffMinutes / 60).toFixed(1));
+  return diffHours > 0 ? diffHours : null;
+}
+
 function formatDateDisplay(dateStr) {
   if (!dateStr) return "—";
   try {
@@ -130,6 +148,9 @@ export default function CompanyCalendar() {
         if (data.schedule) setSchedule(data.schedule);
         setNotice({ error: "", success: data.message || "Working hours updated successfully!" });
         setShowScheduleModal(false);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("attendance-updated"));
+        }
       }
     } catch {
       setNotice({ error: "Network error saving working schedule.", success: "" });
@@ -606,25 +627,6 @@ export default function CompanyCalendar() {
 
             <form onSubmit={handleSaveSchedule} className="space-y-4 text-xs">
               
-              {/* Target Hours */}
-              <div className="space-y-1.5">
-                <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                  Daily Standard Target Hours *
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="24"
-                  value={scheduleForm.dailyWorkingHours}
-                  onChange={(e) =>
-                    setScheduleForm({ ...scheduleForm, dailyWorkingHours: e.target.value })
-                  }
-                  required
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
               {/* Start & End Time Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -634,9 +636,15 @@ export default function CompanyCalendar() {
                   <input
                     type="time"
                     value={scheduleForm.startTime}
-                    onChange={(e) =>
-                      setScheduleForm({ ...scheduleForm, startTime: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const newStart = e.target.value;
+                      const calcHours = calculateHoursFromTimes(newStart, scheduleForm.endTime);
+                      setScheduleForm((prev) => ({
+                        ...prev,
+                        startTime: newStart,
+                        dailyWorkingHours: calcHours !== null ? calcHours : prev.dailyWorkingHours,
+                      }));
+                    }}
                     required
                     className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
                   />
@@ -649,13 +657,43 @@ export default function CompanyCalendar() {
                   <input
                     type="time"
                     value={scheduleForm.endTime}
-                    onChange={(e) =>
-                      setScheduleForm({ ...scheduleForm, endTime: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const newEnd = e.target.value;
+                      const calcHours = calculateHoursFromTimes(scheduleForm.startTime, newEnd);
+                      setScheduleForm((prev) => ({
+                        ...prev,
+                        endTime: newEnd,
+                        dailyWorkingHours: calcHours !== null ? calcHours : prev.dailyWorkingHours,
+                      }));
+                    }}
                     required
                     className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
                   />
                 </div>
+              </div>
+
+              {/* Target Hours */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sky-900 font-bold uppercase tracking-wider">
+                    Daily Standard Target Hours *
+                  </label>
+                  <span className="text-[10px] text-sky-600 font-medium">
+                    ✨ Auto-calculated from Start &amp; End time
+                  </span>
+                </div>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="1"
+                  max="24"
+                  value={scheduleForm.dailyWorkingHours}
+                  onChange={(e) =>
+                    setScheduleForm({ ...scheduleForm, dailyWorkingHours: e.target.value })
+                  }
+                  required
+                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
+                />
               </div>
 
               {/* Work Days Checkboxes */}

@@ -3,6 +3,24 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
+function calculateHoursFromTimes(startStr, endStr) {
+  if (!startStr || !endStr) return 8.0;
+  const [sh, sm] = startStr.split(":").map(Number);
+  const [eh, em] = endStr.split(":").map(Number);
+  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return 8.0;
+
+  let startMinutes = sh * 60 + sm;
+  let endMinutes = eh * 60 + em;
+
+  if (endMinutes <= startMinutes) {
+    endMinutes += 24 * 60;
+  }
+
+  const diffMinutes = endMinutes - startMinutes;
+  const diffHours = Number((diffMinutes / 60).toFixed(1));
+  return diffHours > 0 ? diffHours : 8.0;
+}
+
 /**
  * POST /api/company/calendar/schedule
  * Saves or updates company working hours schedule.
@@ -44,16 +62,20 @@ export async function POST(req) {
     const body = await req.json();
     const { dailyWorkingHours, startTime, endTime, workDays } = body;
 
-    const hoursNum = Number(dailyWorkingHours) || 8.0;
-    if (hoursNum < 1 || hoursNum > 24) {
+    const cleanStartTime = startTime?.trim() || "09:00";
+    const cleanEndTime = endTime?.trim() || "17:00";
+
+    const autoCalcHours = calculateHoursFromTimes(cleanStartTime, cleanEndTime);
+    const hoursNum = (dailyWorkingHours !== undefined && dailyWorkingHours !== null && dailyWorkingHours !== "")
+      ? Number(dailyWorkingHours)
+      : autoCalcHours;
+
+    if (isNaN(hoursNum) || hoursNum < 1 || hoursNum > 24) {
       return NextResponse.json(
         { message: "Daily working hours must be between 1 and 24 hours." },
         { status: 400 }
       );
     }
-
-    const cleanStartTime = startTime?.trim() || "09:00";
-    const cleanEndTime = endTime?.trim() || "17:00";
     const cleanWorkDays = Array.isArray(workDays) && workDays.length > 0
       ? workDays
       : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];

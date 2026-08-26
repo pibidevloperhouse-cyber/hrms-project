@@ -31,16 +31,22 @@ export async function GET(req) {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    // Check company work schedule (working days vs off-days)
+    // Check company work schedule (working hours & working days)
+    let dailyTargetHours = 8.0;
     let workDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const { data: schedData, error: schedErr } = await adminSupabase
       .from("company_work_schedules")
-      .select("work_days")
+      .select("daily_working_hours, work_days")
       .eq("company_id", empRecord.company_id)
       .maybeSingle();
 
-    if (schedData && Array.isArray(schedData.work_days) && schedData.work_days.length > 0) {
-      workDays = schedData.work_days;
+    if (schedData) {
+      if (schedData.daily_working_hours) {
+        dailyTargetHours = Number(schedData.daily_working_hours) || 8.0;
+      }
+      if (Array.isArray(schedData.work_days) && schedData.work_days.length > 0) {
+        workDays = schedData.work_days;
+      }
     } else if (schedErr && schedErr.code !== "42P01") {
       console.warn("Notice fetching company schedule on status check:", schedErr.message);
     }
@@ -180,6 +186,7 @@ export async function GET(req) {
         todayLogs: todayLogs || [],
         totalCompletedHoursToday: Number(totalCompletedHours.toFixed(2)),
         totalWorkingHoursToday: Number((totalCompletedHours + runtimeHours).toFixed(2)),
+        dailyTargetHours,
         isHoliday,
         holidayTitle,
         holidayType,
@@ -217,6 +224,7 @@ export async function GET(req) {
         hrFeedback: completedSessionToday.hr_feedback || null,
         todayLogs: todayLogs || [],
         totalWorkingHoursToday: Number(totalCompletedHours.toFixed(2)),
+        dailyTargetHours,
         isHoliday,
         holidayTitle,
         holidayType,
@@ -243,6 +251,7 @@ export async function GET(req) {
       workingHours: 0,
       todayLogs: todayLogs || [],
       totalWorkingHoursToday: 0,
+      dailyTargetHours,
       isHoliday,
       holidayTitle,
       holidayType,

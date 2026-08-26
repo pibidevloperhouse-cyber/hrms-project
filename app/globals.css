@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -9,6 +9,10 @@
   --border: #e0f2fe;
   --accent: #0284c7;
   --accent-glow: rgba(2, 132, 199, 0.15);
+  
+  --font-body: var(--font-plus-jakarta), "Plus Jakarta Sans", "Inter", system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-outfit), "Outfit", var(--font-plus-jakarta), sans-serif;
+  --font-code: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
 }
 
 * {
@@ -18,12 +22,25 @@
 body {
   background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #e0e7ff 100%);
   color: #0f172a;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: var(--font-body);
+  letter-spacing: -0.012em;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar Styling */
+/* Heading Typography Override */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  letter-spacing: -0.022em;
+}
+
+/* Code & Numeric Typography Override */
+code, pre, .font-mono {
+  font-family: var(--font-code);
+}
+
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -39,7 +56,7 @@ body {
   background: #7dd3fc;
 }
 
-/* Custom Animations */
+/* Animations */
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -53,6 +70,6 @@ body {
   to   { opacity: 1; transform: translateX(0); }
 }
 
-.animate-fadeIn   { animation: fadeIn 0.3s ease forwards; }
-.animate-slideIn  { animation: slideInLeft 0.25s ease forwards; }
-.animate-toastIn  { animation: toastIn 0.35s ease forwards; }
+.animate-fadeIn   { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slideIn  { animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-toastIn  { animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

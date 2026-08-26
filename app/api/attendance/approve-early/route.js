@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
+import { checkAndSendDailySummary } from "@/lib/mail/dailySummaryHelper";
 
 function isHRRole(role) {
   return ["ADMIN", "hr_manager", "hr_executive", "manager", "team_lead"].includes(role);
@@ -112,6 +113,14 @@ export async function POST(req) {
 
         if (fbErr) throw fbErr;
 
+        if (companyId) {
+          try {
+            await checkAndSendDailySummary(companyId, adminSupabase);
+          } catch (sumErr) {
+            console.warn("Notice in approve-early summary trigger:", sumErr.message);
+          }
+        }
+
         return NextResponse.json({
           success: true,
           message: isApprove
@@ -121,6 +130,15 @@ export async function POST(req) {
         });
       }
       throw updateErr;
+    }
+
+    // Check if all working shifts are concluded for today to trigger daily summary
+    if (companyId) {
+      try {
+        await checkAndSendDailySummary(companyId, adminSupabase);
+      } catch (sumErr) {
+        console.warn("Notice in approve-early summary trigger:", sumErr.message);
+      }
     }
 
     return NextResponse.json({

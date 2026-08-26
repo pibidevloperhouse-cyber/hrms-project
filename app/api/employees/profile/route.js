@@ -26,6 +26,7 @@ export async function PUT(req) {
       personalEmail = "",
       phone = "",
       address = "",
+      joiningDate = null,
       avatarUrl = null,
     } = body;
 
@@ -126,6 +127,7 @@ export async function PUT(req) {
       last_name: lastName.trim(),
       personal_email: personalEmail.trim(),
       address: address.trim(),
+      joining_date: joiningDate || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -140,27 +142,51 @@ export async function PUT(req) {
       .select()
       .maybeSingle();
 
-    // Fallback: If custom schema columns are missing, update core columns (full_name, phone)
+    // Fallback: If custom schema columns are missing, try update without custom columns
     if (updateError) {
-      console.warn("Full payload update warning (trying core payload fallback):", updateError.message);
+      console.warn("Full payload update warning (trying tier 2 payload fallback):", updateError.message);
 
-      const corePayload = {
+      const tier2Payload = {
         full_name: fullName,
         phone: phone.trim(),
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        personal_email: personalEmail.trim(),
+        address: address.trim(),
         updated_at: new Date().toISOString(),
       };
+      if (avatarUrl !== undefined && avatarUrl !== null) {
+        tier2Payload.avatar_url = avatarUrl;
+      }
 
-      const { data: coreData, error: coreError } = await adminSupabase
+      const { data: tier2Data, error: tier2Error } = await adminSupabase
         .from("employees")
-        .update(corePayload)
+        .update(tier2Payload)
         .eq("id", empRecord.id)
         .select()
-        .single();
+        .maybeSingle();
 
-      if (coreError) {
-        throw coreError;
+      if (!tier2Error && tier2Data) {
+        updatedData = tier2Data;
+      } else {
+        const corePayload = {
+          full_name: fullName,
+          phone: phone.trim(),
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: coreData, error: coreError } = await adminSupabase
+          .from("employees")
+          .update(corePayload)
+          .eq("id", empRecord.id)
+          .select()
+          .single();
+
+        if (coreError) {
+          throw coreError;
+        }
+        updatedData = coreData;
       }
-      updatedData = coreData;
     }
 
     const finalRecord = updatedData || empRecord;
@@ -184,6 +210,7 @@ export async function PUT(req) {
         personal_email: personalEmail.trim() || finalRecord.personal_email || "",
         phone: phone.trim() || finalRecord.phone || "",
         address: address.trim() || finalRecord.address || "",
+        joining_date: joiningDate || finalRecord.joining_date || null,
       },
     });
   } catch (error) {

@@ -11,6 +11,8 @@ import AttendanceCard from "./components/AttendanceCard";
 import AttendancePage from "./components/AttendancePage";
 import CompanyCalendar from "./components/CompanyCalendar";
 import MonthlyWorkingHoursWidget from "./components/MonthlyWorkingHoursWidget";
+import EmployeeDocumentManager from "./components/EmployeeDocumentManager";
+import MyDocumentsCard from "./components/MyDocumentsCard";
 
 // ─── NAV CONFIG ──────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
@@ -18,6 +20,7 @@ const NAV_ITEMS = [
   { key: "attendance", label: "Attendance", icon: "⏱" },
   { key: "calendar", label: "Work Calendar", icon: "📅" },
   { key: "leave-requests", label: "Leave Requests", icon: "✈" },
+  { key: "documents", label: "Documents & Payslips", icon: "📄" },
   { key: "employees", label: "Team Directory", icon: "⊞" },
   { key: "departments", label: "Departments", icon: "⊟" },
   { key: "settings", label: "My Profile", icon: "◎" },
@@ -130,6 +133,7 @@ function DashboardContent() {
     personalEmail: "",
     phone: "",
     address: "",
+    joiningDate: "",
     avatarUrl: null,
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -137,6 +141,8 @@ function DashboardContent() {
 
   useEffect(() => {
     if (employeeProfile) {
+      const rawJoining = employeeProfile.joining_date || employeeProfile.joiningDate || "";
+      const formattedJoining = rawJoining ? String(rawJoining).split("T")[0] : "";
       Promise.resolve().then(() => {
         setProfileForm({
           firstName: employeeProfile.first_name || (employeeProfile.full_name ? employeeProfile.full_name.split(" ")[0] : ""),
@@ -144,6 +150,7 @@ function DashboardContent() {
           personalEmail: employeeProfile.personal_email || "",
           phone: employeeProfile.phone || "",
           address: employeeProfile.address || "",
+          joiningDate: formattedJoining,
           avatarUrl: employeeProfile.avatar_url || null,
         });
       });
@@ -746,6 +753,15 @@ function DashboardContent() {
             />
           )}
 
+          {/* --- TAB: DOCUMENTS & PAYSLIPS --- */}
+          {activeTab === "documents" && (
+            isHR || isAdmin ? (
+              <EmployeeDocumentManager />
+            ) : (
+              <MyDocumentsCard />
+            )
+          )}
+
           {/* --- TAB: TEAM DIRECTORY --- */}
           {activeTab === "employees" && (
             <div className="bg-white border border-sky-100 rounded-2xl overflow-hidden shadow-2xs">
@@ -802,7 +818,7 @@ function DashboardContent() {
                   <table className="w-full text-xs text-left min-w-[640px]">
                     <thead>
                       <tr className="border-b border-sky-100 bg-sky-50/50">
-                        {["Member", "Role", "Department", "Username", "Status"].map((h) => (
+                        {["Member", "Role", "Department", "Joining Date", "Username", "Status"].map((h) => (
                           <th key={h} className="py-3 px-4 text-[10px] font-bold text-sky-900 uppercase tracking-wider">{h}</th>
                         ))}
                       </tr>
@@ -832,6 +848,9 @@ function DashboardContent() {
                           <td className="py-3.5 px-4">
                             <p className="font-medium text-slate-800">{emp.department || "General"}</p>
                             <p className="text-slate-500 text-[10px]">{emp.designation || "—"}</p>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">
+                            {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : "—"}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-sky-700 font-semibold">
                             {emp.username ? `@${emp.username}` : <span className="text-slate-400 font-sans italic">Pending</span>}
@@ -1098,6 +1117,20 @@ function DashboardContent() {
                           onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
                           placeholder="+1 (555) 234-5678"
                           className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition"
+                        />
+                      </div>
+
+                      {/* Joining Date */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
+                          <span>Date of Joining 📅</span>
+                          <span className="text-sky-600 font-semibold normal-case text-[10px]">Editable</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={profileForm.joiningDate}
+                          onChange={(e) => setProfileForm({ ...profileForm, joiningDate: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 text-xs focus:border-sky-500 outline-none transition cursor-pointer"
                         />
                       </div>
                     </div>

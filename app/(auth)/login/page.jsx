@@ -173,10 +173,7 @@ function LoginContent() {
 
           {/* Password */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-sky-900">Password *</label>
-              <a href="#" className="text-xs font-medium text-sky-600 hover:text-sky-800">Forgot?</a>
-            </div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-sky-900 mb-1.5">Password *</label>
             <div className="relative">
               <input
                 type={showPassword ? "text" : "password"}

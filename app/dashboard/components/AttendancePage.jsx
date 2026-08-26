@@ -31,6 +31,7 @@ export default function AttendancePage({ userRole }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [totalWorkingHoursToday, setTotalWorkingHoursToday] = useState(0);
   const [totalCompletedHoursToday, setTotalCompletedHoursToday] = useState(0);
+  const [dailyTargetHours, setDailyTargetHours] = useState(8.0);
   const [todayLogs, setTodayLogs] = useState([]);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
 
@@ -100,6 +101,9 @@ export default function AttendancePage({ userRole }) {
         setCheckOutTime(data.checkOutTime || null);
         setTotalWorkingHoursToday(data.totalWorkingHoursToday || 0);
         setTotalCompletedHoursToday(data.totalCompletedHoursToday || 0);
+        if (data.dailyTargetHours) {
+          setDailyTargetHours(Number(data.dailyTargetHours) || 8.0);
+        }
         setTodayLogs(data.todayLogs || []);
         setApprovalStatus(data.approvalStatus || (data.status === "PENDING_APPROVAL" ? "PENDING" : data.status === "REJECTED_LOP" ? "REJECTED" : "APPROVED"));
         setEarlyReason(data.earlyReason || "");
@@ -365,11 +369,11 @@ export default function AttendancePage({ userRole }) {
     }
   };
 
-  // Triggers pop-up modal when user clicks Check Out before 8 hours
+  // Triggers pop-up modal when user clicks Check Out before target working hours
   const initiateCheckOut = () => {
     const runtimeHours = Number((elapsedSeconds / 3600).toFixed(2));
     const totalHours = Number((totalWorkingHoursToday + (checkedIn ? runtimeHours : 0)).toFixed(2));
-    if (runtimeHours < 8.0 || totalHours < 8.0) {
+    if (runtimeHours < dailyTargetHours || totalHours < dailyTargetHours) {
       setReasonInput("");
       setModalError("");
       setShowReasonModal(true);
@@ -415,7 +419,7 @@ export default function AttendancePage({ userRole }) {
         if (data.isEarly) {
           setNotice({
             error: "",
-            success: `Early Check-Out Recorded (${data.workingHours} ) is less than 8 hrs. Reason sent to HR for approval.`,
+            success: `Early Check-Out Recorded (${data.workingHours} hrs, <${dailyTargetHours}h). Reason sent to HR for approval.`,
           });
         } else {
           setNotice({
@@ -436,7 +440,7 @@ export default function AttendancePage({ userRole }) {
   const handleReasonSubmit = (e) => {
     e.preventDefault();
     if (!reasonInput.trim()) {
-      setModalError("Please specify a reason for checking out before 8 hours.");
+      setModalError(`Please specify a reason for checking out before ${dailyTargetHours} hours.`);
       return;
     }
     executeCheckOut(reasonInput.trim());
@@ -446,10 +450,10 @@ export default function AttendancePage({ userRole }) {
   const currentCumulativeHours = Number(
     (totalCompletedHoursToday + (checkedIn ? Number(runtimeDecimal) : totalWorkingHoursToday)).toFixed(2)
   );
-  const targetWorkHours = 8.0;
+  const targetWorkHours = dailyTargetHours;
 
-  // Real-time progress calculations towards 8 hours (28,800 seconds)
-  const targetSeconds = 8 * 3600;
+  // Real-time progress calculations towards target hours
+  const targetSeconds = dailyTargetHours * 3600;
   const totalEffectiveSeconds = checkedIn ? elapsedSeconds : (totalWorkingHoursToday * 3600);
   const progressRatio = Math.min(1.0, Math.max(0, totalEffectiveSeconds / targetSeconds));
   const progressPercentInt = Math.min(100, Math.round(progressRatio * 100));
@@ -469,13 +473,13 @@ export default function AttendancePage({ userRole }) {
           <div>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-100 text-[10px] font-bold uppercase tracking-wider border border-emerald-300/30 mb-3">
               <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
-              Company Working Standard: 8 Hours
+              Company Working Standard: {dailyTargetHours} Hours
             </div>
             <h1 className="text-xl md:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
               <span>⏱️</span> Attendance & Working Hours
             </h1>
             <p className="mt-1.5 text-xs md:text-sm text-sky-100/90 max-w-xl">
-              Overall company working time is 8 hours. Start Lunch Break pauses active work time.
+              Overall company working time is {dailyTargetHours} hours. Start Lunch Break pauses active work time.
             </p>
           </div>
 
@@ -484,16 +488,16 @@ export default function AttendancePage({ userRole }) {
               <p className="text-[10px] text-sky-100/80 font-bold uppercase">Status</p>
               <p
                 className={`text-xs font-bold ${isOnBreak
-                    ? "text-amber-200"
-                    : checkedIn
-                      ? "text-emerald-200"
-                      : hasCompletedToday && approvalStatus === "PENDING"
-                        ? "text-amber-200"
-                        : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                          ? "text-rose-200"
-                          : hasCompletedToday
-                            ? "text-sky-100"
-                            : "text-sky-200/80"
+                  ? "text-amber-200"
+                  : checkedIn
+                    ? "text-emerald-200"
+                    : hasCompletedToday && approvalStatus === "PENDING"
+                      ? "text-amber-200"
+                      : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                        ? "text-rose-200"
+                        : hasCompletedToday
+                          ? "text-sky-100"
+                          : "text-sky-200/80"
                   }`}
               >
                 {isOnBreak
@@ -511,16 +515,16 @@ export default function AttendancePage({ userRole }) {
             </div>
             <div
               className={`w-3 h-3 rounded-full ${isOnBreak
-                  ? "bg-amber-300 animate-pulse"
-                  : checkedIn
-                    ? "bg-emerald-300 animate-pulse"
-                    : hasCompletedToday && approvalStatus === "PENDING"
-                      ? "bg-amber-300 animate-pulse"
-                      : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                        ? "bg-rose-300"
-                        : hasCompletedToday
-                          ? "bg-sky-200"
-                          : "bg-sky-400/60"
+                ? "bg-amber-300 animate-pulse"
+                : checkedIn
+                  ? "bg-emerald-300 animate-pulse"
+                  : hasCompletedToday && approvalStatus === "PENDING"
+                    ? "bg-amber-300 animate-pulse"
+                    : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                      ? "bg-rose-300"
+                      : hasCompletedToday
+                        ? "bg-sky-200"
+                        : "bg-sky-400/60"
                 }`}
             />
           </div>
@@ -571,20 +575,20 @@ export default function AttendancePage({ userRole }) {
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <span>⚡</span> Real-Time Shift Counter
               </h3>
-              <p className="text-xs text-slate-500">Standard working time: 8.00 Hours</p>
+              <p className="text-xs text-slate-500">Standard working time: {dailyTargetHours.toFixed(2)} Hours</p>
             </div>
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold border ${isOnBreak
-                  ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
-                  : checkedIn
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
-                    : hasCompletedToday && approvalStatus === "PENDING"
-                      ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
-                      : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                        ? "bg-rose-50 text-rose-700 border-rose-200"
-                        : hasCompletedToday
-                          ? "bg-sky-50 text-sky-700 border-sky-200"
-                          : "bg-slate-100 text-slate-600 border-slate-200"
+                ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                : checkedIn
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
+                  : hasCompletedToday && approvalStatus === "PENDING"
+                    ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                    : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : hasCompletedToday
+                        ? "bg-sky-50 text-sky-700 border-sky-200"
+                        : "bg-slate-100 text-slate-600 border-slate-200"
                 }`}
             >
               {isOnBreak
@@ -592,7 +596,7 @@ export default function AttendancePage({ userRole }) {
                 : checkedIn
                   ? "ACTIVE SHIFT"
                   : hasCompletedToday && approvalStatus === "PENDING"
-                    ? "PENDING HR APPROVAL (<8h)"
+                    ? `PENDING HR APPROVAL (<${dailyTargetHours}h)`
                     : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
                       ? "REJECTED (LOSS OF PAY)"
                       : hasCompletedToday
@@ -625,12 +629,12 @@ export default function AttendancePage({ userRole }) {
                       cy="100"
                       r={circleRadius}
                       className={`transition-all duration-1000 ease-out ${isOnBreak
-                          ? "stroke-amber-500 opacity-80"
-                          : checkedIn
-                            ? "stroke-emerald-500"
-                            : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                              ? "stroke-rose-500"
-                              : "stroke-sky-500"
+                        ? "stroke-amber-500 opacity-80"
+                        : checkedIn
+                          ? "stroke-emerald-500"
+                          : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
+                            ? "stroke-rose-500"
+                            : "stroke-sky-500"
                         }`}
                       strokeWidth="10"
                       strokeDasharray={circleCircumference}
@@ -647,7 +651,7 @@ export default function AttendancePage({ userRole }) {
                           {formatSecondsToHHMMSS(elapsedSeconds)}
                         </span>
                         <span className={`text-xs font-bold mt-1 ${isOnBreak ? "text-amber-800" : "text-emerald-800"}`}>
-                          {runtimeDecimal} / 8.0 hrs
+                          {runtimeDecimal} / {dailyTargetHours.toFixed(1)} hrs
                         </span>
                         {isOnBreak ? (
                           <span className="mt-2 px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-mono font-bold uppercase tracking-wider animate-pulse">
@@ -662,19 +666,19 @@ export default function AttendancePage({ userRole }) {
                     ) : hasCompletedToday ? (
                       <>
                         <span className={`text-3xl font-black font-mono ${isLop || approvalStatus === "REJECTED"
-                            ? "text-rose-700"
-                            : approvalStatus === "PENDING"
-                              ? "text-amber-700"
-                              : "text-sky-700"
+                          ? "text-rose-700"
+                          : approvalStatus === "PENDING"
+                            ? "text-amber-700"
+                            : "text-sky-700"
                           }`}>
                           {totalWorkingHoursToday.toFixed(2)}
                         </span>
-                        <span className="text-xs font-bold text-slate-700">/ 8.0 hrs net</span>
+                        <span className="text-xs font-bold text-slate-700">/ {dailyTargetHours.toFixed(1)} hrs net</span>
                         <span className={`mt-2 px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider ${isLop || approvalStatus === "REJECTED"
-                            ? "bg-rose-100 text-rose-800"
-                            : approvalStatus === "PENDING"
-                              ? "bg-amber-100 text-amber-800"
-                              : "bg-sky-100 text-sky-800"
+                          ? "bg-rose-100 text-rose-800"
+                          : approvalStatus === "PENDING"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-sky-100 text-sky-800"
                           }`}>
                           {approvalStatus === "PENDING"
                             ? "Pending Approval"
@@ -687,7 +691,7 @@ export default function AttendancePage({ userRole }) {
                       <>
                         <span className="text-4xl mb-2 text-sky-400">⏱️</span>
                         <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Ready to Check In</span>
-                        <span className="text-[10px] text-slate-400 mt-1">8 Hours Shift Target</span>
+                        <span className="text-[10px] text-slate-400 mt-1">{dailyTargetHours} Hours Shift Target</span>
                       </>
                     )}
                   </div>
@@ -833,15 +837,14 @@ export default function AttendancePage({ userRole }) {
                     type="button"
                     onClick={handleCheckIn}
                     disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-                    className={`w-full py-4 rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2 ${
-                      isHoliday
+                    className={`w-full py-4 rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2 ${isHoliday
                         ? "bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                         : isNonWorkingDay
-                        ? "bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
-                        : isOnLeaveToday
-                        ? "bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
-                        : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
-                    }`}
+                          ? "bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
+                          : isOnLeaveToday
+                            ? "bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
+                            : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+                      }`}
                   >
                     {actionLoading ? (
                       <>
@@ -886,14 +889,14 @@ export default function AttendancePage({ userRole }) {
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between text-xs mb-1.5">
-                  <span className="text-slate-500 font-semibold">Daily Shift Target (8 hrs)</span>
-                  <span className="font-bold text-slate-900 font-mono">{currentCumulativeHours} / 8.00 hrs</span>
+                  <span className="text-slate-500 font-semibold">Daily Shift Target ({dailyTargetHours} hrs)</span>
+                  <span className="font-bold text-slate-900 font-mono">{currentCumulativeHours} / {dailyTargetHours.toFixed(2)} hrs</span>
                 </div>
                 <div className="w-full h-3 bg-sky-50 rounded-full overflow-hidden border border-sky-100">
                   <div
                     className={`h-full transition-all duration-500 rounded-full ${isOnBreak
-                        ? "bg-amber-400 opacity-80"
-                        : "bg-gradient-to-r from-sky-500 to-emerald-500"
+                      ? "bg-amber-400 opacity-80"
+                      : "bg-gradient-to-r from-sky-500 to-emerald-500"
                       }`}
                     style={{ width: `${progressPercentInt}%` }}
                   />
@@ -992,14 +995,14 @@ export default function AttendancePage({ userRole }) {
                       <td className="py-3.5 px-4">
                         <span
                           className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${log.status === "ON_BREAK"
-                              ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
-                              : log.status === "CHECKED_IN"
-                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                : log.status === "PENDING_APPROVAL"
-                                  ? "bg-amber-50 text-amber-700 border-amber-200"
-                                  : log.status === "REJECTED_LOP"
-                                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                                    : "bg-sky-50 text-sky-700 border-sky-200"
+                            ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                            : log.status === "CHECKED_IN"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : log.status === "PENDING_APPROVAL"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : log.status === "REJECTED_LOP"
+                                  ? "bg-rose-50 text-rose-700 border-rose-200"
+                                  : "bg-sky-50 text-sky-700 border-sky-200"
                             }`}
                         >
                           {log.status === "ON_BREAK"
@@ -1042,10 +1045,10 @@ export default function AttendancePage({ userRole }) {
 
             <div className="text-xs text-slate-700 space-y-2">
               <p className="leading-relaxed">
-                Company standard overall working time is <strong className="text-amber-700">8 Hours</strong>. Your net shift duration (deducting lunch break) is <strong className="text-slate-900 font-mono">{runtimeDecimal} hrs</strong>.
+                Company standard overall working time is <strong className="text-amber-700">{dailyTargetHours} Hours</strong>. Your net shift duration (deducting lunch break) is <strong className="text-slate-900 font-mono">{runtimeDecimal} hrs</strong>.
               </p>
               <p className="text-slate-500 text-[11px]">
-                Please enter a reason for checking out before 8 hours. This message will be delivered to HR for approval or rejection (Loss of Pay).
+                Please enter a reason for checking out before {dailyTargetHours} hours. This message will be delivered to HR for approval or rejection (Loss of Pay).
               </p>
             </div>
 

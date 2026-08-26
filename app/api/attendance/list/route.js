@@ -62,6 +62,18 @@ export async function GET(req) {
     const startDate = new Date(dateObj.getTime() - 12 * 3600 * 1000);
     const endDate = new Date(dateObj.getTime() + 36 * 3600 * 1000);
 
+    // Fetch company working schedule for target hours
+    let companyDailyWorkingHours = 8.0;
+    const { data: schedData } = await adminSupabase
+      .from("company_work_schedules")
+      .select("daily_working_hours")
+      .eq("company_id", companyId)
+      .maybeSingle();
+
+    if (schedData && schedData.daily_working_hours) {
+      companyDailyWorkingHours = Number(schedData.daily_working_hours) || 8.0;
+    }
+
     let empQuery = adminSupabase
       .from("employees")
       .select("*")
@@ -170,6 +182,7 @@ export async function GET(req) {
       let checkIn = null;
       let checkOut = null;
       let workingHours = 0;
+      let netWorkingSeconds = 0;
 
       if (att) {
         checkIn = att.check_in;
@@ -185,6 +198,7 @@ export async function GET(req) {
           const grossSec = Math.max(1, Math.floor((autoEndMs - checkInMs) / 1000));
           const breakSec = Number(att.total_break_seconds) || 0;
           const netSec = Math.max(1, grossSec - breakSec);
+          netWorkingSeconds = netSec;
           workingHours = Number((netSec / 3600).toFixed(2));
           status = "COMPLETED";
           checkedOutCount++;
@@ -206,6 +220,7 @@ export async function GET(req) {
           const grossSec = Math.max(0, Math.floor((nowMs - checkInMs) / 1000));
           const breakSec = Number(att.total_break_seconds) || 0;
           const netSec = Math.max(0, grossSec - breakSec);
+          netWorkingSeconds = netSec;
           workingHours = Number((netSec / 3600).toFixed(2));
         } else if (att.status === "ON_BREAK") {
           status = "ON_BREAK";
@@ -217,30 +232,37 @@ export async function GET(req) {
             breakSec += Math.max(0, Math.floor((nowMs - new Date(breakStartIso).getTime()) / 1000));
           }
           const netSec = Math.max(0, grossSec - breakSec);
+          netWorkingSeconds = netSec;
           workingHours = Number((netSec / 3600).toFixed(2));
         } else if (att.status === "PENDING_APPROVAL") {
           status = "PENDING_APPROVAL";
           checkedOutCount++;
           workingHours = Number(att.working_hours || 0);
+          netWorkingSeconds = Math.round(workingHours * 3600);
         } else if (att.status === "REJECTED_LOP") {
           status = "REJECTED_LOP";
           checkedOutCount++;
           workingHours = Number(att.working_hours || 0);
+          netWorkingSeconds = Math.round(workingHours * 3600);
         } else if (att.status === "COMPLETED" || att.status === "CHECKED_OUT") {
           status = "COMPLETED";
           checkedOutCount++;
           workingHours = Number(att.working_hours || 0);
+          netWorkingSeconds = Math.round(workingHours * 3600);
         }
       } else if (approvedLeave) {
         status = "ON_LEAVE";
         onLeaveCount++;
         workingHours = 8.0;
+        netWorkingSeconds = 8 * 3600;
       } else if (isCompanyHoliday) {
         status = "COMPANY_HOLIDAY";
         holidayCount++;
         workingHours = 8.0;
+        netWorkingSeconds = 8 * 3600;
       } else {
         notCheckedInCount++;
+        netWorkingSeconds = 0;
       }
 
       const resolvedEarlyReason = att?.early_reason || null;
@@ -261,7 +283,8 @@ export async function GET(req) {
         checkIn,
         checkOut,
         workingHours,
-        earlyCheckout: Boolean(att?.early_checkout) || (workingHours < 7.995 && att?.status !== "CHECKED_IN" && att?.status !== "ON_BREAK" && att?.status !== "ON_LEAVE" && att?.status !== "COMPANY_HOLIDAY" && att?.status !== undefined) || Boolean(resolvedEarlyReason),
+        netWorkingSeconds,
+        earlyCheckout: Boolean(att?.early_checkout) || (workingHours < (companyDailyWorkingHours - 0.005) && att?.status !== "CHECKED_IN" && att?.status !== "ON_BREAK" && att?.status !== "ON_LEAVE" && att?.status !== "COMPANY_HOLIDAY" && att?.status !== undefined) || Boolean(resolvedEarlyReason),
         earlyReason: resolvedEarlyReason,
         approvalStatus: att?.approval_status || (att?.status === "PENDING_APPROVAL" ? "PENDING" : att?.status === "REJECTED_LOP" ? "REJECTED" : "APPROVED"),
         isLop: att?.is_lop || att?.status === "REJECTED_LOP",

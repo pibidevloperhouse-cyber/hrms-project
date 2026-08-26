@@ -80,6 +80,7 @@ export async function GET(req) {
           personal_email: empRecord.personal_email || "",
           phone: empRecord.phone || "",
           address: empRecord.address || "",
+          joining_date: empRecord.joining_date || null,
         };
 
         // Sync auth_user_id if missing
@@ -130,6 +131,7 @@ export async function GET(req) {
             personal_email: userEmail,
             phone: targetCompany.phone || "",
             address: targetCompany.country ? `${targetCompany.country}, ${targetCompany.state || ""}` : "",
+            joining_date: targetCompany.created_at || null,
           };
         }
       }

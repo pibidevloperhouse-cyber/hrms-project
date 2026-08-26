@@ -2,6 +2,16 @@
 
 import React, { useState, useEffect } from "react";
 
+function formatDurationHMS(totalSeconds) {
+  if (!totalSeconds || isNaN(totalSeconds) || totalSeconds <= 0) return "00h 00m 00s";
+  const sec = Math.round(totalSeconds);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (num) => String(num).padStart(2, "0");
+  return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+}
+
 export default function EmployeeMonthlySummaryTable() {
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7) // 'YYYY-MM'
@@ -683,8 +693,13 @@ export default function EmployeeMonthlySummaryTable() {
                             <td className="py-2.5 px-3 font-mono text-slate-600 text-right">
                               8.0 hrs
                             </td>
-                            <td className="py-2.5 px-3 font-mono font-bold text-emerald-700 text-right">
-                              {log.workedHours ? log.workedHours.toFixed(2) : "0.00"} hrs
+                            <td className="py-2.5 px-3 font-mono text-right">
+                              <span className="font-bold text-emerald-700 block">
+                                {formatDurationHMS(log.netWorkingSeconds || Math.round((log.workedHours || log.workingHours || 0) * 3600))}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-sans block">
+                                ({log.workedHours ? log.workedHours.toFixed(2) : "0.00"} hrs)
+                              </span>
                             </td>
                             <td className="py-2.5 px-3 text-right font-mono">
                               {log.shortfallHours > 0 || log.timeGapHours > 0 ? (
