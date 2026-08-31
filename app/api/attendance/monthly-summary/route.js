@@ -404,7 +404,7 @@ export async function GET(req) {
       });
     });
 
-    // Compute Department Capacity & Health Benchmarks
+    // Compute Department Capacity Benchmarks
     const departmentMap = {};
     staffSummaryTable.forEach((emp) => {
       const dept = emp.department || "General";
@@ -412,13 +412,11 @@ export async function GET(req) {
         departmentMap[dept] = {
           name: dept,
           count: 0,
-          totalScore: 0,
           totalWorked: 0,
           totalOvertime: 0,
         };
       }
       departmentMap[dept].count += 1;
-      departmentMap[dept].totalScore += emp.healthScore;
       departmentMap[dept].totalWorked += emp.workedHours;
       departmentMap[dept].totalOvertime += emp.overtimeHours;
     });
@@ -426,7 +424,6 @@ export async function GET(req) {
     const departmentBenchmarks = Object.values(departmentMap).map((d) => ({
       department: d.name,
       employeeCount: d.count,
-      averageHealthScore: Math.round(d.totalScore / d.count),
       totalWorkedHours: Number(d.totalWorked.toFixed(1)),
       totalOvertimeHours: Number(d.totalOvertime.toFixed(1)),
     }));

@@ -29,14 +29,15 @@ export async function GET(req) {
     }
 
     const userRole = empRecord.role || "employee";
-    const isHR = isHRRole(userRole);
+    const isAdmin = userRole === "ADMIN";
+    const isHR = ["hr_manager", "hr_executive"].includes(userRole);
     const computedNotifications = [];
 
-    if (isHR) {
-      // 1. Fetch pending leaves requiring HR approval
+    if (isAdmin) {
+      // 1. Company Owner sees all pending leaves (highlighting HR leaves requiring Owner decision)
       const { data: pendingLeaves } = await adminSupabase
-        .from("leaves")
-        .select("id, leave_type, reason, created_at, employee_id, employees(full_name, email)")
+        .from("leave_requests")
+        .select("id, leave_type, reason, created_at, employee_id, employees(full_name, email, role)")
         .eq("company_id", empRecord.company_id)
         .eq("status", "PENDING")
         .order("created_at", { ascending: false });
@@ -44,18 +45,70 @@ export async function GET(req) {
       if (pendingLeaves) {
         pendingLeaves.forEach((l) => {
           const empName = l.employees?.full_name || "An employee";
+          const isApplicantHR = ["hr_manager", "hr_executive"].includes(l.employees?.role);
+
           computedNotifications.push({
             id: `leave-${l.id}`,
-            title: "⌛ Pending Leave Request",
-            message: `${empName} requested ${l.leave_type || "leave"}. Reason: "${l.reason || "No reason specified"}"`,
-            type: "PENDING_LEAVE",
+            title: isApplicantHR ? "👑 HR Leave Approval Required" : "⌛ Pending Employee Leave Request",
+            message: isApplicantHR
+              ? `${empName} (HR Staff) requested ${l.leave_type || "leave"}. Owner approval required.`
+              : `${empName} requested ${l.leave_type || "leave"}. Reason: "${l.reason || "No reason specified"}"`,
+            type: isApplicantHR ? "HR_LEAVE_REQUEST" : "PENDING_LEAVE",
             is_read: false,
             created_at: l.created_at,
           });
         });
       }
 
-      // 2. Fetch pending early check-out requests requiring HR approval
+      // 2. Pending early check-out requests
+      const { data: pendingEarlyAtt } = await adminSupabase
+        .from("attendance")
+        .select("id, check_in, check_out, working_hours, early_reason, approval_status, updated_at, employees(full_name)")
+        .eq("company_id", empRecord.company_id)
+        .eq("approval_status", "PENDING")
+        .order("updated_at", { ascending: false });
+
+      if (pendingEarlyAtt) {
+        pendingEarlyAtt.forEach((att) => {
+          const empName = att.employees?.full_name || "An employee";
+          computedNotifications.push({
+            id: `att-early-${att.id}`,
+            title: "⏱️ Early Check-Out Approval Required",
+            message: `${empName} checked out early (${att.working_hours || 0} hrs). Reason: "${att.early_reason || "No reason provided"}"`,
+            type: "EARLY_CHECKOUT_REQUEST",
+            is_read: false,
+            created_at: att.updated_at || att.check_in,
+          });
+        });
+      }
+    } else if (isHR) {
+      // 1. HR Personnel see regular employee pending leaves (HR leaves are routed to Owner)
+      const { data: pendingLeaves } = await adminSupabase
+        .from("leave_requests")
+        .select("id, leave_type, reason, created_at, employee_id, employees(full_name, email, role)")
+        .eq("company_id", empRecord.company_id)
+        .eq("status", "PENDING")
+        .order("created_at", { ascending: false });
+
+      if (pendingLeaves) {
+        pendingLeaves.forEach((l) => {
+          const isApplicantHR = ["hr_manager", "hr_executive"].includes(l.employees?.role);
+          const empName = l.employees?.full_name || "An employee";
+
+          if (!isApplicantHR) {
+            computedNotifications.push({
+              id: `leave-${l.id}`,
+              title: "⌛ Pending Employee Leave Request",
+              message: `${empName} requested ${l.leave_type || "leave"}. Reason: "${l.reason || "No reason specified"}"`,
+              type: "PENDING_LEAVE",
+              is_read: false,
+              created_at: l.created_at,
+            });
+          }
+        });
+      }
+
+      // 2. Early check-outs for HR review
       const { data: pendingEarlyAtt } = await adminSupabase
         .from("attendance")
         .select("id, check_in, check_out, working_hours, early_reason, approval_status, updated_at, employees(full_name)")
@@ -79,7 +132,7 @@ export async function GET(req) {
     } else {
       // For standard employees: compute recent decisions on their leaves & early check-outs
       const { data: userLeaves } = await adminSupabase
-        .from("leaves")
+        .from("leave_requests")
         .select("id, leave_type, status, updated_at")
         .eq("employee_id", empRecord.id)
         .neq("status", "PENDING")
@@ -92,7 +145,7 @@ export async function GET(req) {
           computedNotifications.push({
             id: `my-leave-${l.id}`,
             title: isApproved ? "✅ Leave Request Approved" : "✖ Leave Request Rejected",
-            message: `Your ${l.leave_type || "leave"} application has been ${l.status.toLowerCase()} by HR.`,
+            message: `Your ${l.leave_type || "leave"} application has been ${l.status.toLowerCase()} by management.`,
             type: isApproved ? "LEAVE_APPROVED" : "LEAVE_REJECTED",
             is_read: true,
             created_at: l.updated_at,

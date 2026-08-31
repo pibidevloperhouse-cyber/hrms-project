@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return "0 B";
@@ -165,12 +166,14 @@ export default function EmployeeDocumentManager() {
 
   // Upload Modal State
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = React.useRef(null);
   const [uploadForm, setUploadForm] = useState({
     employeeId: "",
-    category: "", // "PERSONAL_INFORMATION" | "SALARY_PAYSLIP"
-    subType: "", // "PERSONAL_DETAILS" | "OFFER_LETTER" | "EXPERIENCE_CERTIFICATE"
+    category: "SALARY_PAYSLIP", // "SALARY_PAYSLIP" | "PERSONAL_INFORMATION"
+    subType: "OFFER_LETTER", // "OFFER_LETTER" | "PERSONAL_DETAILS" | "EXPERIENCE_CERTIFICATE"
     payslipMonth: "", // e.g. "August 2026"
-    documentType: "",
+    documentType: "SALARY_PAYSLIP",
     documentName: "",
     notes: "",
     file: null,
@@ -208,9 +211,12 @@ export default function EmployeeDocumentManager() {
         url += `documentType=${selectedDocType}&`;
       }
 
-      const res = await fetch(url);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
+      const res = await fetch(url, { headers });
       if (res.status === 401) {
-        window.location.href = "/login";
         return;
       }
 
@@ -232,11 +238,17 @@ export default function EmployeeDocumentManager() {
   };
 
   useEffect(() => {
-    fetchEmployees();
+    const initEmployees = async () => {
+      await fetchEmployees();
+    };
+    initEmployees();
   }, []);
 
   useEffect(() => {
-    fetchDocuments(false);
+    const initDocs = async () => {
+      await fetchDocuments(false);
+    };
+    initDocs();
   }, [selectedEmployeeId, selectedDocType]);
 
   // Background Sync Interval (Every 10 seconds)
@@ -249,8 +261,8 @@ export default function EmployeeDocumentManager() {
   }, [selectedEmployeeId, selectedDocType]);
 
   const openUploadForEmployee = (empId, docType = "") => {
-    let cat = "";
-    let sub = "";
+    let cat = "SALARY_PAYSLIP";
+    let sub = "OFFER_LETTER";
     const empObj = employees.find((e) => e.id === empId);
     const empName = empObj?.full_name || "Employee";
     const jDateStr = empObj?.joining_date || empObj?.created_at || "";
@@ -282,11 +294,33 @@ export default function EmployeeDocumentManager() {
   const handleFileSelect = (e) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      setUploadForm((prev) => ({
-        ...prev,
-        file: selectedFile,
-        documentName: prev.documentName || selectedFile.name.replace(/\.[^/.]+$/, ""),
-      }));
+      setUploadForm((prev) => {
+        const empObj = employees.find((emp) => emp.id === prev.employeeId);
+        const empName = empObj?.full_name || "Employee";
+        let autoName = prev.documentName;
+        if (!autoName || autoName.trim() === "") {
+          if (prev.category === "SALARY_PAYSLIP" && prev.payslipMonth) {
+            autoName = `${prev.payslipMonth} - ${empName}`;
+          } else {
+            autoName = selectedFile.name.replace(/\.[^/.]+$/, "");
+          }
+        }
+        return {
+          ...prev,
+          file: selectedFile,
+          documentName: autoName,
+        };
+      });
+    }
+  };
+
+  const handleRemoveSelectedFile = () => {
+    setUploadForm((prev) => ({
+      ...prev,
+      file: null,
+    }));
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
 
@@ -295,26 +329,29 @@ export default function EmployeeDocumentManager() {
     setModalNotice({ error: "", success: "" });
 
     if (!uploadForm.employeeId) {
-      setModalNotice({ error: "Please select an employee.", success: "" });
+      setModalNotice({ error: "Please select a target employee.", success: "" });
       return;
     }
 
-    if (!uploadForm.category) {
-      setModalNotice({ error: "Please select a document category (Personal Information or Salary Payslip).", success: "" });
+    const currentCat = uploadForm.category || "SALARY_PAYSLIP";
+
+    if (currentCat === "PERSONAL_INFORMATION" && !uploadForm.subType) {
+      setModalNotice({ error: "Please select a document type specification (e.g. Offer Letter, Personal Details, or Experience Certificate).", success: "" });
       return;
     }
 
-    if (uploadForm.category === "PERSONAL_INFORMATION" && !uploadForm.subType) {
-      setModalNotice({ error: "Please select whether this document is Personal Details, Offer Letter, or Experience Certificate.", success: "" });
-      return;
-    }
-
-    const finalDocType = uploadForm.category === "SALARY_PAYSLIP" ? "SALARY_PAYSLIP" : uploadForm.subType;
+    const finalDocType = currentCat === "SALARY_PAYSLIP" ? "SALARY_PAYSLIP" : (uploadForm.subType || "PERSONAL_DETAILS");
 
     if (!uploadForm.file) {
-      setModalNotice({ error: "Please select a file to upload.", success: "" });
+      setModalNotice({ error: "Please select or attach a document file to upload.", success: "" });
       return;
     }
+
+    const empObj = employees.find((emp) => emp.id === uploadForm.employeeId);
+    const empName = empObj?.full_name || "Employee";
+    const resolvedDocName = (uploadForm.documentName && uploadForm.documentName.trim())
+      ? uploadForm.documentName.trim()
+      : (currentCat === "SALARY_PAYSLIP" ? `${uploadForm.payslipMonth || "Payslip"} - ${empName}` : uploadForm.file.name.replace(/\.[^/.]+$/, ""));
 
     setUploading(true);
     try {
@@ -322,7 +359,7 @@ export default function EmployeeDocumentManager() {
       formData.append("file", uploadForm.file);
       formData.append("employeeId", uploadForm.employeeId);
       formData.append("documentType", finalDocType);
-      formData.append("documentName", uploadForm.documentName);
+      formData.append("documentName", resolvedDocName);
       formData.append("notes", uploadForm.notes);
 
       const res = await fetch("/api/documents/upload", {
@@ -333,19 +370,27 @@ export default function EmployeeDocumentManager() {
       const data = await res.json();
 
       if (!res.ok) {
-        setModalNotice({ error: data.message || "Upload failed.", success: "" });
+        setModalNotice({ error: data.message || "Document upload failed.", success: "" });
       } else {
-        setNotice({ error: "", success: data.message });
+        setNotice({ error: "", success: data.message || "Document uploaded successfully!" });
         setShowUploadModal(false);
+        const jDateStr = empObj?.joining_date || empObj?.created_at || "";
+        const recMonths = getRecommendedPayslipMonths(jDateStr);
+        const defaultMonth = recMonths[0]?.value || "";
+
         setUploadForm({
           employeeId: employees[0]?.id || "",
-          category: "",
-          subType: "",
-          documentType: "",
+          category: "SALARY_PAYSLIP",
+          subType: "OFFER_LETTER",
+          documentType: "SALARY_PAYSLIP",
+          payslipMonth: defaultMonth,
           documentName: "",
           notes: "",
           file: null,
         });
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         await fetchEmployees();
         await fetchDocuments(false);
       }
@@ -390,7 +435,7 @@ export default function EmployeeDocumentManager() {
   // Filter employees for matrix table
   const filteredEmployees = employees.filter((emp) => {
     if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
     return (
       emp.full_name?.toLowerCase().includes(q) ||
       emp.email?.toLowerCase().includes(q) ||
@@ -479,13 +524,25 @@ export default function EmployeeDocumentManager() {
             <button
               onClick={() => {
                 setModalNotice({ error: "", success: "" });
+                const empId = uploadForm.employeeId || employees[0]?.id || "";
+                const empObj = employees.find((e) => e.id === empId);
+                const empName = empObj?.full_name || "Employee";
+                const jDateStr = empObj?.joining_date || empObj?.created_at || "";
+                const recMonths = getRecommendedPayslipMonths(jDateStr);
+                const defaultMonth = recMonths[0]?.value || "";
+                const cat = uploadForm.category || "SALARY_PAYSLIP";
+                const sub = uploadForm.subType || "OFFER_LETTER";
+
                 setUploadForm((prev) => ({
                   ...prev,
-                  documentType: "",
-                  documentName: "",
+                  employeeId: empId,
+                  category: cat,
+                  subType: sub,
+                  payslipMonth: prev.payslipMonth || defaultMonth,
+                  documentType: cat === "SALARY_PAYSLIP" ? "SALARY_PAYSLIP" : sub,
+                  documentName: cat === "SALARY_PAYSLIP" ? `${prev.payslipMonth || defaultMonth} - ${empName}` : (prev.documentName || ""),
                   notes: "",
                   file: null,
-                  employeeId: prev.employeeId || employees[0]?.id || "",
                 }));
                 setShowUploadModal(true);
               }}
@@ -586,7 +643,7 @@ export default function EmployeeDocumentManager() {
                 <span>👥</span> Company Staff Document Matrix
               </h3>
               <p className="text-xs text-slate-500">
-                View all company employees and check which files have been sent by HR.
+                View all company employees and track document coverage across your team.
               </p>
             </div>
 
@@ -618,68 +675,74 @@ export default function EmployeeDocumentManager() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[650px]">
-                <thead className="bg-sky-50/50 border-b border-sky-100 text-sky-900 font-bold uppercase tracking-wider text-[10px]">
+              <table className="w-full text-left text-xs min-w-[700px]">
+                <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3.5 px-4">Employee</th>
-                    <th className="py-3.5 px-4">Department & Role</th>
-                    <th className="py-3.5 px-4 text-center">Uploaded Files</th>
-                    <th className="py-3.5 px-4 text-right">HR Action</th>
+                    <th className="py-3.5 px-5">Employee</th>
+                    <th className="py-3.5 px-5">Department &amp; Role</th>
+                    <th className="py-3.5 px-5 text-center">Uploaded Files</th>
+                    <th className="py-3.5 px-5 text-right">Upload Document</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-sky-100">
+                <tbody className="divide-y divide-slate-100 bg-white">
                   {filteredEmployees.map((emp) => {
                     const docSum = emp.docSummary || { totalDocs: 0 };
                     const initial = emp.full_name ? emp.full_name.charAt(0).toUpperCase() : "?";
 
                     return (
-                      <tr key={emp.id} className="hover:bg-sky-50/50 transition">
+                      <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors">
                         {/* Employee info */}
-                        <td className="py-3.5 px-4">
+                        <td className="py-4 px-5">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                            <div className="w-10 h-10 rounded-xl bg-sky-100/80 border border-sky-200 text-sky-800 flex items-center justify-center font-extrabold text-xs shrink-0 shadow-2xs">
                               {initial}
                             </div>
-                            <div>
-                              <div className="font-bold text-slate-900 text-xs">{emp.full_name}</div>
-                              <div className="text-[11px] text-slate-500 font-mono">{emp.email}</div>
+                            <div className="min-w-0">
+                              <div className="font-bold text-slate-900 text-xs truncate max-w-xs">{emp.full_name}</div>
+                              <div className="text-[11px] text-slate-500 font-mono truncate max-w-xs mt-0.5">{emp.email}</div>
                             </div>
                           </div>
                         </td>
 
                         {/* Department & Role */}
-                        <td className="py-3.5 px-4">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
+                        <td className="py-4 px-5 whitespace-nowrap">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                             {emp.department || "General"}
                           </span>
-                          <div className="text-[10px] text-slate-500 capitalize mt-0.5">
+                          <div className="text-[11px] text-slate-500 capitalize mt-1 font-medium">
                             {emp.designation || emp.role || "Staff"}
                           </div>
                         </td>
 
-                        {/* Total Files Summary */}
-                        <td className="py-3.5 px-4 text-center">
+                        {/* Uploaded Files Summary */}
+                        <td className="py-4 px-5 text-center whitespace-nowrap">
                           {docSum.totalDocs > 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-700 border border-sky-200">
-                              <span>📄</span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs">
+                              <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.25">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
                               <span>{docSum.totalDocs} {docSum.totalDocs === 1 ? "File" : "Files"} Uploaded</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200">
-                              <span>📂</span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-50 text-slate-400 border border-slate-200/70">
+                              <svg className="w-3.5 h-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                              </svg>
                               <span>No files uploaded yet</span>
                             </span>
                           )}
                         </td>
 
-                        {/* Direct HR Action Button */}
-                        <td className="py-3.5 px-4 text-right">
+                        {/* Upload Document Actions */}
+                        <td className="py-4 px-5 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => openUploadForEmployee(emp.id)}
-                              className="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-[11px] font-bold transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer group"
                             >
-                              <span>📤</span>
+                              <svg className="w-3.5 h-3.5 stroke-current group-hover:-translate-y-0.5 transition-transform" fill="none" viewBox="0 0 24 24" strokeWidth="2.25">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                              </svg>
                               <span>Upload Document</span>
                             </button>
 
@@ -689,9 +752,12 @@ export default function EmployeeDocumentManager() {
                                 setSelectedDocType("ALL");
                                 setViewTab("repository");
                               }}
-                              className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 text-xs font-semibold transition cursor-pointer shadow-2xs"
                             >
-                              <span>🔍</span>
+                              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
                               <span>View Files</span>
                             </button>
                           </div>
@@ -982,40 +1048,51 @@ export default function EmployeeDocumentManager() {
 
                           {/* Actions */}
                           <td className="py-4 px-4 text-right whitespace-nowrap pr-6">
-                            <div className="flex items-center justify-end gap-2">
-                              {/* Preview Button */}
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Preview / View Button */}
                               <button
                                 onClick={() => setPreviewDoc(doc)}
-                                className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-semibold text-xs transition-colors cursor-pointer"
                                 title="View Document"
                               >
-                                <span>👁️</span>
-                                <span className="hidden sm:inline">View</span>
+                                <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                                <span>View</span>
                               </button>
 
                               {/* Download Button */}
                               <button
                                 onClick={() => handleDownloadDocument(doc)}
                                 disabled={isDownloading}
-                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
-                                title="Save Document to Device"
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Download Document to Device"
                               >
                                 {isDownloading ? (
-                                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                  <span className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
                                 ) : (
-                                  <span>⬇️</span>
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                  </svg>
                                 )}
-                                <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Save"}</span>
+                                <span>{isDownloading ? "Downloading..." : "Download"}</span>
                               </button>
 
-                              {/* Delete Button */}
+                              {/* Delete / Bin Button */}
                               <button
                                 onClick={() => handleDeleteDocument(doc.id, doc.documentName)}
                                 disabled={isDeleting}
-                                className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-bold transition cursor-pointer disabled:opacity-50"
-                                title="Permanently Delete File"
+                                className="inline-flex items-center justify-center p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Delete Document"
                               >
-                                {isDeleting ? "⏳" : "🗑️"}
+                                {isDeleting ? (
+                                  <span className="w-3.5 h-3.5 border-2 border-rose-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                                ) : (
+                                  <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                )}
                               </button>
                             </div>
                           </td>
@@ -1126,36 +1203,57 @@ export default function EmployeeDocumentManager() {
 
       {/* --- UPLOAD DOCUMENT MODAL --- */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white border border-sky-100 rounded-3xl p-6 sm:p-7 space-y-5 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between border-b border-sky-100 pb-3.5">
-              <div>
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold uppercase tracking-wider border border-sky-200 mb-1">
-                  <span>📤</span> Private Storage Upload
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden my-auto animate-scaleUp">
+            {/* Modal Header */}
+            <div className="bg-slate-50/90 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg shrink-0 border border-sky-100 shadow-2xs">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                  </svg>
                 </div>
-                <h3 className="text-base font-extrabold text-slate-900">
-                  Upload Document to Employee Workspace
-                </h3>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">
+                    Upload Document to Employee Workspace
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Securely archive salary payslips or official HR records
+                  </p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowUploadModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-base font-bold"
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition text-sm font-bold cursor-pointer"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
+            {/* Error Notification */}
             {modalNotice.error && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium">
-                {modalNotice.error}
+              <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>{modalNotice.error}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalNotice({ error: "", success: "" })}
+                  className="text-rose-600 hover:text-rose-800 font-bold ml-2 cursor-pointer"
+                >
+                  ✕
+                </button>
               </div>
             )}
 
-            <form onSubmit={handleUploadSubmit} className="space-y-4 text-xs">
+            <form onSubmit={handleUploadSubmit} className="p-6 space-y-4 text-xs">
               {/* Select Employee */}
               <div>
-                <label className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1">
-                  Target Employee *
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Target Employee <span className="text-rose-500">*</span>
                 </label>
                 <select
                   required
@@ -1174,10 +1272,10 @@ export default function EmployeeDocumentManager() {
                       payslipMonth: prev.category === "SALARY_PAYSLIP" ? defaultMonth : prev.payslipMonth,
                       documentName: prev.category === "SALARY_PAYSLIP"
                         ? `${defaultMonth} - ${empName}`
-                        : prev.documentName,
+                        : (prev.subType ? `${prev.subType.replace(/_/g, " ")} - ${empName}` : prev.documentName),
                     }));
                   }}
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
+                  className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
                 >
                   <option value="" disabled>-- Select Employee --</option>
                   {employees.map((emp) => (
@@ -1188,56 +1286,93 @@ export default function EmployeeDocumentManager() {
                 </select>
               </div>
 
-              {/* Document Category */}
+              {/* Document Category Selection */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-bold text-slate-800 uppercase tracking-wider text-[10px]">
-                    1. Select Main Category *
-                  </label>
-                  {!uploadForm.category && (
-                    <span className="text-[10px] font-bold text-amber-600 animate-pulse">
-                      ⚠️ Category selection required
-                    </span>
-                  )}
-                </div>
-                <div className={`grid grid-cols-2 gap-3 p-1 rounded-2xl transition ${!uploadForm.category ? "border border-amber-300 bg-amber-50/30" : ""}`}>
-                  {[
-                    { id: "PERSONAL_INFORMATION", label: "👤 Personal Information", desc: "Saved to personal_information subfolder" },
-                    { id: "SALARY_PAYSLIP", label: "💳 Salary Payslip", desc: "Saved to salary_payslip subfolder" },
-                  ].map((cat) => (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => {
-                        const isSalary = cat.id === "SALARY_PAYSLIP";
-                        const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
-                        const empName = selectedEmp?.full_name || "Employee";
-                        const jDateStr = selectedEmp?.joining_date || selectedEmp?.created_at || "";
-                        const recMonths = getRecommendedPayslipMonths(jDateStr);
-                        const defaultMonth = recMonths[0]?.value || "";
-                        const newSubType = cat.id === "PERSONAL_INFORMATION" ? (uploadForm.subType || "PERSONAL_DETAILS") : "";
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Document Category
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                      const empName = selectedEmp?.full_name || "Employee";
+                      const jDateStr = selectedEmp?.joining_date || selectedEmp?.created_at || "";
+                      const recMonths = getRecommendedPayslipMonths(jDateStr);
+                      const defaultMonth = recMonths[0]?.value || "";
 
-                        setUploadForm((prev) => ({
-                          ...prev,
-                          category: cat.id,
-                          subType: newSubType,
-                          documentType: isSalary ? "SALARY_PAYSLIP" : newSubType,
-                          payslipMonth: isSalary ? (prev.payslipMonth || defaultMonth) : "",
-                          documentName: isSalary ? `${prev.payslipMonth || defaultMonth} - ${empName}` : prev.documentName,
-                        }));
-                      }}
-                      className={`p-3 rounded-xl border text-xs font-bold transition text-left space-y-0.5 cursor-pointer ${
-                        uploadForm.category === cat.id
-                          ? "bg-sky-600 text-white border-sky-600 shadow-md shadow-sky-500/20"
-                          : "bg-sky-50/40 text-slate-700 border-sky-200 hover:bg-sky-100"
-                      }`}
-                    >
-                      <div>{cat.label}</div>
-                      <div className={`text-[10px] font-normal ${uploadForm.category === cat.id ? "text-sky-100" : "text-slate-400"}`}>
-                        {cat.desc}
+                      setUploadForm((prev) => ({
+                        ...prev,
+                        category: "SALARY_PAYSLIP",
+                        subType: "",
+                        documentType: "SALARY_PAYSLIP",
+                        payslipMonth: prev.payslipMonth || defaultMonth,
+                        documentName: `${prev.payslipMonth || defaultMonth} - ${empName}`,
+                      }));
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                      uploadForm.category === "SALARY_PAYSLIP"
+                        ? "border-sky-500 bg-sky-50/60 shadow-xs ring-1 ring-sky-500/30"
+                        : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-base">💳</span>
+                      {uploadForm.category === "SALARY_PAYSLIP" && (
+                        <span className="w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[9px] font-bold">
+                          ✓
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      <div className={`text-xs font-bold ${uploadForm.category === "SALARY_PAYSLIP" ? "text-sky-950" : "text-slate-800"}`}>
+                        Salary Payslip
                       </div>
-                    </button>
-                  ))}
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Payroll slips & compensation sheets
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                      const empName = selectedEmp?.full_name || "Employee";
+                      const sub = uploadForm.subType || "OFFER_LETTER";
+
+                      setUploadForm((prev) => ({
+                        ...prev,
+                        category: "PERSONAL_INFORMATION",
+                        subType: sub,
+                        documentType: sub,
+                        payslipMonth: "",
+                        documentName: prev.documentName && !prev.documentName.includes(" - ") ? prev.documentName : `${sub.replace(/_/g, " ")} - ${empName}`,
+                      }));
+                    }}
+                    className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
+                      uploadForm.category === "PERSONAL_INFORMATION"
+                        ? "border-sky-500 bg-sky-50/60 shadow-xs ring-1 ring-sky-500/30"
+                        : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 hover:border-slate-300"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-base">👤</span>
+                      {uploadForm.category === "PERSONAL_INFORMATION" && (
+                        <span className="w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[9px] font-bold">
+                          ✓
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      <div className={`text-xs font-bold ${uploadForm.category === "PERSONAL_INFORMATION" ? "text-sky-950" : "text-slate-800"}`}>
+                        Personal & HR Records
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        Offer letters, KYC & certificates
+                      </div>
+                    </div>
+                  </button>
                 </div>
               </div>
 
@@ -1251,82 +1386,78 @@ export default function EmployeeDocumentManager() {
                 const currentMonthValue = uploadForm.payslipMonth || (recMonths[0]?.value || "");
 
                 return (
-                  <div className="p-3.5 bg-gradient-to-br from-emerald-50 to-teal-50/50 rounded-2xl border border-emerald-200 space-y-2.5 animate-fadeIn">
+                  <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
                     <div className="flex items-center justify-between">
-                      <label className="block font-extrabold text-emerald-900 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                        <span>✨ 2. Recommended Payslip Month & Year *</span>
+                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <span>Pay Period (Month & Year)</span>
                       </label>
-                      {formattedJDate ? (
-                        <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
-                          📅 Joined: {formattedJDate}
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">
-                          Past 12 Months Available
+                      {formattedJDate && (
+                        <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                          Joined: {formattedJDate}
                         </span>
                       )}
                     </div>
-
-                    <div className="space-y-1.5">
-                      <select
-                        value={currentMonthValue}
-                        onChange={(e) => {
-                          const chosenMonth = e.target.value;
-                          setUploadForm((prev) => ({
-                            ...prev,
-                            payslipMonth: chosenMonth,
-                            documentName: `${chosenMonth} - ${empName}`,
-                          }));
-                        }}
-                        className="w-full bg-white border border-emerald-300 rounded-xl p-2.5 text-xs text-slate-900 font-bold focus:outline-none focus:border-emerald-500 cursor-pointer shadow-2xs"
-                      >
-                        {recMonths.map((m) => (
-                          <option key={m.value} value={m.value}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[10px] text-emerald-700 font-medium flex items-center gap-1">
-                        <span>💡 Suggested from employee joining date ({formattedJDate || "Current Year"}). File name auto-sets to: <strong>{currentMonthValue} - {empName}</strong></span>
-                      </p>
-                    </div>
+                    <select
+                      value={currentMonthValue}
+                      onChange={(e) => {
+                        const chosenMonth = e.target.value;
+                        setUploadForm((prev) => ({
+                          ...prev,
+                          payslipMonth: chosenMonth,
+                          documentName: `${chosenMonth} - ${empName}`,
+                        }));
+                      }}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs"
+                    >
+                      {recMonths.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500">
+                      File display title auto-formats to: <span className="font-semibold text-slate-700">{currentMonthValue} - {empName}</span>
+                    </p>
                   </div>
                 );
               })()}
 
-              {/* Sub-Type Selection / Next Option for Personal Information */}
+              {/* Sub-Type Selection for Personal & Official Information */}
               {uploadForm.category === "PERSONAL_INFORMATION" && (
-                <div className="p-3.5 bg-gradient-to-br from-sky-50 to-indigo-50/50 rounded-2xl border border-sky-200 space-y-2 animate-fadeIn">
-                  <div className="flex items-center justify-between">
-                    <label className="block font-extrabold text-sky-900 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                      <span>✨ 2. Next Option: Select Document Specification *</span>
-                    </label>
-                    <span className="text-[10px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
-                      Required for Employee Identification
-                    </span>
-                  </div>
-
+                <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 block">
+                    Document Specification
+                  </label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
-                      { id: "PERSONAL_DETAILS", icon: "👤", label: "Personal Details", desc: "Employee personal info" },
-                      { id: "OFFER_LETTER", icon: "📜", label: "Offer Letter", desc: "Official offer letter" },
-                      { id: "EXPERIENCE_CERTIFICATE", icon: "🎓", label: "Experience Certificate", desc: "Experience certificate" },
+                      { id: "OFFER_LETTER", icon: "📜", label: "Offer Letter", desc: "Employment offer" },
+                      { id: "PERSONAL_DETAILS", icon: "👤", label: "Personal Details", desc: "KYC & identity" },
+                      { id: "EXPERIENCE_CERTIFICATE", icon: "🎓", label: "Experience Certificate", desc: "Experience / relieving" },
                     ].map((item) => (
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => setUploadForm({ ...uploadForm, subType: item.id, documentType: item.id })}
-                        className={`p-2.5 rounded-xl border text-xs font-bold transition text-left space-y-0.5 cursor-pointer ${
+                        onClick={() => {
+                          const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                          const empName = selectedEmp?.full_name || "Employee";
+                          setUploadForm((prev) => ({
+                            ...prev,
+                            subType: item.id,
+                            documentType: item.id,
+                            documentName: prev.documentName && !prev.documentName.includes(" - ") ? prev.documentName : `${item.label} - ${empName}`,
+                          }));
+                        }}
+                        className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
                           uploadForm.subType === item.id
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                            : "bg-white text-slate-700 border-sky-200 hover:bg-sky-100/70"
+                            ? "border-sky-500 bg-sky-50 text-sky-950 shadow-2xs ring-1 ring-sky-500/20"
+                            : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
                         }`}
                       >
-                        <div className="flex items-center gap-1.5 text-xs font-extrabold">
+                        <div className="flex items-center gap-1.5 text-xs font-bold">
                           <span>{item.icon}</span>
                           <span>{item.label}</span>
                         </div>
-                        <div className={`text-[9px] ${uploadForm.subType === item.id ? "text-indigo-100" : "text-slate-400"}`}>
+                        <div className="text-[9px] text-slate-400 mt-0.5">
                           {item.desc}
                         </div>
                       </button>
@@ -1335,53 +1466,133 @@ export default function EmployeeDocumentManager() {
                 </div>
               )}
 
-              {/* Select File */}
+              {/* File Attachment & Drag Drop Zone */}
               <div>
-                <label className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1">
-                  Select File Payload * (PDF, Image, DOCX)
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Document File <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="file"
-                  required
-                  onChange={handleFileSelect}
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-2 text-xs text-slate-800 cursor-pointer file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-sky-600 file:text-white hover:file:bg-sky-500"
-                />
+
+                {!uploadForm.file ? (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setIsDragging(false);
+                      const droppedFile = e.dataTransfer?.files?.[0];
+                      if (droppedFile) {
+                        handleFileSelect({ target: { files: [droppedFile] } });
+                      }
+                    }}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer group ${
+                      isDragging
+                        ? "border-sky-500 bg-sky-50/80 scale-[0.99]"
+                        : "border-slate-200 hover:border-sky-400 bg-slate-50/60 hover:bg-sky-50/30"
+                    }`}
+                  >
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
+                      className="hidden"
+                    />
+                    <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-sky-100/80 group-hover:bg-sky-100 text-sky-600 flex items-center justify-center text-lg transition shadow-2xs">
+                      <svg className="w-5 h-5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="1.75">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                      </svg>
+                    </div>
+                    <p className="text-xs font-semibold text-slate-700">
+                      <span className="text-sky-600 font-bold hover:underline">Click to browse</span> or drag and drop file here
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      PDF, Word (DOCX/DOC), PNG, JPG or WebP (max 15 MB)
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-lg bg-sky-100 text-sky-700 font-extrabold text-[10px] flex items-center justify-center shrink-0 border border-sky-200 uppercase">
+                        {uploadForm.file.name.split('.').pop() || "FILE"}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-900 truncate" title={uploadForm.file.name}>
+                          {uploadForm.file.name}
+                        </p>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                          <span>{formatBytes(uploadForm.file.size)}</span>
+                          <span>•</span>
+                          <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                            Ready to upload
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 rounded-lg transition cursor-pointer"
+                      >
+                        Change
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveSelectedFile}
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                        title="Remove file"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Custom Display Name */}
               <div>
-                <label className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Document Display Title (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Offer Letter - Software Engineer / August 2026 Payslip"
+                  placeholder="e.g. August 2026 Payslip / Offer Letter - Software Engineer"
                   value={uploadForm.documentName}
                   onChange={(e) => setUploadForm({ ...uploadForm, documentName: e.target.value })}
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
                 />
               </div>
 
               {/* HR Notes / Description */}
               <div>
-                <label className="block font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1">
-                  HR Remarks / Instructions (Optional)
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  HR Remarks & Instructions (Optional)
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="e.g. Signed copy required / Confidential payslip document..."
+                  placeholder="Internal notes or instructions for the employee..."
                   value={uploadForm.notes}
                   onChange={(e) => setUploadForm({ ...uploadForm, notes: e.target.value })}
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-slate-50/70 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
                 />
               </div>
 
               {/* Submit Buttons */}
-              <div className="flex items-center gap-3 pt-2">
+              <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowUploadModal(false)}
-                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1389,17 +1600,19 @@ export default function EmployeeDocumentManager() {
                 <button
                   type="submit"
                   disabled={uploading}
-                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 active:bg-sky-800 rounded-xl shadow-md shadow-sky-600/20 transition flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {uploading ? (
                     <>
                       <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Uploading to Supabase...</span>
+                      <span>Uploading Document...</span>
                     </>
                   ) : (
                     <>
-                      <span>📤</span>
-                      <span>Confirm Upload</span>
+                      <svg className="w-4 h-4 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                      </svg>
+                      <span>Upload Document</span>
                     </>
                   )}
                 </button>

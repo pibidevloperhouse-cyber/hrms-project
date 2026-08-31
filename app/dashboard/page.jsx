@@ -125,6 +125,7 @@ function DashboardContent() {
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccessData, setInviteSuccessData] = useState(null);
+  const [copiedLinkKey, setCopiedLinkKey] = useState(null);
 
   // Profile Form State & Handlers
   const [profileForm, setProfileForm] = useState({
@@ -199,40 +200,122 @@ function DashboardContent() {
     setTimeout(() => setRealtimeToast((c) => (c?.id === id ? null : c)), 4500);
   };
 
-  // Fetch company + role
+  // Fetch company + role with resilient session hydration
   useEffect(() => {
+    let isMounted = true;
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch("/api/company/me");
-        if (res.status === 401) { router.push("/login"); return; }
-        if (res.status === 403) {
-          setAuthError("Access denied. You are not authorized to view this workspace.");
-          setLoading(false); return;
+        const supabase = createClient();
+        let { data: { session } } = await supabase.auth.getSession();
+
+        // If session is still hydrating in browser storage, retry up to twice with increasing delays
+        if (!session) {
+          await new Promise((r) => setTimeout(r, 400));
+          const retry1 = await supabase.auth.getSession();
+          session = retry1.data?.session || null;
         }
-        const ct = res.headers.get("content-type") || "";
+        if (!session) {
+          await new Promise((r) => setTimeout(r, 600));
+          const retry2 = await supabase.auth.getSession();
+          session = retry2.data?.session || null;
+        }
+
+        const getHeaders = (token) => {
+          const h = { "Content-Type": "application/json" };
+          if (token) {
+            h["Authorization"] = `Bearer ${token}`;
+          }
+          return h;
+        };
+
+        let res = await fetch("/api/company/me", { headers: getHeaders(session?.access_token) });
+        let ct = res.headers.get("content-type") || "";
+
+        // If route returned non-JSON (e.g. initial dev compilation), retry once
         if (!ct.includes("application/json")) {
-          setAuthError("Invalid server response. Please try again.");
-          setLoading(false); return;
+          await new Promise((r) => setTimeout(r, 500));
+          res = await fetch("/api/company/me", { headers: getHeaders(session?.access_token) });
+          ct = res.headers.get("content-type") || "";
         }
+
+        // If 401 received, double check with Supabase auth before kicking to login
+        if (res.status === 401) {
+          const { data: { user: verifiedUser } } = await supabase.auth.getUser();
+          if (verifiedUser) {
+            const { data: { session: refreshedSession } } = await supabase.auth.getSession();
+            if (refreshedSession?.access_token) {
+              res = await fetch("/api/company/me", { headers: getHeaders(refreshedSession.access_token) });
+              ct = res.headers.get("content-type") || "";
+            }
+          }
+
+          if (res.status === 401) {
+            if (isMounted) router.push("/login");
+            return;
+          }
+        }
+
+        if (res.status === 403) {
+          if (isMounted) {
+            setAuthError("Access denied. You are not authorized to view this workspace.");
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (!ct.includes("application/json")) {
+          if (!session) {
+            if (isMounted) router.push("/login");
+            return;
+          }
+          if (isMounted) {
+            setAuthError("Workspace service is initializing. Please refresh the page in a moment.");
+            setLoading(false);
+          }
+          return;
+        }
+
         const data = await res.json();
-        if (!res.ok) { setAuthError(data.message || "Failed to load workspace."); setLoading(false); return; }
-        if (data.company) setCompany(data.company);
-        if (data.role) setUserRole(data.role);
-        if (data.employee) setEmployeeProfile(data.employee);
-        if (data.user) setUserSession(data.user);
+
+        if (data.requiresSetup) {
+          if (isMounted) router.push("/company-wizard");
+          return;
+        }
+
+        if (!res.ok) {
+          if (isMounted) {
+            setAuthError(data.message || "Failed to load workspace.");
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (isMounted) {
+          if (data.company) setCompany(data.company);
+          if (data.role) setUserRole(data.role);
+          if (data.employee) setEmployeeProfile(data.employee);
+          if (data.user) setUserSession(data.user);
+        }
       } catch {
-        setAuthError("Network error. Could not load dashboard.");
+        if (isMounted) setAuthError("Network error. Could not load dashboard.");
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router]);
 
   const fetchEmployees = async () => {
     setLoadingEmployees(true);
     try {
-      const res = await fetch("/api/employees/list");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch("/api/employees/list", { headers });
       const ct = res.headers.get("content-type") || "";
       if (res.ok && ct.includes("application/json")) {
         const d = await res.json();
@@ -244,7 +327,10 @@ function DashboardContent() {
 
   const fetchDepts = async () => {
     try {
-      const res = await fetch("/api/departments");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch("/api/departments", { headers });
       const ct = res.headers.get("content-type") || "";
       if (res.ok && ct.includes("application/json")) {
         const d = await res.json();
@@ -1182,129 +1268,270 @@ function DashboardContent() {
         </main>
       </div>
 
-      {/* --- INVITE MODAL --- */}
+      {/* --- INVITE MODAL (REALTIME STYLED MATCHING DOCUMENT UPLOAD POPUP) --- */}
       {isInviteModalOpen && canInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border border-sky-100 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden my-auto animate-scaleUp">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-5 border-b border-sky-100">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Invite Employee</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Send invitation & auto-generate credentials</p>
+            <div className="bg-slate-50/90 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg shrink-0 border border-sky-100 shadow-2xs">
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.765z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-tight">
+                    Invite Employee to Workspace
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Send onboarding offer &amp; auto-provision company credentials
+                  </p>
+                </div>
               </div>
-              <button onClick={closeInviteModal}
-                className="w-7 h-7 flex items-center justify-center rounded-lg bg-sky-50 text-slate-400 hover:text-slate-700 text-sm transition cursor-pointer">
+              <button
+                type="button"
+                onClick={closeInviteModal}
+                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition text-sm font-bold cursor-pointer"
+                title="Close"
+              >
                 ✕
               </button>
             </div>
 
-            <div className="p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-              {inviteError && (
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-                  <span>⚠</span> {inviteError}
+            {/* Error Notification Banner */}
+            {inviteError && (
+              <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>{inviteError}</span>
                 </div>
-              )}
+                <button
+                  type="button"
+                  onClick={() => setInviteError("")}
+                  className="text-rose-600 hover:text-rose-800 font-bold ml-2 cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
-              {inviteSuccessData ? (
-                <div className="space-y-4">
-                  {inviteSuccessData.emailSent ? (
-                    <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-1">
-                      <p className="text-sm font-bold text-emerald-800">🎉 Invitation Sent!</p>
-                      <p className="text-xs text-slate-600">Email delivered to <strong className="text-slate-900 font-mono">{inviteSuccessData.employee?.email}</strong></p>
+            {inviteSuccessData ? (
+              <div className="p-6 space-y-4 text-xs">
+                {inviteSuccessData.emailSent ? (
+                  <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-center space-y-1.5 shadow-2xs">
+                    <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-base font-bold">
+                      ✓
                     </div>
-                  ) : (
-                    <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 space-y-1">
-                      <p className="font-bold">⚠ Email delivery issue — share links manually</p>
-                      <p className="text-slate-600">{inviteSuccessData.emailErrorMessage}</p>
+                    <h4 className="text-sm font-bold text-emerald-900">Invitation Dispatched Successfully!</h4>
+                    <p className="text-xs text-slate-600">
+                      Onboarding instructions sent to <strong className="text-slate-900 font-mono">{inviteSuccessData.employee?.email}</strong>
+                    </p>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-800 space-y-1">
+                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                      <span>⚠️</span> Email delivery note — share direct link with candidate
                     </div>
-                  )}
-                  <div className="bg-sky-50/40 rounded-xl border border-sky-100 p-4 space-y-3 text-xs">
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider pb-2 border-b border-sky-100">Offer Links</p>
-                    <div>
-                      <p className="text-emerald-700 font-semibold mb-1">✓ Accept Offer:</p>
-                      <div className="bg-white rounded-lg p-2 border border-sky-200 font-mono text-slate-800 text-[10px] break-all select-all">{inviteSuccessData.inviteUrls?.acceptUrl}</div>
+                    <p className="text-slate-600">{inviteSuccessData.emailErrorMessage}</p>
+                  </div>
+                )}
+
+                <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 space-y-3">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Direct Candidate Links
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      Valid 7 days
+                    </span>
+                  </div>
+
+                  {/* Accept Offer URL */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-emerald-700">✓ Accept Offer URL</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(inviteSuccessData.inviteUrls?.acceptUrl || "");
+                          setCopiedLinkKey("accept");
+                          setTimeout(() => setCopiedLinkKey(null), 2000);
+                        }}
+                        className="text-[10px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded-lg border border-sky-200 transition cursor-pointer"
+                      >
+                        {copiedLinkKey === "accept" ? "Copied! ✓" : "Copy Link"}
+                      </button>
                     </div>
-                    <div>
-                      <p className="text-rose-700 font-semibold mb-1">✕ Decline Offer:</p>
-                      <div className="bg-white rounded-lg p-2 border border-sky-200 font-mono text-slate-800 text-[10px] break-all select-all">{inviteSuccessData.inviteUrls?.declineUrl}</div>
+                    <div className="bg-white rounded-xl p-2.5 border border-slate-200 font-mono text-slate-800 text-[10px] break-all select-all shadow-2xs">
+                      {inviteSuccessData.inviteUrls?.acceptUrl}
                     </div>
                   </div>
-                  <button onClick={closeInviteModal}
-                    className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-md shadow-sky-500/20 cursor-pointer">
-                    Done & Close
+
+                  {/* Decline Offer URL */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-rose-700">✕ Decline Offer URL</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(inviteSuccessData.inviteUrls?.declineUrl || "");
+                          setCopiedLinkKey("decline");
+                          setTimeout(() => setCopiedLinkKey(null), 2000);
+                        }}
+                        className="text-[10px] font-bold text-slate-600 hover:text-slate-800 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 transition cursor-pointer"
+                      >
+                        {copiedLinkKey === "decline" ? "Copied! ✓" : "Copy Link"}
+                      </button>
+                    </div>
+                    <div className="bg-white rounded-xl p-2.5 border border-slate-200 font-mono text-slate-800 text-[10px] break-all select-all shadow-2xs">
+                      {inviteSuccessData.inviteUrls?.declineUrl}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeInviteModal}
+                  className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-md shadow-sky-500/20 cursor-pointer"
+                >
+                  Done &amp; Close
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleInviteSubmit} className="p-6 space-y-4 text-xs">
+                {/* Full Name & Work Email */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Candidate Full Name <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="fullName"
+                    placeholder="e.g. Sarah Jenkins"
+                    required
+                    value={inviteForm.fullName}
+                    onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
+                    className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Work Email Address <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="email"
+                    placeholder="sarah@company.com"
+                    required
+                    value={inviteForm.email}
+                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
+                  />
+                </div>
+
+                {/* Role & Department Selection */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      System Role <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      name="role"
+                      value={inviteForm.role}
+                      onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
+                    >
+                      <option value="employee">Standard Employee</option>
+                      {userRole === "ADMIN" && (
+                        <>
+                          <option value="hr_manager">HR Manager</option>
+                          <option value="hr_executive">HR Executive</option>
+                        </>
+                      )}
+                      <option value="team_lead">Team Lead</option>
+                      <option value="manager">Manager / Supervisor</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Department <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      name="department"
+                      value={inviteForm.department}
+                      onChange={(e) => setInviteForm({ ...inviteForm, department: e.target.value })}
+                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
+                    >
+                      {(dbDepartments.length > 0 ? dbDepartments.map((d) => d.name) : ["Engineering", "Human Resources", "Sales", "Finance", "Operations", "Design", "Support", "General"]).map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Designation & Phone */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Job Designation
+                    </label>
+                    <input
+                      type="text"
+                      name="designation"
+                      placeholder="e.g. Senior Software Engineer"
+                      value={inviteForm.designation}
+                      onChange={(e) => setInviteForm({ ...inviteForm, designation: e.target.value })}
+                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      Contact Phone
+                    </label>
+                    <input
+                      type="text"
+                      name="phone"
+                      placeholder="+1 (555) 0199"
+                      value={inviteForm.phone}
+                      onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Footer Action Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={closeInviteModal}
+                    className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingInvite}
+                    className="py-2.5 px-5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-md shadow-sky-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmittingInvite ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Sending Invitation…</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>✉️</span>
+                        <span>Send Invitation</span>
+                      </>
+                    )}
                   </button>
                 </div>
-              ) : (
-                <form onSubmit={handleInviteSubmit} className="space-y-4">
-                  {[
-                    { label: "Full Name *", name: "fullName", type: "text", placeholder: "e.g. Sarah Jenkins", required: true },
-                    { label: "Work Email *", name: "email", type: "email", placeholder: "sarah@company.com", required: true },
-                  ].map((f) => (
-                    <div key={f.name}>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{f.label}</label>
-                      <input type={f.type} name={f.name} placeholder={f.placeholder} required={f.required}
-                        value={inviteForm[f.name]} onChange={(e) => setInviteForm({ ...inviteForm, [e.target.name]: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition" />
-                    </div>
-                  ))}
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Role *</label>
-                      <select name="role" value={inviteForm.role} onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-xl bg-white border border-sky-200 text-slate-800 text-xs focus:border-sky-500 outline-none transition cursor-pointer">
-                        <option value="employee">Employee</option>
-                        {userRole === "ADMIN" && (
-                          <>
-                            <option value="hr_manager">HR Manager</option>
-                            <option value="hr_executive">HR Executive</option>
-                          </>
-                        )}
-                        <option value="team_lead">Team Lead</option>
-                        <option value="manager">Manager</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Department *</label>
-                      <select name="department" value={inviteForm.department} onChange={(e) => setInviteForm({ ...inviteForm, department: e.target.value })}
-                        className="w-full px-3 py-2.5 rounded-xl bg-white border border-sky-200 text-slate-800 text-xs focus:border-sky-500 outline-none transition cursor-pointer">
-                        {(dbDepartments.length > 0 ? dbDepartments.map((d) => d.name) : ["Engineering", "Human Resources", "Sales", "Finance", "Operations", "Design", "Support", "General"]).map((d) => (
-                          <option key={d} value={d}>{d}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {[
-                      { label: "Designation", name: "designation", placeholder: "e.g. Senior Dev" },
-                      { label: "Phone", name: "phone", placeholder: "+1 555-0199" },
-                    ].map((f) => (
-                      <div key={f.name}>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{f.label}</label>
-                        <input type="text" name={f.name} placeholder={f.placeholder}
-                          value={inviteForm[f.name]} onChange={(e) => setInviteForm({ ...inviteForm, [e.target.name]: e.target.value })}
-                          className="w-full px-3 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition" />
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                    <button type="button" onClick={closeInviteModal}
-                      className="w-full sm:flex-1 py-2.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-slate-700 text-xs font-semibold transition cursor-pointer">
-                      Cancel
-                    </button>
-                    <button type="submit" disabled={isSubmittingInvite}
-                      className="w-full sm:flex-1 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold disabled:opacity-50 flex items-center justify-center gap-2 transition shadow-md shadow-sky-500/20 cursor-pointer">
-                      {isSubmittingInvite
-                        ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Sending…</>
-                        : "Send Invitation"
-                      }
-                    </button>
-                  </div>
-                </form>
-              )}
-            </div>
+              </form>
+            )}
           </div>
         </div>
       )}

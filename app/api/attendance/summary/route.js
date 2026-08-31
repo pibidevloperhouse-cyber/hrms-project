@@ -18,19 +18,29 @@ export async function GET(req) {
     const adminSupabase = createAdminClient();
     const userEmail = user.email ? user.email.toLowerCase() : "";
 
+    let empOrFilter = `auth_user_id.eq.${user.id}`;
+    if (userEmail) {
+      empOrFilter += `,email.eq."${userEmail.replace(/"/g, '""')}"`;
+    }
+
     const { data: empRecords } = await adminSupabase
       .from("employees")
       .select("company_id")
-      .or(`auth_user_id.eq.${user.id},email.eq.${userEmail}`)
+      .or(empOrFilter)
       .limit(1);
 
     let companyId = empRecords && empRecords.length > 0 ? empRecords[0].company_id : null;
 
     if (!companyId) {
+      let adminOrFilter = `admin_id.eq.${user.id}`;
+      if (userEmail) {
+        adminOrFilter += `,email.eq."${userEmail.replace(/"/g, '""')}"`;
+      }
+
       const { data: adminCompanies } = await adminSupabase
         .from("companies")
         .select("id")
-        .or(`admin_id.eq.${user.id},email.eq.${userEmail}`);
+        .or(adminOrFilter);
 
       if (adminCompanies && adminCompanies.length > 0) {
         companyId = adminCompanies[0].id;

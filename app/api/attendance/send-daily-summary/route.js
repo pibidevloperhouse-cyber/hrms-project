@@ -68,14 +68,48 @@ export async function POST(req) {
       // Optional body
     }
 
-    const force = reqBody.force !== undefined ? Boolean(reqBody.force) : true;
-    const result = await checkAndSendDailySummary(companyId, adminSupabase, { force });
+    // Extract target date from body if specified (e.g. YYYY-MM-DD)
+    const targetDate = (reqBody.date || reqBody.targetDate || "").trim() || null;
+    const targetEmail = (reqBody.targetEmail || reqBody.email || "").trim() || null;
+
+    // When triggered manually by HR, force bypasses deduplication lock
+    const force = reqBody.force !== false;
+    const result = await checkAndSendDailySummary(companyId, adminSupabase, {
+      force,
+      targetDate,
+      callerEmail: userEmail,
+      targetEmail,
+    });
+
+    const displayDate = result?.reportDate || targetDate || "selected date";
+    let userMessage = `Daily summary check completed for ${displayDate}.`;
+    if (result?.sent) {
+      userMessage = `Daily attendance summary report email for ${displayDate} successfully sent to HR (${result.recipients?.join(", ")}).`;
+    } else if (result?.reason === "mail_send_failed") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `Failed to send email: ${result.error || "SMTP connection failed"}. Please check EMAIL_USER & EMAIL_PASS in .env.local.`,
+          details: result,
+        },
+        { status: 500 }
+      );
+    } else if (result?.reason === "already_sent_today") {
+      userMessage = `Daily attendance summary report has already been sent for ${displayDate}.`;
+    } else if (result?.reason === "active_shifts_remain") {
+      userMessage = `Cannot send report: ${result.activeCount} employee(s) are still clocked in on ${displayDate}. All employees must check out first.`;
+    } else if (result?.reason === "no_shifts_completed_today") {
+      userMessage = `No employee shifts have completed for ${displayDate}.`;
+    } else if (result?.reason === "no_recipients") {
+      userMessage = "No HR/Admin recipient email addresses found for this company.";
+    } else if (result?.reason === "no_employees") {
+      userMessage = "No employees with role 'employee' found for this company.";
+    }
 
     return NextResponse.json({
-      success: true,
-      message: result?.sent
-        ? `Daily attendance summary report email successfully sent to ${result.recipients?.join(", ")}.`
-        : `Daily summary check completed (Status: ${result?.reason || "held"}).`,
+      success: Boolean(result?.sent),
+      alreadySent: result?.reason === "already_sent_today",
+      message: userMessage,
       details: result,
     });
   } catch (error) {

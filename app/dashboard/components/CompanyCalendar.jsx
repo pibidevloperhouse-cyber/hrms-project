@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 const ALL_DAYS_OF_WEEK = [
   "Monday",
@@ -99,9 +100,11 @@ export default function CompanyCalendar() {
   const fetchCalendarData = async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      const res = await fetch("/api/company/calendar");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch("/api/company/calendar", { headers });
       if (res.status === 401) {
-        window.location.href = "/login";
         return;
       }
       if (res.ok) {

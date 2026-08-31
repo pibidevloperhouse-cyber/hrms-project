@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return "0 B";
@@ -94,9 +95,12 @@ export default function MyDocumentsCard() {
 
       setErrorNotice("");
 
-      const res = await fetch("/api/documents/list?mode=mine");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
+      const res = await fetch("/api/documents/list?mode=mine", { headers });
       if (res.status === 401) {
-        window.location.href = "/login";
         return;
       }
 
@@ -537,28 +541,33 @@ export default function MyDocumentsCard() {
 
                       {/* Actions */}
                       <td className="py-4 px-4 text-right whitespace-nowrap pr-6">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleOpenPreview(doc)}
-                            className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 font-semibold text-xs transition-colors cursor-pointer"
                             title="View Document"
                           >
-                            <span>👁️</span>
-                            <span className="hidden sm:inline">View</span>
+                            <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            <span>View</span>
                           </button>
 
                           <button
                             onClick={() => handleDownloadDocument(doc)}
                             disabled={isDownloading}
-                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs transition flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
-                            title="Save Document to Device"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Download Document to Device"
                           >
                             {isDownloading ? (
-                              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin shrink-0" />
                             ) : (
-                              <span>⬇️</span>
+                              <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
                             )}
-                            <span className="hidden sm:inline">{isDownloading ? "Saving..." : "Download"}</span>
+                            <span>{isDownloading ? "Downloading..." : "Download"}</span>
                           </button>
                         </div>
                       </td>

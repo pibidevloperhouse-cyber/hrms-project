@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
 import AttendanceOverviewCard from "./AttendanceOverviewCard";
 import HRAttendanceTracker from "./HRAttendanceTracker";
 
@@ -23,6 +24,16 @@ function formatDurationText(totalSeconds) {
   return `${s}s`;
 }
 
+function getDigitsHMS(totalSeconds) {
+  if (isNaN(totalSeconds) || totalSeconds < 0) return { h: "00", m: "00", s: "00" };
+  const sec = Math.round(totalSeconds);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (num) => String(num).padStart(2, "0");
+  return { h: pad(h), m: pad(m), s: pad(s) };
+}
+
 export default function AttendancePage({ userRole }) {
   const [checkedIn, setCheckedIn] = useState(false);
   const [hasCompletedToday, setHasCompletedToday] = useState(false);
@@ -34,6 +45,9 @@ export default function AttendancePage({ userRole }) {
   const [dailyTargetHours, setDailyTargetHours] = useState(8.0);
   const [todayLogs, setTodayLogs] = useState([]);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
+
+  // Live wall-clock for idle (not checked-in) state
+  const [liveTime, setLiveTime] = useState(() => new Date());
 
   // Lunch break state
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -86,9 +100,11 @@ export default function AttendancePage({ userRole }) {
   const fetchAttendanceStatus = async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      const res = await fetch("/api/attendance/status");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch("/api/attendance/status", { headers });
       if (res.status === 401) {
-        window.location.href = "/login";
         return;
       }
       if (res.ok) {
@@ -221,16 +237,34 @@ export default function AttendancePage({ userRole }) {
     return () => clearInterval(timerRef.current);
   }, [checkedIn]);
 
+  // ─── LIVE WALL-CLOCK (idle state only) ──────────────────────────────────────
+  // Shows the current local time inside the ring when not on shift.
+  // Stops automatically once checked in (timer takes over) or day is completed.
+  useEffect(() => {
+    if (checkedIn || hasCompletedToday) return;
+    const clockInterval = setInterval(() => setLiveTime(new Date()), 1000);
+    return () => clearInterval(clockInterval);
+  }, [checkedIn, hasCompletedToday]);
+
   const handleCheckIn = async () => {
     setActionLoading(true);
     setNotice({ error: "", success: "" });
     try {
+      const clientTimeZone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
       const res = await fetch("/api/attendance/check-in", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
+        body: JSON.stringify({ timeZone: clientTimeZone }),
       });
       if (res.status === 401) {
-        window.location.href = "/login";
+        setNotice({ error: "Session expired. Please sign in again.", success: "" });
         return;
       }
       const data = await res.json();
@@ -257,7 +291,7 @@ export default function AttendancePage({ userRole }) {
         setElapsedSeconds(0);
         setNotice({
           error: "",
-          success: `Check-in recorded at ${new Date(data.checkInTime).toLocaleTimeString()} (PostgreSQL Server Timestamp)`,
+          success: `Check-in recorded at ${new Date(data.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} — Shift timer started.`,
         });
         if (typeof window !== "undefined") window.dispatchEvent(new Event("attendance-updated"));
         await fetchAttendanceStatus(true);
@@ -319,13 +353,21 @@ export default function AttendancePage({ userRole }) {
     }
 
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
       const res = await fetch("/api/attendance/break", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ action: actionType }),
       });
 
-      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (res.status === 401) {
+        setNotice({ error: "Session expired. Please sign in again.", success: "" });
+        return;
+      }
 
       const data = await res.json();
 
@@ -386,13 +428,18 @@ export default function AttendancePage({ userRole }) {
     setActionLoading(true);
     setNotice({ error: "", success: "" });
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
       const res = await fetch("/api/attendance/check-out", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ reason: reasonText }),
       });
       if (res.status === 401) {
-        window.location.href = "/login";
+        setNotice({ error: "Session expired. Please sign in again.", success: "" });
         return;
       }
       const data = await res.json();
@@ -458,10 +505,7 @@ export default function AttendancePage({ userRole }) {
   const progressRatio = Math.min(1.0, Math.max(0, totalEffectiveSeconds / targetSeconds));
   const progressPercentInt = Math.min(100, Math.round(progressRatio * 100));
 
-  // SVG Circular Ring Dimensions for Hero Clock
-  const circleRadius = 90;
-  const circleCircumference = 2 * Math.PI * circleRadius;
-  const strokeDashoffset = circleCircumference - progressRatio * circleCircumference;
+  // SVG circle constants removed — now using rectangular progress bar
 
   const isHR = ["ADMIN", "hr_manager", "hr_executive", "manager", "team_lead"].includes(userRole);
 
@@ -573,9 +617,9 @@ export default function AttendancePage({ userRole }) {
           <div className="flex items-center justify-between border-b border-sky-100 pb-4">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <span>⚡</span> Real-Time Shift Counter
+                <span>🕐</span> Live Shift Timer
               </h3>
-              <p className="text-xs text-slate-500">Standard working time: {dailyTargetHours.toFixed(2)} Hours</p>
+              <p className="text-xs text-slate-500">Shift target: {dailyTargetHours.toFixed(2)} hours per working day</p>
             </div>
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold border ${isOnBreak
@@ -611,111 +655,167 @@ export default function AttendancePage({ userRole }) {
               <span className="text-xs">Fetching server status…</span>
             </div>
           ) : (
-            <div className="space-y-6">
-              {/* Central Clock Display with SVG Circular Ring */}
-              <div className="flex flex-col items-center justify-center py-4 space-y-3">
-                <div className="relative w-48 h-48 md:w-56 md:h-56 flex items-center justify-center">
-                  <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 200 200">
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r={circleRadius}
-                      className="stroke-sky-50"
-                      strokeWidth="10"
-                      fill="transparent"
-                    />
-                    <circle
-                      cx="100"
-                      cy="100"
-                      r={circleRadius}
-                      className={`transition-all duration-1000 ease-out ${isOnBreak
-                        ? "stroke-amber-500 opacity-80"
-                        : checkedIn
-                          ? "stroke-emerald-500"
-                          : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                            ? "stroke-rose-500"
-                            : "stroke-sky-500"
-                        }`}
-                      strokeWidth="10"
-                      strokeDasharray={circleCircumference}
-                      strokeDashoffset={checkedIn || hasCompletedToday ? strokeDashoffset : circleCircumference}
-                      strokeLinecap="round"
-                      fill="transparent"
-                    />
-                  </svg>
+            <div className="space-y-5">
+              {/* ── REAL-TIME DIGITAL SHIFT CONSOLE (LIGHT THEME MATCHING APP BACKGROUND) ── */}
+              {(() => {
+                let digits = { h: "00", m: "00", s: "00" };
+                let modeLabel = "Ready to Clock In";
+                let modeIcon = "○";
+                let statusBadgeClass = "bg-slate-100 text-slate-700 border-slate-200";
+                let secondColor = "text-sky-600";
+                let containerTheme = "from-sky-50/80 via-white to-sky-50/40 border-sky-200/90";
+                let tileBorder = "border-sky-200/80 bg-white";
+                let tileShadow = "shadow-xs";
 
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-4">
-                    {checkedIn ? (
-                      <>
-                        <span className={`text-xl md:text-3xl font-mono font-black tracking-wider ${isOnBreak ? "text-amber-700" : "text-emerald-700"}`}>
-                          {formatSecondsToHHMMSS(elapsedSeconds)}
+                if (isOnBreak) {
+                  digits = getDigitsHMS(currentBreakSeconds);
+                  modeLabel = "Lunch Break (Shift Paused)";
+                  modeIcon = "⏸";
+                  statusBadgeClass = "bg-amber-50 text-amber-800 border-amber-200 animate-pulse";
+                  secondColor = "text-amber-600";
+                  containerTheme = "from-amber-50/80 via-white to-amber-50/30 border-amber-200";
+                  tileBorder = "border-amber-200 bg-white";
+                } else if (checkedIn) {
+                  digits = getDigitsHMS(elapsedSeconds);
+                  modeLabel = "Active Shift in Progress";
+                  modeIcon = "●";
+                  statusBadgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200 animate-pulse";
+                  secondColor = "text-emerald-600";
+                  containerTheme = "from-emerald-50/60 via-white to-sky-50/40 border-emerald-200";
+                  tileBorder = "border-emerald-200/80 bg-white";
+                } else if (hasCompletedToday) {
+                  digits = getDigitsHMS(Math.round(totalWorkingHoursToday * 3600));
+                  modeLabel = isLop || approvalStatus === "REJECTED" ? "Shift Closed (Loss of Pay)" : approvalStatus === "PENDING" ? "Shift Closed (Awaiting HR)" : "Shift Completed For Today";
+                  modeIcon = isLop || approvalStatus === "REJECTED" ? "✖" : approvalStatus === "PENDING" ? "⌛" : "✓";
+                  statusBadgeClass = isLop || approvalStatus === "REJECTED" ? "bg-rose-50 text-rose-800 border-rose-200" : approvalStatus === "PENDING" ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-sky-50 text-sky-800 border-sky-200";
+                  secondColor = isLop || approvalStatus === "REJECTED" ? "text-rose-600" : approvalStatus === "PENDING" ? "text-amber-600" : "text-sky-600";
+                  containerTheme = isLop || approvalStatus === "REJECTED" ? "from-rose-50/70 via-white to-rose-50/30 border-rose-200" : "from-sky-50/70 via-white to-sky-50/30 border-sky-200";
+                  tileBorder = isLop || approvalStatus === "REJECTED" ? "border-rose-200 bg-white" : "border-sky-200 bg-white";
+                } else {
+                  digits = {
+                    h: String(liveTime.getHours()).padStart(2, "0"),
+                    m: String(liveTime.getMinutes()).padStart(2, "0"),
+                    s: String(liveTime.getSeconds()).padStart(2, "0"),
+                  };
+                }
+
+                return (
+                  <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${containerTheme} border p-5 sm:p-6 shadow-2xs space-y-5 transition-all duration-300`}>
+                    {/* Console Header Bar */}
+                    <div className="flex items-center justify-between gap-3 relative z-10">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
+                          {checkedIn ? "Live Shift Counter" : hasCompletedToday ? "Shift Summary" : "Current Local Time"}
                         </span>
-                        <span className={`text-xs font-bold mt-1 ${isOnBreak ? "text-amber-800" : "text-emerald-800"}`}>
-                          {runtimeDecimal} / {dailyTargetHours.toFixed(1)} hrs
+                      </div>
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide border shadow-2xs ${statusBadgeClass}`}>
+                        <span>{modeIcon}</span>
+                        <span>{modeLabel}</span>
+                      </span>
+                    </div>
+
+                    {/* Segmented Digital Clock Readout */}
+                    <div className="flex items-center justify-center gap-2 sm:gap-3.5 py-2 relative z-10">
+                      {/* Hours Box */}
+                      <div className={`${tileBorder} border rounded-2xl px-4 py-3 sm:px-6 sm:py-4 text-center min-w-[72px] sm:min-w-[96px] ${tileShadow}`}>
+                        <div className="font-mono text-3xl sm:text-5xl font-black tracking-tight text-slate-900 tabular-nums">
+                          {digits.h}
+                        </div>
+                        <div className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">
+                          Hours
+                        </div>
+                      </div>
+
+                      {/* Colon Separator */}
+                      <div className="font-mono text-2xl sm:text-4xl font-bold text-sky-400 pb-4 animate-pulse">
+                        :
+                      </div>
+
+                      {/* Minutes Box */}
+                      <div className={`${tileBorder} border rounded-2xl px-4 py-3 sm:px-6 sm:py-4 text-center min-w-[72px] sm:min-w-[96px] ${tileShadow}`}>
+                        <div className="font-mono text-3xl sm:text-5xl font-black tracking-tight text-slate-900 tabular-nums">
+                          {digits.m}
+                        </div>
+                        <div className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">
+                          Minutes
+                        </div>
+                      </div>
+
+                      {/* Colon Separator */}
+                      <div className="font-mono text-2xl sm:text-4xl font-bold text-sky-400 pb-4 animate-pulse">
+                        :
+                      </div>
+
+                      {/* Seconds Box */}
+                      <div className={`${tileBorder} border rounded-2xl px-4 py-3 sm:px-6 sm:py-4 text-center min-w-[72px] sm:min-w-[96px] ${tileShadow}`}>
+                        <div className={`font-mono text-3xl sm:text-5xl font-black tracking-tight tabular-nums ${secondColor}`}>
+                          {digits.s}
+                        </div>
+                        <div className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">
+                          Seconds
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Telemetry Metrics Strip */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 pt-2 border-t border-sky-100 relative z-10">
+                      <div className="bg-white border border-sky-100 rounded-xl p-3 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Check-In</span>
+                        <span className="font-mono font-bold text-xs sm:text-sm text-slate-800 mt-0.5 block truncate">
+                          {checkInTime ? new Date(checkInTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
                         </span>
-                        {isOnBreak ? (
-                          <span className="mt-2 px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-mono font-bold uppercase tracking-wider animate-pulse">
-                            Timer Paused
-                          </span>
-                        ) : (
-                          <span className="mt-2 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold uppercase tracking-wider">
-                            {progressPercentInt}% Shift
+                      </div>
+
+                      <div className="bg-white border border-sky-100 rounded-xl p-3 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Shift Target</span>
+                        <span className="font-mono font-bold text-xs sm:text-sm text-slate-800 mt-0.5 block truncate">
+                          {dailyTargetHours.toFixed(1)} hrs
+                        </span>
+                      </div>
+
+                      <div className="bg-white border border-sky-100 rounded-xl p-3 shadow-2xs">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Shift Progress</span>
+                        <span className="font-mono font-bold text-xs sm:text-sm text-emerald-600 mt-0.5 block truncate">
+                          {checkedIn || hasCompletedToday ? `${progressPercentInt}% (${runtimeDecimal}h)` : "0%"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Slim Linear Progress Bar */}
+                    <div className="space-y-1.5 pt-1 relative z-10">
+                      <div className="w-full h-2.5 bg-sky-100/80 rounded-full overflow-hidden border border-sky-200/60">
+                        <div
+                          className={`h-full rounded-full transition-all duration-1000 ease-out ${
+                            isOnBreak
+                              ? "bg-amber-400"
+                              : checkedIn
+                                ? "bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500"
+                                : hasCompletedToday
+                                  ? isLop || approvalStatus === "REJECTED" ? "bg-rose-500" : "bg-sky-600"
+                                  : "bg-slate-300"
+                          }`}
+                          style={{ width: `${checkedIn || hasCompletedToday ? progressPercentInt : 0}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                        <span>
+                          {checkedIn
+                            ? `Net Logged: ${runtimeDecimal} hrs`
+                            : hasCompletedToday
+                              ? `Total: ${totalWorkingHoursToday.toFixed(2)} hrs`
+                              : "Timer starts upon Check-In"}
+                        </span>
+                        {totalBreakSeconds > 0 && (
+                          <span className="text-amber-700 font-semibold">
+                            Lunch: {formatSecondsToHHMMSS(totalBreakSeconds)}
                           </span>
                         )}
-                      </>
-                    ) : hasCompletedToday ? (
-                      <>
-                        <span className={`text-3xl font-black font-mono ${isLop || approvalStatus === "REJECTED"
-                          ? "text-rose-700"
-                          : approvalStatus === "PENDING"
-                            ? "text-amber-700"
-                            : "text-sky-700"
-                          }`}>
-                          {totalWorkingHoursToday.toFixed(2)}
-                        </span>
-                        <span className="text-xs font-bold text-slate-700">/ {dailyTargetHours.toFixed(1)} hrs net</span>
-                        <span className={`mt-2 px-2.5 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase tracking-wider ${isLop || approvalStatus === "REJECTED"
-                          ? "bg-rose-100 text-rose-800"
-                          : approvalStatus === "PENDING"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-sky-100 text-sky-800"
-                          }`}>
-                          {approvalStatus === "PENDING"
-                            ? "Pending Approval"
-                            : isLop || approvalStatus === "REJECTED"
-                              ? "Loss of Pay"
-                              : "Approved"}
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-4xl mb-2 text-sky-400">⏱️</span>
-                        <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Ready to Check In</span>
-                        <span className="text-[10px] text-slate-400 mt-1">{dailyTargetHours} Hours Shift Target</span>
-                      </>
-                    )}
+                        <span>{dailyTargetHours}h standard</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-
-                <div className="text-center space-y-1">
-                  {isOnBreak ? (
-                    <p className="text-xs font-semibold text-amber-700">
-                      Shift timer stopped for Lunch Break. Break Duration: <span className="font-mono text-amber-800 font-bold">{formatSecondsToHHMMSS(currentBreakSeconds)}</span>
-                    </p>
-                  ) : checkedIn ? (
-                    <p className="text-xs font-semibold text-emerald-700">
-                      Check-in timestamp: <span className="font-mono">{new Date(checkInTime).toLocaleTimeString()}</span>
-                      {totalBreakSeconds > 0 && <span className="block text-[11px] text-amber-700">Lunch Break Deducted: {formatSecondsToHHMMSS(totalBreakSeconds)}</span>}
-                    </p>
-                  ) : hasCompletedToday ? (
-                    <p className="text-xs font-semibold text-sky-800">
-                      Check-In: <span className="font-mono">{checkInTime ? new Date(checkInTime).toLocaleTimeString() : "—"}</span> | Check-Out: <span className="font-mono">{checkOutTime ? new Date(checkOutTime).toLocaleTimeString() : "—"}</span>
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-500">Postgres server time will be captured upon Check-In</p>
-                  )}
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Loss of Pay Banner */}
               {hasCompletedToday && (approvalStatus === "REJECTED" || isLop) && (
@@ -758,59 +858,85 @@ export default function AttendancePage({ userRole }) {
               {/* Action Buttons */}
               <div className="pt-2">
                 {checkedIn ? (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {isOnBreak ? (
+                      /* Resuming Shift from Lunch Break (Teal Theme with Resume Icon) */
                       <button
                         type="button"
                         onClick={() => handleToggleBreak("END")}
                         disabled={actionLoading}
-                        className="w-full py-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="w-full py-4 rounded-2xl bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-700 hover:from-teal-400 hover:via-teal-500 hover:to-cyan-600 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-teal-500/25 hover:shadow-teal-500/40 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                       >
                         {actionLoading ? (
-                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <>
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Resuming shift…</span>
+                          </>
                         ) : (
                           <>
-                            <span className="text-base">▶</span>
-                            <span>Finish Lunch Break (Resume Shift Timer)</span>
+                            <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="tracking-wide">Finish Lunch Break &amp; Resume Shift</span>
                           </>
                         )}
                       </button>
                     ) : (hasCompletedBreak || totalBreakSeconds > 0) ? (
-                      <div className="space-y-2">
-                        <div className="py-2.5 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold text-center flex items-center justify-center gap-1.5">
-                          <span>✓</span>
-                          <span>Lunch Break Completed for Today (Single break policy)</span>
+                      /* Break completed today, only Check Out available (Blue Theme) */
+                      <div className="space-y-2.5">
+                        <div className="py-2.5 px-3 rounded-xl bg-teal-50/80 border border-teal-200 text-teal-800 text-xs font-semibold text-center flex items-center justify-center gap-2">
+                          <svg className="w-4 h-4 text-teal-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                          <span>Lunch break logged ({formatSecondsToHHMMSS(totalBreakSeconds)}) · Single daily break policy</span>
                         </div>
                         <button
                           type="button"
                           onClick={initiateCheckOut}
                           disabled={actionLoading}
-                          className="w-full py-4 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-bold transition shadow-2xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                         >
-                          <span className="text-base">⏹</span>
-                          <span>Check Out</span>
+                          {actionLoading ? (
+                            <>
+                              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Processing check out…</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                              </svg>
+                              <span className="tracking-wide">Check Out</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     ) : (
+                      /* Active shift: Start Lunch Break (Teal Theme with Timer Icon) & Check Out (Blue Theme) */
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button
                           type="button"
                           onClick={() => handleToggleBreak("START")}
                           disabled={actionLoading || hasCompletedBreak || totalBreakSeconds > 0}
-                          className="py-3.5 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                          className="py-4 rounded-2xl bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-700 hover:from-teal-400 hover:via-teal-500 hover:to-cyan-600 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-teal-500/20 hover:shadow-teal-500/35 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                         >
-                          <span className="text-base">🍱</span>
-                          <span>Start Lunch Break</span>
+                          <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span className="tracking-wide">Start Lunch Break</span>
                         </button>
 
                         <button
                           type="button"
                           onClick={initiateCheckOut}
                           disabled={actionLoading}
-                          className="py-3.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-sm font-bold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                          className="py-4 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-blue-500/20 hover:shadow-blue-500/35 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                         >
-                          <span className="text-base">⏹</span>
-                          <span>Check Out</span>
+                          <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          <span className="tracking-wide">Check Out</span>
                         </button>
                       </div>
                     )}
@@ -837,39 +963,48 @@ export default function AttendancePage({ userRole }) {
                     type="button"
                     onClick={handleCheckIn}
                     disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-                    className={`w-full py-4 rounded-xl text-sm font-bold transition shadow-md flex items-center justify-center gap-2 ${isHoliday
-                        ? "bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
+                    className={`w-full rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-3 relative overflow-hidden group ${
+                      isHoliday
+                        ? "py-4 bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                         : isNonWorkingDay
-                          ? "bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
+                          ? "py-4 bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
                           : isOnLeaveToday
-                            ? "bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
-                            : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
-                      }`}
+                            ? "py-4 bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
+                            : "py-5 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 hover:from-emerald-400 hover:via-emerald-500 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30 hover:shadow-emerald-500/50 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
+                    }`}
                   >
+                    {/* Subtle shimmer overlay for active state */}
+                    {!isHoliday && !isNonWorkingDay && !isOnLeaveToday && (
+                      <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
+                    )}
                     {actionLoading ? (
                       <>
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Fetching PostgreSQL server timestamp…</span>
+                        <span className="w-5 h-5 border-2 border-white/60 border-t-white rounded-full animate-spin shrink-0" />
+                        <span className="tracking-wide">Starting your shift…</span>
                       </>
                     ) : isHoliday ? (
                       <>
-                        <span className="text-base">🎉</span>
-                        <span>COMPANY HOLIDAY — CHECK-IN CLOSED</span>
+                        <span className="text-base shrink-0">🎉</span>
+                        <span>Company Holiday — Check-In Closed</span>
                       </>
                     ) : isNonWorkingDay ? (
                       <>
-                        <span className="text-base">🏝️</span>
-                        <span>COMPANY OFF-DAY ({todayDayName?.toUpperCase()}) — CHECK-IN CLOSED</span>
+                        <span className="text-base shrink-0">🏝️</span>
+                        <span>Off Day ({todayDayName}) — No Shift Today</span>
                       </>
                     ) : isOnLeaveToday ? (
                       <>
-                        <span className="text-base">✈️</span>
-                        <span>ON APPROVED LEAVE — ABSENT TODAY</span>
+                        <span className="text-base shrink-0">✈️</span>
+                        <span>On Approved Leave Today</span>
                       </>
                     ) : (
                       <>
-                        <span className="text-base">▶</span>
-                        <span>Check In Now (Record Server Time)</span>
+                        {/* Fingerprint / Check-In icon */}
+                        <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0-1.657-1.343-3-3-3S6 9.343 6 11v2a6 6 0 0012 0v-1a9 9 0 00-9-9" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0 0a3 3 0 01-3-3m3 3a3 3 0 003-3" />
+                        </svg>
+                        <span className="tracking-wide text-base">Start My Shift</span>
                       </>
                     )}
                   </button>
@@ -934,7 +1069,7 @@ export default function AttendancePage({ userRole }) {
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <span>📋</span> Today's Shift Record
             </h3>
-            <p className="text-xs text-slate-500">Historical single-shift attendance log recorded in PostgreSQL for today</p>
+            <p className="text-xs text-slate-500">Single-shift attendance log for today including break and net working hours</p>
           </div>
           <span className="px-2.5 py-0.5 rounded-md bg-sky-50 text-slate-600 text-[10px] font-mono border border-sky-100">
             {todayLogs.length} Record
@@ -952,8 +1087,8 @@ export default function AttendancePage({ userRole }) {
               <thead>
                 <tr className="border-b border-sky-100 text-sky-900 text-[10px] font-bold uppercase tracking-wider bg-sky-50/50">
                   <th className="py-3 px-4">#</th>
-                  <th className="py-3 px-4">Check In (PostgreSQL)</th>
-                  <th className="py-3 px-4">Check Out (PostgreSQL)</th>
+                  <th className="py-3 px-4">Check In</th>
+                  <th className="py-3 px-4">Check Out</th>
                   <th className="py-3 px-4">Lunch Break Duration</th>
                   <th className="py-3 px-4">Net Working Hours</th>
                   <th className="py-3 px-4">Status</th>

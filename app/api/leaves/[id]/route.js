@@ -54,9 +54,12 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    if (!isHRRole(userRole)) {
+    const isAdmin = userRole === "ADMIN";
+    const isHR = isHRRole(userRole) || isAdmin;
+
+    if (!isHR) {
       return NextResponse.json(
-        { message: "Access Denied. Only HR Personnel or Admins can approve or reject leave requests." },
+        { message: "Access Denied. Only HR Personnel or Company Admins can approve or reject leave requests." },
         { status: 403 }
       );
     }
@@ -71,10 +74,20 @@ export async function PATCH(req, { params }) {
       );
     }
 
-    // 2. Fetch target leave request
+    // 2. Fetch target leave request and resolve applicant role
     const { data: existingLeave, error: fetchErr } = await adminSupabase
       .from("leave_requests")
-      .select("*")
+      .select(`
+        *,
+        employees:employee_id (
+          id,
+          full_name,
+          email,
+          department,
+          designation,
+          role
+        )
+      `)
       .eq("id", leaveId)
       .single();
 
@@ -86,7 +99,23 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ message: "Unauthorized company access." }, { status: 403 });
     }
 
-    // 3. Update leave request with HR decision and feedback note
+    const applicantRole = existingLeave.employees?.role || "";
+    const isApplicantHR = isHRRole(applicantRole);
+
+    // HIERARCHY ENFORCEMENT:
+    // If the leave was submitted by an HR member (hr_manager or hr_executive), ONLY Company Owner (ADMIN) can approve/reject it.
+    if (isApplicantHR && !isAdmin) {
+      return NextResponse.json(
+        {
+          message: "Access Denied. Leave requests submitted by HR Personnel can only be approved or rejected by the Company Owner.",
+          requiredRole: "ADMIN",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Update leave request with decision and feedback note
+    const reviewerTitle = isAdmin ? "Company Owner" : "HR Department";
     const { data: updatedLeave, error: updateErr } = await adminSupabase
       .from("leave_requests")
       .update({
@@ -113,7 +142,7 @@ export async function PATCH(req, { params }) {
       throw updateErr;
     }
 
-    // 5. Send notification email to the Employee
+    // 5. Send notification email to the Employee / HR Applicant
     try {
       if (process.env.EMAIL_USER && process.env.EMAIL_PASS && updatedLeave.employees?.email) {
         const html = buildLeaveDecisionNoticeHTML({
@@ -123,12 +152,13 @@ export async function PATCH(req, { params }) {
           leaveDate: `${updatedLeave.start_date} to ${updatedLeave.end_date}`,
           status: status.toLowerCase(),
           reviewerComment: hr_feedback || "",
+          reviewerRole: reviewerTitle,
         });
 
         await transporter.sendMail({
-          from: `"HR Department" <${process.env.EMAIL_USER}>`,
+          from: `"${reviewerTitle}" <${process.env.EMAIL_USER}>`,
           to: updatedLeave.employees.email,
-          subject: `✈️ Leave Request ${status}: ${updatedLeave.start_date} to ${updatedLeave.end_date}`,
+          subject: `✈️ Leave Request ${status}: ${updatedLeave.start_date} to ${updatedLeave.end_date} (${reviewerTitle})`,
           html,
         });
       }
@@ -138,8 +168,9 @@ export async function PATCH(req, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: `Leave request successfully ${status.toLowerCase()}.`,
+      message: `Leave request successfully ${status.toLowerCase()} by ${reviewerTitle}.`,
       leave: updatedLeave,
+      reviewedBy: reviewerTitle,
     });
   } catch (error) {
     console.error("PATCH /api/leaves/[id] Error:", error);

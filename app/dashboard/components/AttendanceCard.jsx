@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 function formatSecondsToHHMMSS(totalSeconds) {
   if (isNaN(totalSeconds) || totalSeconds < 0) return "00h 00m 00s";
@@ -11,11 +12,19 @@ function formatSecondsToHHMMSS(totalSeconds) {
   return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 }
 
+function getDigitsHMS(totalSeconds) {
+  if (isNaN(totalSeconds) || totalSeconds < 0) return { h: "00", m: "00", s: "00" };
+  const sec = Math.round(totalSeconds);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (num) => String(num).padStart(2, "0");
+  return { h: pad(h), m: pad(m), s: pad(s) };
+}
+
 /**
  * AttendanceCard Component
- * Real-Time 8-Hour Working Standard Tracker with SVG Circular Progress Ring.
- * Synchronizes server & client time. Employs silent background polling to eliminate loading flicker.
- * Freezes shift timer and progress ring on Lunch Break start; resumes seamlessly on Finish.
+ * Real-Time 8-Hour Working Standard Tracker with Digital Shift Console.
  */
 export default function AttendanceCard() {
   const [checkedIn, setCheckedIn] = useState(false);
@@ -28,6 +37,9 @@ export default function AttendanceCard() {
   const [totalCompletedHoursToday, setTotalCompletedHoursToday] = useState(0);
   const [dailyTargetHours, setDailyTargetHours] = useState(8.0);
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
+
+  // Live wall-clock for idle (not checked-in) state
+  const [liveTime, setLiveTime] = useState(() => new Date());
 
   // Lunch break state
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -75,9 +87,11 @@ export default function AttendanceCard() {
   const fetchAttendanceStatus = async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      const res = await fetch("/api/attendance/status");
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch("/api/attendance/status", { headers });
       if (res.status === 401) {
-        window.location.href = "/login";
         return;
       }
       if (res.ok) {
@@ -207,18 +221,34 @@ export default function AttendanceCard() {
     return () => clearInterval(timerRef.current);
   }, [checkedIn]);
 
+  // ─── LIVE WALL-CLOCK (idle state only) ──────────────────────────────────────
+  useEffect(() => {
+    if (checkedIn || hasCompletedToday) return;
+    const clockInterval = setInterval(() => setLiveTime(new Date()), 1000);
+    return () => clearInterval(clockInterval);
+  }, [checkedIn, hasCompletedToday]);
+
   const handleCheckIn = async () => {
     setActionLoading(true);
     setNotice({ error: "", success: "" });
 
     try {
+      const clientTimeZone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
       const res = await fetch("/api/attendance/check-in", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
+        body: JSON.stringify({ timeZone: clientTimeZone }),
       });
 
       if (res.status === 401) {
-        window.location.href = "/login";
+        setNotice({ error: "Session expired. Please sign in again.", success: "" });
         return;
       }
 
@@ -245,7 +275,10 @@ export default function AttendanceCard() {
         setEarlyReason("");
         setIsLop(false);
         setElapsedSeconds(0);
-        setNotice({ error: "", success: `Checked in at ${new Date(data.checkInTime).toLocaleTimeString()} (Postgres Server Time)` });
+        setNotice({
+          error: "",
+          success: `Check-in recorded at ${new Date(data.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} — Shift timer started.`,
+        });
         if (typeof window !== "undefined") window.dispatchEvent(new Event("attendance-updated"));
         await fetchAttendanceStatus(true);
       }
@@ -291,13 +324,21 @@ export default function AttendanceCard() {
     }
 
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
       const res = await fetch("/api/attendance/break", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ action: actionType }),
       });
 
-      if (res.status === 401) { window.location.href = "/login"; return; }
+      if (res.status === 401) {
+        setNotice({ error: "Session expired. Please sign in again.", success: "" });
+        return;
+      }
 
       const data = await res.json();
 
@@ -356,14 +397,19 @@ export default function AttendanceCard() {
     setNotice({ error: "", success: "" });
 
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { "Content-Type": "application/json" };
+      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
       const res = await fetch("/api/attendance/check-out", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ reason: reasonText }),
       });
 
       if (res.status === 401) {
-        window.location.href = "/login";
+        setNotice({ error: "Session expired. Please sign in again.", success: "" });
         return;
       }
 
@@ -431,21 +477,16 @@ export default function AttendanceCard() {
   const progressRatio = Math.min(1.0, Math.max(0, totalEffectiveSeconds / targetSeconds));
   const progressPercentInt = Math.min(100, Math.round(progressRatio * 100));
 
-  // SVG Circular Ring Dimensions
-  const circleRadius = 50;
-  const circleCircumference = 2 * Math.PI * circleRadius;
-  const strokeDashoffset = circleCircumference - progressRatio * circleCircumference;
-
   return (
-    <div className="bg-white border border-sky-100 rounded-2xl p-6 flex flex-col justify-between space-y-4 shadow-2xs hover:border-sky-300 transition-all duration-300 relative">
+    <div className="bg-white border border-sky-100 rounded-2xl p-5 sm:p-6 flex flex-col justify-between space-y-5 shadow-2xs hover:border-sky-200 transition-all duration-300 relative">
 
       {/* Header Bar */}
-      <div className="flex items-center justify-between border-b border-sky-100 pb-4">
+      <div className="flex items-center justify-between border-b border-sky-100 pb-3.5">
         <div>
           <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
             <span>⏱️</span> Daily Attendance
           </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Overall company working time: {dailyTargetHours} Hours</p>
+          <p className="text-[11px] text-slate-500 mt-0.5">Overall company working time: {dailyTargetHours.toFixed(1)} Hours</p>
         </div>
 
         {/* Dynamic Status Badge */}
@@ -468,17 +509,17 @@ export default function AttendanceCard() {
             : checkedIn
               ? "● ON DUTY"
               : hasCompletedToday && approvalStatus === "PENDING"
-                ? "⌛ PENDING HR APPROVAL (<8h)"
+                ? "⌛ PENDING HR APPROVAL"
                 : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                  ? "✖ REJECTED (LOSS OF PAY / LOP)"
+                  ? "✖ REJECTED (LOSS OF PAY)"
                   : hasCompletedToday
-                    ? "✓ SHIFT COMPLETED (APPROVED)"
+                    ? "✓ SHIFT COMPLETED"
                     : "○ OFF DUTY"}
         </span>
       </div>
 
       {isHoliday && (
-        <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs mb-3">
+        <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
             <span>🎉</span>
             <span className="truncate">Holiday Today: &quot;{holidayTitle}&quot;</span>
@@ -490,7 +531,7 @@ export default function AttendanceCard() {
       )}
 
       {isNonWorkingDay && (
-        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs mb-3">
+        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
             <span>🏝️</span>
             <span className="truncate">Company Off-Day ({todayDayName}): Non-working day</span>
@@ -502,125 +543,89 @@ export default function AttendanceCard() {
       )}
 
       {loading ? (
-        <div className="py-8 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
-          <div className="w-6 h-6 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+        <div className="py-12 flex flex-col items-center justify-center gap-2.5 text-slate-500 text-xs">
+          <div className="w-7 h-7 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
           <span>Syncing attendance server state…</span>
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Circular Indicator with Live SVG Progress Ring */}
-          <div className="flex flex-col items-center justify-center py-2">
-            <div className="relative w-32 h-32 flex items-center justify-center">
-              {/* SVG Ring Background & Animated Fill */}
-              <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 120 120">
-                <circle
-                  cx="60"
-                  cy="60"
-                  r={circleRadius}
-                  className="stroke-sky-100"
-                  strokeWidth="8"
-                  fill="transparent"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r={circleRadius}
-                  className={`transition-all duration-1000 ease-out ${isOnBreak
-                      ? "stroke-amber-500 opacity-90"
-                      : checkedIn
-                        ? "stroke-emerald-500"
-                        : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                          ? "stroke-rose-500"
-                          : "stroke-sky-500"
-                    }`}
-                  strokeWidth="8"
-                  strokeDasharray={circleCircumference}
-                  strokeDashoffset={checkedIn || hasCompletedToday ? strokeDashoffset : circleCircumference}
-                  strokeLinecap="round"
-                  fill="transparent"
-                />
-              </svg>
+          {/* ── ROUND CIRCULAR LIVE SHIFT DISPLAY (OVERVIEW TAB) ── */}
+          {(() => {
+            const circleRadius = 56;
+            const circleCircumference = 2 * Math.PI * circleRadius;
+            const strokeDashoffset = circleCircumference - progressRatio * circleCircumference;
 
-              {/* Central Clock Contents */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                {checkedIn ? (
-                  <>
-                    <span className={`text-xs font-mono font-extrabold tracking-wider ${isOnBreak ? "text-amber-700" : "text-emerald-700"}`}>
-                      {formatSecondsToHHMMSS(elapsedSeconds)}
+            let timeDisplay = liveTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+            let subLabel = liveTime.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+            let strokeColor = "stroke-sky-400";
+            let textColor = "text-slate-900";
+            let ringBadge = `${dailyTargetHours.toFixed(0)}h Target`;
+
+            if (isOnBreak) {
+              timeDisplay = formatSecondsToHHMMSS(currentBreakSeconds);
+              subLabel = "Lunch Break (Shift Paused)";
+              strokeColor = "stroke-teal-500";
+              textColor = "text-teal-700";
+              ringBadge = "⏸ Break";
+            } else if (checkedIn) {
+              timeDisplay = formatSecondsToHHMMSS(elapsedSeconds);
+              subLabel = `${runtimeWorkingHoursDecimal} / ${dailyTargetHours.toFixed(1)} hrs`;
+              strokeColor = "stroke-teal-500";
+              textColor = "text-teal-700";
+              ringBadge = `${progressPercentInt}%`;
+            } else if (hasCompletedToday) {
+              timeDisplay = `${totalWorkingHoursToday.toFixed(2)} hrs`;
+              subLabel = "Shift Completed";
+              strokeColor = isLop || approvalStatus === "REJECTED" ? "stroke-rose-500" : approvalStatus === "PENDING" ? "stroke-amber-500" : "stroke-sky-600";
+              textColor = isLop || approvalStatus === "REJECTED" ? "text-rose-700" : approvalStatus === "PENDING" ? "text-amber-700" : "text-sky-700";
+              ringBadge = isLop || approvalStatus === "REJECTED" ? "✖ LOP" : approvalStatus === "PENDING" ? "⌛ Pending" : "✓ Done";
+            }
+
+            return (
+              <div className="flex flex-col items-center justify-center py-2">
+                <div className="relative w-40 h-40 flex items-center justify-center">
+                  {/* SVG Round Progress Ring */}
+                  <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 130 130">
+                    <circle
+                      cx="65"
+                      cy="65"
+                      r={circleRadius}
+                      className="stroke-sky-100"
+                      strokeWidth="7"
+                      fill="transparent"
+                    />
+                    <circle
+                      cx="65"
+                      cy="65"
+                      r={circleRadius}
+                      className={`transition-all duration-1000 ease-out ${strokeColor}`}
+                      strokeWidth="7"
+                      strokeDasharray={circleCircumference}
+                      strokeDashoffset={checkedIn || hasCompletedToday ? strokeDashoffset : circleCircumference}
+                      strokeLinecap="round"
+                      fill="transparent"
+                    />
+                  </svg>
+
+                  {/* Central Round Contents */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-2">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                      {checkedIn ? "Shift Timer" : hasCompletedToday ? "Total Worked" : "Local Time"}
                     </span>
-                    <span className={`text-[10px] font-bold mt-0.5 ${isOnBreak ? "text-amber-800" : "text-emerald-800"}`}>
-                      {runtimeWorkingHoursDecimal} / 8.0 hrs
+                    <div className={`font-mono text-lg sm:text-xl font-black tracking-tight tabular-nums mt-0.5 ${textColor}`}>
+                      {timeDisplay}
+                    </div>
+                    <span className="text-[10px] font-medium text-slate-500 mt-0.5 truncate max-w-[110px]">
+                      {subLabel}
                     </span>
-                    {isOnBreak ? (
-                      <span className="mt-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-bold uppercase tracking-wider animate-pulse border border-amber-200">
-                        Paused
-                      </span>
-                    ) : (
-                      <span className="mt-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase tracking-wider border border-emerald-200">
-                        {progressPercentInt}%
-                      </span>
-                    )}
-                  </>
-                ) : hasCompletedToday ? (
-                  <>
-                    <span className={`text-xl font-bold font-mono ${isLop || approvalStatus === "REJECTED"
-                        ? "text-rose-700"
-                        : approvalStatus === "PENDING"
-                          ? "text-amber-700"
-                          : "text-sky-700"
-                      }`}>
-                      {totalWorkingHoursToday.toFixed(2)}
+                    <span className="mt-1 px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[9px] font-mono font-bold border border-sky-200">
+                      {ringBadge}
                     </span>
-                    <span className="text-[10px] text-slate-500 font-bold">/ 8.0 hrs net</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="text-2xl mb-1 text-slate-400">◎</span>
-                    <span className="text-[10px] font-semibold text-slate-500">Offline</span>
-                  </>
-                )}
+                  </div>
+                </div>
               </div>
-            </div>
-
-            {/* Subtitle Details */}
-            <div className="mt-3 text-center space-y-1">
-              {isOnBreak ? (
-                <>
-                  <p className="text-xs font-bold text-amber-700">Shift timer stopped for Lunch Break</p>
-                  <p className="text-[11px] text-slate-500">
-                    Lunch Duration: <span className="font-mono text-amber-800 font-bold">{formatSecondsToHHMMSS(currentBreakSeconds)}</span>
-                  </p>
-                </>
-              ) : checkedIn ? (
-                <>
-                  <p className="text-xs font-bold text-emerald-700">Shift active since {formattedCheckInTime}</p>
-                  {totalBreakSeconds > 0 && (
-                    <p className="text-[11px] text-amber-700">Lunch break deducted: {formatSecondsToHHMMSS(totalBreakSeconds)}</p>
-                  )}
-                </>
-              ) : hasCompletedToday ? (
-                <>
-                  <p className={`text-xs font-bold ${isLop || approvalStatus === "REJECTED"
-                      ? "text-rose-700"
-                      : approvalStatus === "PENDING"
-                        ? "text-amber-700"
-                        : "text-sky-700"
-                    }`}>
-                    {approvalStatus === "PENDING"
-                      ? "Early Check-Out Sent to HR for Approval"
-                      : isLop || approvalStatus === "REJECTED"
-                        ? "Early Check-Out Rejected — Loss of Pay (LOP)"
-                        : "Shift Completed & Approved"}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    In: {formattedCheckInTime || "—"} | Out: {formattedCheckOutTime || "—"}
-                  </p>
-                </>
-              ) : (
-                <p className="text-xs text-slate-500">Not checked in yet today</p>
-              )}
-            </div>
-          </div>
+            );
+          })()}
 
           {/* LOP Banner Alert if rejected by HR */}
           {hasCompletedToday && (approvalStatus === "REJECTED" || isLop) && (
@@ -661,143 +666,156 @@ export default function AttendanceCard() {
           )}
 
           {/* Action Buttons */}
-          {checkedIn ? (
-            <div className="space-y-2">
-              {isOnBreak ? (
-                <button
-                  type="button"
-                  onClick={() => handleToggleBreak("END")}
-                  disabled={actionLoading}
-                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-md shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  {actionLoading ? (
-                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <>
-                      <span>▶</span>
-                      <span>Finish Lunch Break (Resume Shift)</span>
-                    </>
-                  )}
-                </button>
-              ) : (hasCompletedBreak || totalBreakSeconds > 0) ? (
-                <div className="space-y-2">
-                  <div className="py-2 px-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold text-center flex items-center justify-center gap-1.5">
-                    <span>✓</span>
-                    <span>Lunch Break Completed (Single break policy)</span>
+          <div className="pt-1">
+            {checkedIn ? (
+              <div className="space-y-2.5">
+                {isOnBreak ? (
+                  /* Resuming Shift from Lunch Break (Teal Theme with Resume Icon) */
+                  <button
+                    type="button"
+                    onClick={() => handleToggleBreak("END")}
+                    disabled={actionLoading}
+                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-700 hover:from-teal-400 hover:via-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/25 hover:shadow-teal-500/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                  >
+                    {actionLoading ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Resuming shift…</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="tracking-wide">Finish Lunch Break &amp; Resume Shift</span>
+                      </>
+                    )}
+                  </button>
+                ) : (hasCompletedBreak || totalBreakSeconds > 0) ? (
+                  /* Break completed today, only Check Out available (Blue Theme) */
+                  <div className="space-y-2">
+                    <div className="py-2 px-3 rounded-xl bg-teal-50/80 border border-teal-200 text-teal-800 text-[11px] font-semibold text-center flex items-center justify-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-teal-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Lunch break logged ({formatSecondsToHHMMSS(totalBreakSeconds)})</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={initiateCheckOut}
+                      disabled={actionLoading}
+                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                    >
+                      {actionLoading ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Processing check out…</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                          </svg>
+                          <span className="tracking-wide">Check Out</span>
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={initiateCheckOut}
-                    disabled={actionLoading}
-                    className="w-full py-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <span>⏹</span>
-                    <span>Check Out</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleToggleBreak("START")}
-                    disabled={actionLoading || hasCompletedBreak || totalBreakSeconds > 0}
-                    className="py-3 rounded-xl border border-amber-200 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <span>🍱</span>
-                    <span>Start Lunch</span>
-                  </button>
+                ) : (
+                  /* Active shift: Start Lunch Break (Teal Theme with Icon) & Check Out (Blue Theme) */
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleBreak("START")}
+                      disabled={actionLoading || hasCompletedBreak || totalBreakSeconds > 0}
+                      className="py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-700 hover:from-teal-400 hover:via-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/20 hover:shadow-teal-500/35 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="tracking-wide">Start Lunch Break</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={initiateCheckOut}
-                    disabled={actionLoading}
-                    className="py-3 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    <span>⏹</span>
-                    <span>Check Out</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : hasCompletedToday ? (
-            <button
-              disabled
-              className={`w-full py-3 rounded-xl border text-xs font-bold transition flex items-center justify-center gap-2 cursor-not-allowed opacity-90 ${isLop || approvalStatus === "REJECTED"
-                  ? "bg-rose-50 border-rose-200 text-rose-700"
-                  : approvalStatus === "PENDING"
-                    ? "bg-amber-50 border-amber-200 text-amber-700"
-                    : "bg-slate-100 border-slate-200 text-slate-600"
-                }`}
-            >
-              <span>{isLop ? "✖" : approvalStatus === "PENDING" ? "⌛" : "✓"}</span>
-              <span>
-                {isLop
-                  ? "Attendance Completed (Loss of Pay)"
-                  : approvalStatus === "PENDING"
-                    ? "Early Check-Out Awaiting HR Approval"
-                    : "Attendance Completed For Today"}
-              </span>
-            </button>
-          ) : (
-            <button
-              onClick={handleCheckIn}
-              disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-              className={`w-full py-3 rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2 ${isHoliday
-                  ? "bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
-                  : isOnLeaveToday
-                    ? "bg-sky-50 border border-sky-200 text-sky-700 cursor-not-allowed"
+                    <button
+                      type="button"
+                      onClick={initiateCheckOut}
+                      disabled={actionLoading}
+                      className="py-3.5 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/20 hover:shadow-blue-500/35 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                    >
+                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                      </svg>
+                      <span className="tracking-wide">Check Out</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : hasCompletedToday ? (
+              <div className="p-3.5 rounded-2xl bg-sky-50/50 border border-sky-200 text-center space-y-1">
+                <p className={`text-xs font-bold flex items-center justify-center gap-1.5 ${isLop ? "text-rose-700" : approvalStatus === "PENDING" ? "text-amber-700" : "text-sky-800"}`}>
+                  <span>{isLop ? "✖" : approvalStatus === "PENDING" ? "⌛" : "✓"}</span>
+                  <span>
+                    {isLop
+                      ? "Attendance Completed (Loss of Pay)"
+                      : approvalStatus === "PENDING"
+                        ? "Early Check-Out Awaiting HR Approval"
+                        : "Attendance Completed For Today"}
+                  </span>
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  Single daily check-in rule enforced. Net working hours locked.
+                </p>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleCheckIn}
+                disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
+                className={`w-full rounded-2xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2.5 relative overflow-hidden group ${
+                  isHoliday
+                    ? "py-3.5 bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                     : isNonWorkingDay
-                      ? "bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
-                      : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+                      ? "py-3.5 bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
+                      : isOnLeaveToday
+                        ? "py-3.5 bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
+                        : "py-4 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 hover:from-emerald-400 hover:via-emerald-500 hover:to-teal-600 text-white shadow-md shadow-emerald-500/25 hover:shadow-emerald-500/40 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
                 }`}
-            >
-              {actionLoading ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Fetching server timestamp…</span>
-                </>
-              ) : isHoliday ? (
-                <>
-                  <span>🎉</span>
-                  <span>COMPANY HOLIDAY — CHECK-IN CLOSED</span>
-                </>
-              ) : isNonWorkingDay ? (
-                <>
-                  <span>🏝️</span>
-                  <span>COMPANY OFF-DAY ({todayDayName?.toUpperCase()}) — CHECK-IN CLOSED</span>
-                </>
-              ) : isOnLeaveToday ? (
-                <>
-                  <span>✈️</span>
-                  <span>ON APPROVED LEAVE — ABSENT TODAY</span>
-                </>
-              ) : (
-                <>
-                  <span>▶</span>
-                  <span>Check In Now</span>
-                </>
-              )}
-            </button>
-          )}
-
-          {/* Footer Total Working Hours & Progress Bar */}
-          <div className="pt-2 border-t border-sky-100 space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span>Net Shift Working Hours:</span>
-              <span className="font-bold text-slate-800 font-mono">
-                {(totalCompletedHoursToday + (checkedIn ? Number(runtimeWorkingHoursDecimal) : totalWorkingHoursToday)).toFixed(2)} / 8.0 hrs
-              </span>
-            </div>
-
-            <div className="w-full h-2 bg-sky-100 rounded-full overflow-hidden border border-sky-200/60">
-              <div
-                className={`h-full transition-all duration-500 rounded-full ${isOnBreak
-                    ? "bg-gradient-to-r from-amber-400 to-amber-500 opacity-90"
-                    : "bg-gradient-to-r from-sky-500 via-emerald-500 to-teal-500"
-                  }`}
-                style={{ width: `${progressPercentInt}%` }}
-              />
-            </div>
+              >
+                {!isHoliday && !isNonWorkingDay && !isOnLeaveToday && (
+                  <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 ease-in-out pointer-events-none" />
+                )}
+                {actionLoading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/60 border-t-white rounded-full animate-spin shrink-0" />
+                    <span className="tracking-wide">Starting your shift…</span>
+                  </>
+                ) : isHoliday ? (
+                  <>
+                    <span>🎉</span>
+                    <span>Company Holiday — Check-In Closed</span>
+                  </>
+                ) : isNonWorkingDay ? (
+                  <>
+                    <span>🏝️</span>
+                    <span>Off Day ({todayDayName}) — No Shift Today</span>
+                  </>
+                ) : isOnLeaveToday ? (
+                  <>
+                    <span>✈️</span>
+                    <span>On Approved Leave Today</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0-1.657-1.343-3-3-3S6 9.343 6 11v2a6 6 0 0012 0v-1a9 9 0 00-9-9" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0 0a3 3 0 01-3-3m3 3a3 3 0 003-3" />
+                    </svg>
+                    <span className="tracking-wide">Start My Shift</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -104,7 +104,8 @@ export async function GET(req) {
     const targetMonth = parseInt(searchParams.get("month") || (now.getMonth() + 1).toString(), 10);
     const targetYear = parseInt(searchParams.get("year") || now.getFullYear().toString(), 10);
 
-    const isHR = isHRRole(userRole);
+    const isAdmin = userRole === "ADMIN";
+    const isHR = isHRRole(userRole) || isAdmin;
 
     // Format start and end date for filtering the month
     const startOfMonth = `${targetYear}-${String(targetMonth).padStart(2, "0")}-01`;
@@ -150,6 +151,7 @@ export async function GET(req) {
           leaves: [],
           balance: { allowance: MONTHLY_ALLOWANCE, used: 0, available: MONTHLY_ALLOWANCE },
           isHR,
+          isAdmin,
           role: userRole,
           warning: "Supabase schema cache update required: Please run migration 20260807_create_leave_requests_table.sql in Supabase SQL Editor.",
         });
@@ -202,6 +204,7 @@ export async function GET(req) {
       companyHolidays: companyHolidaysData || [],
       workDays,
       isHR,
+      isAdmin,
       role: userRole,
       employeeId: empRecord ? empRecord.id : null,
       balance: {
@@ -526,48 +529,85 @@ export async function POST(req) {
       throw insertErr;
     }
 
-    // 6. Send notification email to HR Personnel
+    // 6. Send notification email according to hierarchy
+    const isHRApplicant = isHRRole(empRecord.role);
     try {
       if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-        // Fetch HR staff emails in the company
-        const { data: hrMembers } = await adminSupabase
-          .from("employees")
-          .select("email")
-          .eq("company_id", companyId)
-          .in("role", ["hr_manager", "hr_executive"]);
+        let recipientEmails = [];
+        const companyName = empRecord.companies?.name || "Company";
 
-        const hrEmails = hrMembers && hrMembers.length > 0
-          ? hrMembers.map((h) => h.email).filter(Boolean)
-          : [];
+        if (isHRApplicant) {
+          // HR Member applied -> Route email directly to Company Owner
+          const { data: compAdmin } = await adminSupabase
+            .from("companies")
+            .select("email, admin_id")
+            .eq("id", companyId)
+            .single();
 
-        if (hrEmails.length > 0) {
-          const companyName = empRecord.companies?.name || "Company";
+          if (compAdmin?.email) {
+            recipientEmails.push(compAdmin.email);
+          }
+        } else {
+          // Regular Employee applied -> Route email to HR personnel (and Owner)
+          const { data: hrMembers } = await adminSupabase
+            .from("employees")
+            .select("email")
+            .eq("company_id", companyId)
+            .in("role", ["hr_manager", "hr_executive"]);
+
+          const hrEmails = hrMembers && hrMembers.length > 0
+            ? hrMembers.map((h) => h.email).filter(Boolean)
+            : [];
+
+          recipientEmails = hrEmails;
+
+          // Also notify owner if no HR is available
+          if (recipientEmails.length === 0) {
+            const { data: compAdmin } = await adminSupabase
+              .from("companies")
+              .select("email")
+              .eq("id", companyId)
+              .single();
+            if (compAdmin?.email) recipientEmails.push(compAdmin.email);
+          }
+        }
+
+        if (recipientEmails.length > 0) {
           const html = buildLeaveRequestNoticeHTML({
             companyName,
             employeeName: empRecord.full_name || "Employee",
             employeeEmail: empRecord.email || userEmail,
             department: empRecord.department || "General",
+            role: empRecord.role || "employee",
             leaveType: leave_type,
-            leaveDate: `${start_date} to ${end_date} (${totalDays} days)`,
+            leaveDate: `${start_date} to ${end_date} (${totalDays} day${totalDays > 1 ? "s" : ""})`,
             reason,
+            isHRApplicant,
           });
+
+          const subject = isHRApplicant
+            ? `👔 HR Leave Request: ${empRecord.full_name} (${start_date} to ${end_date}) — Company Owner Approval Required`
+            : `✈️ Employee Leave Request: ${empRecord.full_name} (${start_date} to ${end_date})`;
 
           await transporter.sendMail({
             from: `"${companyName} HRMS" <${process.env.EMAIL_USER}>`,
-            to: hrEmails.join(", "),
-            subject: `✈️ New Leave Request: ${empRecord.full_name} (${start_date} to ${end_date})`,
+            to: recipientEmails.join(", "),
+            subject,
             html,
           });
         }
       }
     } catch (mailErr) {
-      console.warn("HR Notification Email Warning:", mailErr.message);
+      console.warn("Leave Notification Email Warning:", mailErr.message);
     }
 
     return NextResponse.json({
       success: true,
-      message: "Leave request submitted successfully for HR approval.",
+      message: isHRApplicant
+        ? "Leave request submitted successfully. Routed to Company Owner for approval."
+        : "Leave request submitted successfully for HR review.",
       leave: newLeave,
+      isHRApplicant,
       remainingBalance: Math.max(0, availableBalance - totalDays),
     });
   } catch (error) {

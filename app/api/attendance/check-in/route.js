@@ -37,25 +37,42 @@ function parseTimeToMinutes(timeStr) {
  * Converts timestamp or time string into clean 12-hour format ("09:00 AM")
  */
 function formatTime12h(timeInput, timeZone) {
+  const tz = timeZone || "Asia/Kolkata";
   if (!timeInput) return "—";
   if (timeInput instanceof Date) {
-    return timeInput.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-      ...(timeZone ? { timeZone } : {}),
-    });
+    try {
+      return timeInput.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: tz,
+      });
+    } catch {
+      return timeInput.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
   }
   if (typeof timeInput === "string") {
     if (timeInput.includes("T") || timeInput.endsWith("Z")) {
       const d = new Date(timeInput);
       if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-          ...(timeZone ? { timeZone } : {}),
-        });
+        try {
+          return d.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+            timeZone: tz,
+          });
+        } catch {
+          return d.toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          });
+        }
       }
     }
     const mins = parseTimeToMinutes(timeInput);
@@ -82,23 +99,22 @@ function calculateDelay(checkInDateInput, scheduledStartTimeStr, options = {}) {
   const d = checkInDateInput instanceof Date ? checkInDateInput : new Date(checkInDateInput);
   if (isNaN(d.getTime())) return null;
 
+  const tz = options.timeZone || "Asia/Kolkata";
+
   // Determine check-in minutes in local timezone
   let checkInMinutes;
-  if (options.timeZone) {
-    try {
-      const parts = new Intl.DateTimeFormat("en-US", {
-        timeZone: options.timeZone,
-        hour: "numeric",
-        minute: "numeric",
-        hour12: false,
-      }).formatToParts(d);
-      const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
-      const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
-      checkInMinutes = h * 60 + m;
-    } catch {
-      checkInMinutes = d.getHours() * 60 + d.getMinutes();
-    }
-  } else {
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+      hourCycle: "h23",
+    }).formatToParts(d);
+    const h = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    const m = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
+    checkInMinutes = h * 60 + m;
+  } catch {
     checkInMinutes = d.getHours() * 60 + d.getMinutes();
   }
 
@@ -121,8 +137,8 @@ function calculateDelay(checkInDateInput, scheduledStartTimeStr, options = {}) {
     isLate: true,
     diffMinutes,
     delayDuration,
-    scheduledTime: formatTime12h(scheduledStartTimeStr, options.timeZone),
-    checkInTime: formatTime12h(d, options.timeZone),
+    scheduledTime: formatTime12h(scheduledStartTimeStr, tz),
+    checkInTime: formatTime12h(d, tz),
   };
 }
 
@@ -364,8 +380,11 @@ export async function POST(req) {
     const targetEmail = (empRecord.email || user.email || "").trim().toLowerCase();
 
     let emailDispatched = false;
+    let emailError = null;
 
     if (delayInfo && targetEmail) {
+      console.log(`⏰ Late check-in detected for ${empRecord.full_name || "Employee"} (${targetEmail}): ${delayInfo.delayDuration} delay (Check-in: ${delayInfo.checkInTime}, Scheduled: ${delayInfo.scheduledTime})`);
+
       let companyName = empRecord.companies?.name;
       if (!companyName && empRecord.company_id) {
         try {
@@ -399,16 +418,21 @@ export async function POST(req) {
           dateStr,
         });
 
-        await transporter.sendMail({
-          from: `"${companyName} HRMS" <${process.env.EMAIL_USER}>`,
+        const senderAddress = process.env.EMAIL_USER
+          ? `"${companyName} HRMS" <${process.env.EMAIL_USER}>`
+          : `"${companyName} HRMS"`;
+
+        const sendRes = await transporter.sendMail({
+          from: senderAddress,
           to: targetEmail,
           subject: `⏰ Late Check-In Notice (${delayInfo.delayDuration} Delayed) - ${companyName}`,
           html: emailHtml,
         });
         emailDispatched = true;
-        console.log(`⚡ Late check-in email successfully sent in real time to: ${targetEmail} (${delayInfo.delayDuration} delay)`);
+        console.log(`⚡ Late check-in email successfully sent in real time to: ${targetEmail} (ID: ${sendRes?.messageId || "OK"}, Delay: ${delayInfo.delayDuration})`);
       } catch (mailErr) {
-        console.error(`❌ Failed to send late check-in email to ${targetEmail}:`, mailErr.message);
+        emailError = mailErr?.message || String(mailErr);
+        console.error(`❌ Failed to send late check-in email to ${targetEmail}:`, mailErr);
       }
 
       // In-app notification record for employee
@@ -439,6 +463,7 @@ export async function POST(req) {
       actualCheckInTime: delayInfo?.checkInTime || formatTime12h(checkInDate, timeZone),
       emailSent: emailDispatched,
       emailSentTo: emailDispatched ? targetEmail : null,
+      emailError: emailError,
       attendance: newAttendance,
       checkInTime: newAttendance?.check_in || serverNowIso,
       workDate: newAttendance?.work_date || workDate,

@@ -366,20 +366,25 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
     return true;
   });
 
-  const getStatusBadge = (status) => {
+  const isAdmin = userRole === "ADMIN";
+  const isHRUser = userRole === "hr_manager" || userRole === "hr_executive";
+
+  const getStatusBadge = (status, applicantRole) => {
+    const isApplicantHR = applicantRole === "hr_manager" || applicantRole === "hr_executive";
+
     switch (status) {
       case "APPROVED":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Approved
+            Approved {isApplicantHR ? "(by Owner)" : "(by HR)"}
           </span>
         );
       case "REJECTED":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-            Rejected
+            Rejected {isApplicantHR ? "(by Owner)" : "(by HR)"}
           </span>
         );
       case "CANCELLED":
@@ -390,7 +395,12 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
           </span>
         );
       default:
-        return (
+        return isApplicantHR ? (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 animate-pulse">
+            <span>👑</span>
+            Pending Owner Approval
+          </span>
+        ) : (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
             Pending HR Review
@@ -621,77 +631,104 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                 </tr>
               </thead>
               <tbody className="divide-y divide-sky-100 text-slate-700">
-                {filteredLeaves.map((l) => (
-                  <tr key={l.id} className="hover:bg-sky-50/50 transition-colors">
-                    <td className="py-4 px-4 font-medium text-slate-900">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-sky-50 text-sky-700 border border-sky-200 flex items-center justify-center font-bold text-xs uppercase">
-                          {l.employees?.full_name ? l.employees.full_name.charAt(0) : "E"}
+                {filteredLeaves.map((l) => {
+                  const isApplicantHR = ["hr_manager", "hr_executive"].includes(l.employees?.role);
+
+                  return (
+                    <tr key={l.id} className="hover:bg-sky-50/50 transition-colors">
+                      <td className="py-4 px-4 font-medium text-slate-900">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase border ${
+                            isApplicantHR
+                              ? "bg-purple-50 text-purple-700 border-purple-200"
+                              : "bg-sky-50 text-sky-700 border-sky-200"
+                          }`}>
+                            {l.employees?.full_name ? l.employees.full_name.charAt(0) : "E"}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-slate-900">{l.employees?.full_name || "Employee"}</p>
+                              {isApplicantHR && (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+                                  HR Staff
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-500">{l.employees?.email || ""}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-slate-900">{l.employees?.full_name || "Employee"}</p>
-                          <p className="text-xs text-slate-500">{l.employees?.email || ""}</p>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-4 px-4">
-                      <span className="px-2 py-1 rounded bg-sky-50 border border-sky-200 text-xs font-medium text-sky-800">
-                        {l.leave_type}
-                      </span>
-                    </td>
+                      <td className="py-4 px-4">
+                        <span className="px-2 py-1 rounded bg-sky-50 border border-sky-200 text-xs font-medium text-sky-800">
+                          {l.leave_type}
+                        </span>
+                      </td>
 
-                    <td className="py-4 px-4 text-xs font-mono">
-                      <span className="text-slate-800 font-semibold">{l.start_date}</span>
-                      <span className="text-slate-400 mx-1">to</span>
-                      <span className="text-slate-800 font-semibold">{l.end_date}</span>
-                    </td>
+                      <td className="py-4 px-4 text-xs font-mono">
+                        <span className="text-slate-800 font-semibold">{l.start_date}</span>
+                        <span className="text-slate-400 mx-1">to</span>
+                        <span className="text-slate-800 font-semibold">{l.end_date}</span>
+                      </td>
 
-                    <td className="py-4 px-4 font-bold text-sky-700">
-                      {l.total_days} {l.total_days === 1 ? "day" : "days"}
-                    </td>
+                      <td className="py-4 px-4 font-bold text-sky-700">
+                        {l.total_days} {l.total_days === 1 ? "day" : "days"}
+                      </td>
 
-                    <td className="py-4 px-4 max-w-xs truncate text-xs text-slate-600" title={l.reason}>
-                      {l.reason}
-                    </td>
+                      <td className="py-4 px-4 max-w-xs truncate text-xs text-slate-600" title={l.reason}>
+                        {l.reason}
+                      </td>
 
-                    <td className="py-4 px-4">{getStatusBadge(l.status)}</td>
+                      <td className="py-4 px-4">{getStatusBadge(l.status, l.employees?.role)}</td>
 
-                    <td className="py-4 px-4 max-w-xs">
-                      {l.hr_feedback ? (
-                        <div className="p-2 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-800">
-                          <p className="font-semibold text-[10px] text-sky-700 uppercase tracking-wider">Note from HR:</p>
-                          <p className="italic mt-0.5">{l.hr_feedback}</p>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">—</span>
-                      )}
-                    </td>
+                      <td className="py-4 px-4 max-w-xs">
+                        {l.hr_feedback ? (
+                          <div className="p-2 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-800">
+                            <p className="font-semibold text-[10px] text-sky-700 uppercase tracking-wider">
+                              {isApplicantHR ? "Note from Owner:" : "Note from HR:"}
+                            </p>
+                            <p className="italic mt-0.5">{l.hr_feedback}</p>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">—</span>
+                        )}
+                      </td>
 
-                    <td className="py-4 px-4 text-right">
-                      {isHR && l.status === "PENDING" && activeTab === "hr-inbox" ? (
-                        <button
-                          onClick={() => {
-                            setSelectedLeaveForAction(l);
-                            setHrFeedback("");
-                          }}
-                          className="bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs px-3 py-1.5 rounded-lg shadow-2xs transition-all cursor-pointer"
-                        >
-                          Review & Action
-                        </button>
-                      ) : l.status === "PENDING" && (!isHR || activeTab === "my-leaves") ? (
-                        <button
-                          onClick={() => handleCancelLeave(l.id)}
-                          className="text-xs text-rose-600 hover:text-rose-700 font-medium hover:underline cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      ) : (
-                        <span className="text-xs text-slate-400">Completed</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      <td className="py-4 px-4 text-right">
+                        {isHR && l.status === "PENDING" && activeTab === "hr-inbox" ? (
+                          isApplicantHR && !isAdmin ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200"
+                              title="HR leave requests can only be approved by the Company Owner"
+                            >
+                              <span>👑</span>
+                              <span>Owner Action</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setSelectedLeaveForAction(l);
+                                setHrFeedback("");
+                              }}
+                              className="bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs px-3 py-1.5 rounded-lg shadow-2xs transition-all cursor-pointer"
+                            >
+                              Review &amp; Action
+                            </button>
+                          )
+                        ) : l.status === "PENDING" && (!isHR || activeTab === "my-leaves") ? (
+                          <button
+                            onClick={() => handleCancelLeave(l.id)}
+                            className="text-xs text-rose-600 hover:text-rose-700 font-medium hover:underline cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          <span className="text-xs text-slate-400">Completed</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -718,6 +755,13 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
             </div>
 
             <form onSubmit={handleSubmitLeaveRequest} className="p-6 space-y-4">
+              {isHRUser && (
+                <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-2">
+                  <span>👑</span>
+                  <span>As HR Personnel, your request will be routed directly to the <strong>Company Owner</strong> for approval.</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
                   Leave Type
@@ -827,7 +871,9 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                       : "bg-sky-600 hover:bg-sky-500 shadow-sky-500/20 cursor-pointer"
                   }`}
                 >
-                  {submitting ? "Submitting to HR..." : "Submit to HR"}
+                  {submitting
+                    ? isHRUser ? "Submitting to Owner..." : "Submitting to HR..."
+                    : isHRUser ? "Submit to Company Owner" : "Submit to HR"}
                 </button>
               </div>
             </form>
@@ -835,93 +881,115 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
         </div>
       )}
 
-      {/* --- HR ACTION MODAL --- */}
-      {selectedLeaveForAction && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-sky-100 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            <div className="p-5 border-b border-sky-100 bg-sky-50/50 flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-bold text-slate-900">HR Review & Action</h3>
-                <p className="text-xs text-sky-700 font-semibold">Only HR has access to approve or reject leave requests</p>
-              </div>
-              <button
-                onClick={() => setSelectedLeaveForAction(null)}
-                className="text-slate-400 hover:text-slate-700 text-lg p-1 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+      {/* --- HR / OWNER ACTION MODAL --- */}
+      {selectedLeaveForAction && (() => {
+        const isActionTargetHR = ["hr_manager", "hr_executive"].includes(selectedLeaveForAction.employees?.role);
 
-            <div className="p-6 space-y-4">
-              <div className="bg-sky-50/40 p-4 rounded-xl border border-sky-100 space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Employee:</span>
-                  <span className="font-bold text-slate-900">{selectedLeaveForAction.employees?.full_name || "Employee"}</span>
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+            <div className="bg-white border border-sky-100 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
+              <div className="p-5 border-b border-sky-100 bg-sky-50/50 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">
+                    {isAdmin
+                      ? isActionTargetHR
+                        ? "👑 Company Owner Review & Approval"
+                        : "Company Owner Review & Action"
+                      : "HR Review & Action"}
+                  </h3>
+                  <p className="text-xs text-sky-700 font-semibold">
+                    {isAdmin
+                      ? "Company Owner decision authority"
+                      : "HR Department approval authority"}
+                  </p>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Department:</span>
-                  <span className="text-slate-700">{selectedLeaveForAction.employees?.department || "General"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Leave Type:</span>
-                  <span className="font-semibold text-sky-700">{selectedLeaveForAction.leave_type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Duration:</span>
-                  <span className="font-mono text-slate-800 font-bold">
-                    {selectedLeaveForAction.start_date} to {selectedLeaveForAction.end_date} ({selectedLeaveForAction.total_days} days)
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-sky-100">
-                  <span className="text-slate-500 block mb-1">Reason:</span>
-                  <p className="text-slate-700 italic">{selectedLeaveForAction.reason}</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
-                  HR Feedback Note / Comments <span className="text-sky-700 font-normal">(Visible to Employee)</span>
-                </label>
-                <textarea
-                  rows={3}
-                  value={hrFeedback}
-                  onChange={(e) => setHrFeedback(e.target.value)}
-                  placeholder="Enter feedback message for the employee (e.g. 'Approved: Have a good vacation!' or 'Rejected: Crucial project release on these dates')."
-                  className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-sky-100">
                 <button
-                  type="button"
                   onClick={() => setSelectedLeaveForAction(null)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-sky-100 border border-sky-200 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-700 text-lg p-1 cursor-pointer"
                 >
-                  Cancel
+                  ✕
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleHrAction("REJECTED")}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
-                >
-                  ✕ Reject Request
-                </button>
+              <div className="p-6 space-y-4">
+                <div className="bg-sky-50/40 p-4 rounded-xl border border-sky-100 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Applicant:</span>
+                    <span className="font-bold text-slate-900">
+                      {selectedLeaveForAction.employees?.full_name || "Employee"}
+                      {isActionTargetHR && (
+                        <span className="ml-2 text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                          HR Staff
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Department:</span>
+                    <span className="text-slate-700">{selectedLeaveForAction.employees?.department || "General"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Leave Type:</span>
+                    <span className="font-semibold text-sky-700">{selectedLeaveForAction.leave_type}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Duration:</span>
+                    <span className="font-mono text-slate-800 font-bold">
+                      {selectedLeaveForAction.start_date} to {selectedLeaveForAction.end_date} ({selectedLeaveForAction.total_days} days)
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-sky-100">
+                    <span className="text-slate-500 block mb-1">Reason:</span>
+                    <p className="text-slate-700 italic">{selectedLeaveForAction.reason}</p>
+                  </div>
+                </div>
 
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={() => handleHrAction("APPROVED")}
-                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
-                >
-                  ✓ Approve Request
-                </button>
+                <div>
+                  <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
+                    {isAdmin ? "Owner Feedback Note / Remarks" : "HR Feedback Note / Comments"}{" "}
+                    <span className="text-sky-700 font-normal">(Visible to Applicant)</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={hrFeedback}
+                    onChange={(e) => setHrFeedback(e.target.value)}
+                    placeholder="Enter feedback message (e.g. 'Approved: Have a good vacation!' or 'Rejected: Key deliverables scheduled on these dates')."
+                    className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-3 pt-3 border-t border-sky-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLeaveForAction(null)}
+                    className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-sky-100 border border-sky-200 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleHrAction("REJECTED")}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
+                  >
+                    ✕ Reject Request
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={() => handleHrAction("APPROVED")}
+                    className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+                  >
+                    ✓ Approve Request
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

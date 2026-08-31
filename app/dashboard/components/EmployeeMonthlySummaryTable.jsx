@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { createClient } from "@/lib/supabase/client";
 
 function formatDurationHMS(totalSeconds) {
   if (!totalSeconds || isNaN(totalSeconds) || totalSeconds <= 0) return "00h 00m 00s";
@@ -31,14 +33,38 @@ export default function EmployeeMonthlySummaryTable() {
   const [activeModalEmp, setActiveModalEmp] = useState(null);
   const [empDailyBreakdown, setEmpDailyBreakdown] = useState([]);
   const [modalLoading, setModalLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Lock body scroll and handle Escape key when modal is open
+  useEffect(() => {
+    if (!activeModalEmp) return;
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setActiveModalEmp(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [activeModalEmp]);
 
   const fetchMonthlySummary = async (monthStr, isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
       setErrorNotice("");
-      const res = await fetch(`/api/attendance/monthly-summary?month=${monthStr}`);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+      const res = await fetch(`/api/attendance/monthly-summary?month=${monthStr}`, { headers });
       if (res.status === 401) {
-        window.location.href = "/login";
         return;
       }
       if (!res.ok) {
@@ -51,7 +77,6 @@ export default function EmployeeMonthlySummaryTable() {
           expectedWorkDaysInMonth: data.expectedWorkDaysInMonth || 22,
           expectedMonthlyHours: data.expectedMonthlyHours || 176,
           dailyTargetHours: data.dailyTargetHours || 8.0,
-          departmentBenchmarks: data.departmentBenchmarks || [],
         });
       }
     } catch (err) {
@@ -63,7 +88,10 @@ export default function EmployeeMonthlySummaryTable() {
   };
 
   useEffect(() => {
-    fetchMonthlySummary(selectedMonth, true);
+    const initMonthly = async () => {
+      await fetchMonthlySummary(selectedMonth, true);
+    };
+    initMonthly();
 
     // Real-time 2-second polling ticker & postgres update event listener
     const interval = setInterval(() => {
@@ -113,7 +141,6 @@ export default function EmployeeMonthlySummaryTable() {
       "Email",
       "Department",
       "Designation",
-      "Health Score (0-100)",
       "Attendance Status",
       "Total Effective Working Days",
       "Shift Days Worked",
@@ -127,7 +154,6 @@ export default function EmployeeMonthlySummaryTable() {
       "Overtime (+OT) Hours (hrs)",
       "Completion Rate (%)",
       "Burnout Risk Level",
-      "HR Remarks & Evaluation Notes",
     ];
 
     const escapeCsv = (val) => {
@@ -142,7 +168,6 @@ export default function EmployeeMonthlySummaryTable() {
       escapeCsv(emp.email || ""),
       escapeCsv(emp.department || "General"),
       escapeCsv(emp.designation || ""),
-      emp.healthScore ?? 90,
       escapeCsv((emp.evaluationBadge || "Satisfactory").replace(/[\u{1F300}-\u{1F9FF}]/gu, "").trim()),
       emp.totalWorkingDays || 0,
       emp.attendanceWorkedDays || emp.totalWorkingDays || 0,
@@ -156,7 +181,6 @@ export default function EmployeeMonthlySummaryTable() {
       Number(emp.overtimeHours || 0).toFixed(1),
       `${emp.completionRate || 0}%`,
       escapeCsv(emp.burnoutRiskLevel || "LOW"),
-      escapeCsv(emp.hrRemarks || emp.suggestionText || ""),
     ]);
 
     // Use BOM \uFEFF for UTF-8 compatibility in Excel
@@ -192,32 +216,17 @@ export default function EmployeeMonthlySummaryTable() {
     return matchesSearch && matchesDept;
   });
 
-  // Aggregated Metrics
-  const totalEmployeesCount = summaryData.staffSummaryTable.length;
-  const totalWorkedHoursSum = summaryData.staffSummaryTable.reduce(
-    (acc, curr) => acc + (curr.workedHours || curr.totalWorkingHours || 0),
-    0
-  );
-  const totalOvertimeHoursSum = summaryData.staffSummaryTable.reduce(
-    (acc, curr) => acc + (curr.overtimeHours || 0),
-    0
-  );
-
   return (
     <div className="space-y-6">
       {/* --- HEADER CONTROLS & METRICS --- */}
-      <div className="bg-white border border-sky-100 rounded-2xl p-6 shadow-2xs space-y-6">
+      <div className="bg-white border border-sky-100 rounded-2xl p-6 shadow-2xs space-y-5">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-sky-100 pb-5">
           <div>
-            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wider border border-emerald-200 mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Real-Time HR Summary & Evaluation
-            </div>
             <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
               Employee Monthly Summary
             </h2>
             <p className="text-xs text-slate-500 mt-1">
-              Working days, required hours, worked hours, shortfalls, Loss of Pay (LOP), and HR holidays processed in real-time.
+              Working days, required hours, worked hours, shortfalls, Loss of Pay (LOP), and HR holidays.
             </p>
           </div>
 
@@ -253,62 +262,8 @@ export default function EmployeeMonthlySummaryTable() {
           </div>
         </div>
 
-        {/* Top KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-sky-50/50 border border-sky-100 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-sky-100 border border-sky-200 flex items-center justify-center text-xl text-sky-700">
-              👥
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Total Evaluated
-              </div>
-              <div className="text-xl font-extrabold text-slate-900 mt-0.5">
-                {totalEmployeesCount} Employees
-              </div>
-              <div className="text-[10px] text-slate-500 font-mono">
-                Target: {summaryData.expectedWorkDaysInMonth}d / {summaryData.expectedMonthlyHours}h
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-sky-50/50 border border-sky-100 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-xl text-emerald-700">
-              ⏱️
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Total Worked Hours
-              </div>
-              <div className="text-xl font-extrabold text-emerald-700 font-mono mt-0.5">
-                {totalWorkedHoursSum.toFixed(1)} hrs
-              </div>
-              <div className="text-[10px] text-slate-500">
-                Shift hours + leave credit
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-sky-50/50 border border-sky-100 rounded-xl p-4 flex items-center gap-4">
-            <div className="w-11 h-11 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-center text-xl text-sky-700">
-              ⚡
-            </div>
-            <div>
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Total Overtime (+OT)
-              </div>
-              <div className="text-xl font-extrabold text-sky-700 font-mono mt-0.5">
-                +{totalOvertimeHoursSum.toFixed(1)} hrs
-              </div>
-              <div className="text-[10px] text-slate-500">
-                Extra shift hours logged
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+        <div className="flex flex-col sm:flex-row items-center gap-3">
           {/* Search Box */}
           <div className="relative flex-1 w-full">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
@@ -356,48 +311,6 @@ export default function EmployeeMonthlySummaryTable() {
         </div>
       )}
 
-      {/* --- DEPARTMENT CAPACITY & HEALTH BENCHMARKS WIDGET --- */}
-      {summaryData.departmentBenchmarks && summaryData.departmentBenchmarks.length > 0 && (
-        <div className="bg-white border border-sky-100 rounded-2xl p-5 shadow-2xs space-y-3">
-          <div className="flex items-center justify-between border-b border-sky-100 pb-3">
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-              <span>🏢</span> Department Capacity & Health Benchmarks
-            </h3>
-            <span className="text-[10px] text-slate-500 font-mono">
-              {summaryData.departmentBenchmarks.length} Active Departments
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-            {summaryData.departmentBenchmarks.map((dept) => {
-              const scoreColor =
-                dept.averageHealthScore >= 90
-                  ? "text-emerald-700 border-emerald-200 bg-emerald-50"
-                  : dept.averageHealthScore >= 75
-                  ? "text-amber-700 border-amber-200 bg-amber-50"
-                  : "text-rose-700 border-rose-200 bg-rose-50";
-
-              return (
-                <div
-                  key={dept.department}
-                  className="bg-sky-50/40 border border-sky-100 rounded-xl p-3 space-y-1.5"
-                >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-900 truncate">{dept.department}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border font-mono ${scoreColor}`}>
-                      {dept.averageHealthScore}/100
-                    </span>
-                  </div>
-
-                  <div className="text-[10px] text-slate-500 pt-1 border-t border-sky-100 font-mono">
-                    Worked: <span className="text-emerald-700 font-bold">{dept.totalWorkedHours}h</span> | OT: <span className="text-sky-700 font-bold">+{dept.totalOvertimeHours}h</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* --- EMPLOYEE MONTHLY SUMMARY TABLE --- */}
       <div className="bg-white border border-sky-100 rounded-2xl overflow-hidden shadow-2xs">
@@ -405,7 +318,7 @@ export default function EmployeeMonthlySummaryTable() {
           <div className="py-20 text-center space-y-3">
             <div className="w-8 h-8 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-xs text-slate-500 font-medium">
-              Evaluating real-time working hours, shortfalls & HR remarks...
+              Evaluating real-time working hours, attendance &amp; overtime...
             </p>
           </div>
         ) : filteredStaff.length === 0 ? (
@@ -418,40 +331,35 @@ export default function EmployeeMonthlySummaryTable() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-sky-50/50 border-b border-sky-100 text-sky-900 font-bold uppercase tracking-wider text-[10px]">
+            <table className="w-full text-left text-xs min-w-[850px]">
+              <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-700 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-4 px-4">Employee</th>
-                  <th className="py-4 px-4">Department</th>
-                  <th className="py-4 px-4 text-center">Health Score</th>
-                  <th className="py-4 px-4 text-center">Working Days</th>
-                  <th className="py-4 px-4 text-right">Required Hours</th>
-                  <th className="py-4 px-4 text-right">Worked Hours</th>
-                  <th className="py-4 px-4 text-right">Overtime (+OT)</th>
-                  <th className="py-4 px-4">HR Remarks</th>
-                  <th className="py-4 px-4 text-center">Action</th>
+                  <th className="py-3.5 px-4">Employee</th>
+                  <th className="py-3.5 px-4">Department &amp; Role</th>
+                  <th className="py-3.5 px-4 text-center">Working Days</th>
+                  <th className="py-3.5 px-4 text-right">Required Hours</th>
+                  <th className="py-3.5 px-4 text-right">Worked Hours</th>
+                  <th className="py-3.5 px-4 text-right">Overtime (+OT)</th>
+                  <th className="py-3.5 px-4 text-center">Attendance Fulfillment</th>
+                  <th className="py-3.5 px-4 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-sky-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {filteredStaff.map((emp) => {
                   const initial = emp.fullName ? emp.fullName.charAt(0).toUpperCase() : "?";
-                  const score = emp.healthScore ?? 90;
-                  const scoreBadgeClass =
-                    score >= 90
-                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                      : score >= 75
-                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : "bg-rose-50 text-rose-700 border-rose-200";
+                  const reqHours = emp.requiredHours ?? emp.expectedMonthlyHours ?? summaryData.expectedMonthlyHours ?? 0;
+                  const workedHrs = emp.workedHours ?? emp.totalWorkingHours ?? 0;
+                  const completionPct = reqHours > 0 ? Math.min(Math.round((workedHrs / reqHours) * 100), 100) : 100;
 
                   return (
                     <tr
                       key={emp.employeeId}
-                      className="hover:bg-sky-50/50 transition duration-150 group"
+                      className="hover:bg-slate-50/80 transition-colors group"
                     >
                       {/* Employee Profile */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 flex items-center justify-center font-bold shadow-2xs text-sm shrink-0">
+                          <div className="w-9 h-9 rounded-xl bg-sky-100/80 border border-sky-200 text-sky-800 flex items-center justify-center font-extrabold shadow-2xs text-xs shrink-0">
                             {initial}
                           </div>
                           <div>
@@ -471,51 +379,43 @@ export default function EmployeeMonthlySummaryTable() {
                       </td>
 
                       {/* Department & Role */}
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
                           {emp.department || "General"}
                         </span>
-                        <div className="text-[10px] text-slate-500 capitalize mt-0.5">
+                        <div className="text-[10px] text-slate-500 capitalize mt-0.5 font-medium">
                           {emp.role || "Employee"}
                         </div>
-                      </td>
-
-                      {/* Health Score (0 - 100 Index) */}
-                      <td className="py-3.5 px-4 text-center">
-                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black border font-mono shadow-2xs ${scoreBadgeClass}`}>
-                          <span>{score >= 90 ? "🟢" : score >= 75 ? "🟡" : "🔴"}</span>
-                          <span>{score}/100</span>
-                        </span>
                       </td>
 
                       {/* Working Days Breakdown */}
                       <td className="py-3.5 px-4 text-center">
                         <div className="font-mono font-bold text-slate-900 text-xs">
                           {emp.totalWorkingDays || emp.attendanceWorkedDays || 0}d
-                          <span className="text-slate-500 font-mono text-[10px]">
+                          <span className="text-slate-400 font-mono text-[10px]">
                             {" "}/ {summaryData.expectedWorkDaysInMonth}d
                           </span>
                         </div>
-                        <div className="text-[10px] text-slate-500">
+                        <div className="text-[10px] text-slate-500 mt-0.5">
                           {emp.attendanceWorkedDays ?? emp.totalWorkingDays ?? 0}d worked
                           {emp.approvedLeaveDays > 0 ? `, +${emp.approvedLeaveDays}d leave` : ""}
-                          {emp.companyHolidaysCount > 0 ? `, +${emp.companyHolidaysCount}d HR holiday` : ""}
+                          {emp.companyHolidaysCount > 0 ? `, +${emp.companyHolidaysCount}d holiday` : ""}
                         </div>
                       </td>
 
                       {/* Required Hours */}
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-700">
-                        {(emp.requiredHours ?? emp.expectedMonthlyHours ?? summaryData.expectedMonthlyHours ?? 0).toFixed(1)} hrs
+                        {reqHours.toFixed(1)} hrs
                       </td>
 
                       {/* Worked Hours */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="font-mono font-bold text-emerald-700 text-xs">
-                          {(emp.workedHours ?? emp.totalWorkingHours ?? 0).toFixed(1)} hrs
+                          {workedHrs.toFixed(1)} hrs
                         </div>
                         {emp.approvedLeaveHours > 0 && (
                           <div className="text-[10px] text-sky-700 font-semibold mt-0.5" title="Approved Paid Leave Credit">
-                            ✈️ +{emp.approvedLeaveHours.toFixed(1)}h Leave Credit
+                            +{emp.approvedLeaveHours.toFixed(1)}h Leave Credit
                           </div>
                         )}
                       </td>
@@ -524,11 +424,11 @@ export default function EmployeeMonthlySummaryTable() {
                       <td className="py-3.5 px-4 text-right font-mono">
                         {emp.overtimeHours > 0 ? (
                           <div className="space-y-1">
-                            <span className="inline-block px-2 py-0.5 rounded-lg text-xs font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="inline-block px-2 py-0.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               +{emp.overtimeHours.toFixed(1)} hrs
                             </span>
                             {emp.burnoutRiskLevel === "HIGH" && (
-                              <div className="text-[9px] text-amber-700 font-extrabold flex items-center justify-end gap-0.5">
+                              <div className="text-[9px] text-amber-700 font-bold flex items-center justify-end gap-0.5">
                                 <span>🔥</span>
                                 <span>Burnout Risk</span>
                               </div>
@@ -539,38 +439,40 @@ export default function EmployeeMonthlySummaryTable() {
                         )}
                       </td>
 
-                      {/* HR Remarks */}
-                      <td className="py-3.5 px-4 max-w-xs">
-                        <div className="space-y-1">
+                      {/* Attendance Fulfillment */}
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                        <div className="inline-flex flex-col items-center gap-1">
                           <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${
-                              emp.evaluationLevel === "EXCELLENT"
-                                ? "bg-amber-50 text-amber-800 border-amber-200 animate-pulse"
-                                : emp.evaluationLevel === "GOOD"
-                                ? "bg-sky-50 text-sky-800 border-sky-200"
-                                : emp.evaluationLevel === "CRITICAL"
-                                ? "bg-rose-50 text-rose-800 border-rose-200"
-                                : emp.evaluationLevel === "WARNING"
-                                ? "bg-amber-50 text-amber-800 border-amber-200"
-                                : "bg-slate-100 text-slate-700 border-slate-200"
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                              completionPct >= 100
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : completionPct >= 85
+                                ? "bg-sky-50 text-sky-700 border-sky-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
                             }`}
                           >
-                            {emp.evaluationBadge}
+                            <span>{completionPct >= 100 ? "✓" : "⏱"}</span>
+                            <span>{completionPct}% Fulfilled</span>
                           </span>
-                          <p className="text-[11px] text-slate-700 leading-snug line-clamp-2">
-                            {emp.hrRemarks || emp.suggestionText}
-                          </p>
+                          {emp.totalLopShortageHours > 0 && (
+                            <span className="text-[10px] text-rose-600 font-semibold">
+                              -{emp.totalLopShortageHours.toFixed(1)}h Shortfall
+                            </span>
+                          )}
                         </div>
                       </td>
 
                       {/* Action */}
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="py-3.5 px-4 text-center whitespace-nowrap">
                         <button
                           onClick={() => handleOpenBreakdownModal(emp)}
-                          className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold transition cursor-pointer flex items-center gap-1 mx-auto shadow-2xs"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-sky-700 hover:text-sky-800 border border-slate-200 hover:border-sky-200 text-xs font-semibold transition cursor-pointer shadow-2xs mx-auto"
+                          title={`View monthly summary report for ${emp.fullName}`}
                         >
-                          <span>🔍</span>
-                          <span>Check Daily Records</span>
+                          <svg className="w-3.5 h-3.5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Monthly Report</span>
                         </button>
                       </td>
                     </tr>
@@ -583,27 +485,40 @@ export default function EmployeeMonthlySummaryTable() {
       </div>
 
       {/* --- INDIVIDUAL EMPLOYEE DAILY RECORD DRILL-DOWN MODAL --- */}
-      {activeModalEmp && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-4xl bg-white border border-sky-100 rounded-2xl p-6 space-y-5 shadow-2xl max-h-[90vh] flex flex-col">
+      {mounted && activeModalEmp && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[99999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+          onClick={() => setActiveModalEmp(null)}
+        >
+          <div
+            className="relative w-full max-w-4xl bg-white border border-sky-100 rounded-2xl p-5 sm:p-6 space-y-5 shadow-2xl max-h-[90vh] flex flex-col my-auto animate-scaleUp"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-sky-100 pb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center font-extrabold text-white text-lg">
+                <div className="w-11 h-11 rounded-2xl bg-sky-600 flex items-center justify-center font-extrabold text-white text-lg shadow-md shadow-sky-500/20 shrink-0">
                   {activeModalEmp.fullName?.charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h3 className="text-base font-extrabold text-slate-900">
+                  <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 text-[10px] font-bold uppercase tracking-wider border border-sky-200 mb-1">
+                    <span>📊</span> Monthly Summary Report
+                  </div>
+                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
                     {activeModalEmp.fullName} — Daily Shift Records ({selectedMonth})
                   </h3>
-                  <p className="text-xs text-slate-500">
-                    {activeModalEmp.department} • {activeModalEmp.email}
+                  <p className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                    <span>{activeModalEmp.department || "General"}</span>
+                    <span>•</span>
+                    <span>{activeModalEmp.email}</span>
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setActiveModalEmp(null)}
-                className="w-8 h-8 rounded-lg bg-sky-50 hover:bg-sky-100 text-slate-400 hover:text-slate-700 flex items-center justify-center transition cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition cursor-pointer text-sm font-bold shrink-0"
+                title="Close (Esc)"
+                aria-label="Close modal"
               >
                 ✕
               </button>
@@ -666,7 +581,7 @@ export default function EmployeeMonthlySummaryTable() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-sky-50/50 text-sky-900 text-[10px] uppercase font-bold">
+                    <thead className="bg-sky-50/50 text-sky-900 text-[10px] uppercase font-bold sticky top-0 backdrop-blur-xs">
                       <tr>
                         <th className="py-2.5 px-3">Date</th>
                         <th className="py-2.5 px-3">Check In — Check Out</th>
@@ -674,7 +589,7 @@ export default function EmployeeMonthlySummaryTable() {
                         <th className="py-2.5 px-3 text-right">Worked</th>
                         <th className="py-2.5 px-3 text-right">Shortfall</th>
                         <th className="py-2.5 px-3 text-right">Overtime</th>
-                        <th className="py-2.5 px-3">HR Remarks / Status</th>
+                        <th className="py-2.5 px-3">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-sky-100">
@@ -719,10 +634,10 @@ export default function EmployeeMonthlySummaryTable() {
                                 <span className="text-slate-400">0.0h</span>
                               )}
                             </td>
-                            <td className="py-2.5 px-3 max-w-xs">
-                              <div className="text-[11px] text-slate-700 font-medium leading-snug">
-                                {log.hrRemarks || log.status}
-                              </div>
+                            <td className="py-2.5 px-3 whitespace-nowrap">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                {log.status === "CHECKED_IN" ? "On Duty" : log.status === "CHECKED_OUT" ? "Completed" : log.status || "Logged"}
+                              </span>
                             </td>
                           </tr>
                         );
@@ -734,16 +649,20 @@ export default function EmployeeMonthlySummaryTable() {
             </div>
 
             {/* Modal Footer */}
-            <div className="border-t border-sky-100 pt-3 flex justify-end">
+            <div className="border-t border-sky-100 pt-3 flex items-center justify-between">
+              <span className="text-[11px] text-slate-400">
+                Press <kbd className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-600 font-mono text-[10px]">Esc</kbd> or click outside to close
+              </span>
               <button
                 onClick={() => setActiveModalEmp(null)}
-                className="px-4 py-2 rounded-xl bg-sky-100 hover:bg-sky-200 text-slate-700 text-xs font-semibold cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-sky-100 hover:bg-sky-200 text-slate-700 text-xs font-semibold cursor-pointer transition"
               >
-                Close
+                Close Report
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

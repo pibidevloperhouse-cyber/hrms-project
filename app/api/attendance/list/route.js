@@ -22,10 +22,15 @@ export async function GET(req) {
     const adminSupabase = createAdminClient();
     const userEmail = user.email ? user.email.toLowerCase() : "";
 
+    let empOrFilter = `auth_user_id.eq.${user.id}`;
+    if (userEmail) {
+      empOrFilter += `,email.eq."${userEmail.replace(/"/g, '""')}"`;
+    }
+
     const { data: empRecords } = await adminSupabase
       .from("employees")
       .select("*, companies:company_id(*)")
-      .or(`auth_user_id.eq.${user.id},email.eq.${userEmail}`)
+      .or(empOrFilter)
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -34,10 +39,15 @@ export async function GET(req) {
     let userRole = currentEmp ? currentEmp.role : "employee";
 
     if (!companyId) {
+      let adminOrFilter = `admin_id.eq.${user.id}`;
+      if (userEmail) {
+        adminOrFilter += `,email.eq."${userEmail.replace(/"/g, '""')}"`;
+      }
+
       const { data: adminCompanies } = await adminSupabase
         .from("companies")
         .select("*")
-        .or(`admin_id.eq.${user.id},email.eq.${userEmail}`);
+        .or(adminOrFilter);
 
       if (adminCompanies && adminCompanies.length > 0) {
         companyId = adminCompanies[0].id;
@@ -96,6 +106,23 @@ export async function GET(req) {
 
     if (attErr && attErr.code !== "42P01") {
       console.warn("Attendance table error:", attErr.message);
+    }
+
+    // Check if daily summary report has already been sent for this date
+    let isReportSent = false;
+    try {
+      const { data: sentNotifs } = await adminSupabase
+        .from("notifications")
+        .select("id")
+        .eq("company_id", companyId)
+        .or(`title.eq."📊 Daily Attendance Summary Sent - ${dateParam}",message.ilike."%${dateParam}%"`)
+        .limit(1);
+
+      if (sentNotifs && sentNotifs.length > 0) {
+        isReportSent = true;
+      }
+    } catch {
+      // If notifications table is not queryable, will fallback to client storage
     }
 
     const nowMs = Date.now();
@@ -313,6 +340,7 @@ export async function GET(req) {
     return NextResponse.json({
       success: true,
       date: dateParam,
+      isReportSent: Boolean(isReportSent),
       isCompanyHoliday,
       holidayTitle: dateHolidayTitle,
       summary: {

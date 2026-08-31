@@ -1,14 +1,5 @@
-import Register from '@/app/(auth)/register-company/page';
-import Login from '@/app/(auth)/login/page';
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return (
-    
-    <>
-
-      {/* <Register /> */}
-      <Login/>
-    
-    </>
-  );
+  redirect("/login");
 }

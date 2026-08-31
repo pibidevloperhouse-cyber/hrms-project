@@ -69,10 +69,10 @@ export default function AttendanceOverviewCard({ totalStaffCount = 1 }) {
           </span>
         </div>
 
-        {/* Big Health Rate Metric */}
+        {/* Attendance Rate Metric */}
         <div className="flex items-center justify-between bg-sky-50/50 p-4 rounded-2xl border border-sky-100">
           <div>
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Attendance Health</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Attendance Rate</span>
             <div className="text-2xl font-black text-slate-900">{presentCount} / {effectiveTotalStaff} Present</div>
           </div>
           <div className="w-12 h-12 rounded-full border-4 border-emerald-500 border-t-emerald-200 flex items-center justify-center text-xs font-bold text-emerald-700 font-mono">
