@@ -115,14 +115,15 @@ export async function GET(req) {
         .from("notifications")
         .select("id")
         .eq("company_id", companyId)
-        .or(`title.eq."📊 Daily Attendance Summary Sent - ${dateParam}",message.ilike."%${dateParam}%"`)
+        .ilike("title", `%Daily Attendance Summary%`)
+        .ilike("title", `%${dateParam}%`)
         .limit(1);
 
       if (sentNotifs && sentNotifs.length > 0) {
         isReportSent = true;
       }
     } catch {
-      // If notifications table is not queryable, will fallback to client storage
+      // Ignore notifications query errors
     }
 
     const nowMs = Date.now();

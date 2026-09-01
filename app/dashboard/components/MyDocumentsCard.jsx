@@ -2,6 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  CalendarIcon,
+  SearchIcon,
+  FileTextIcon,
+  UsersIcon,
+} from "./AttendanceIcons";
 
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return "0 B";
@@ -377,12 +383,12 @@ export default function MyDocumentsCard() {
       <div className="flex flex-col md:flex-row items-center justify-between gap-3 bg-sky-50/30 p-2.5 rounded-2xl border border-sky-100">
         <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
           {[
-            { id: "ALL", label: `📁 All Files (${documents.length})` },
-            { id: "PERSONAL_INFORMATION", label: `👤 Personal Records (${personalDocsCount})` },
-            { id: "PERSONAL_DETAILS", label: `📄 Details (${personalDetailsCount})` },
-            { id: "OFFER_LETTER", label: `📜 Offer Letters (${offerLetterCount})` },
-            { id: "EXPERIENCE_CERTIFICATE", label: `🎓 Certificates (${experienceCertCount})` },
-            { id: "SALARY_PAYSLIP", label: `💳 Payslips (${payslipsCount})` },
+            { id: "ALL", label: `All Files (${documents.length})` },
+            { id: "PERSONAL_INFORMATION", label: `Personal Records (${personalDocsCount})` },
+            { id: "PERSONAL_DETAILS", label: `Details (${personalDetailsCount})` },
+            { id: "OFFER_LETTER", label: `Offer Letters (${offerLetterCount})` },
+            { id: "EXPERIENCE_CERTIFICATE", label: `Certificates (${experienceCertCount})` },
+            { id: "SALARY_PAYSLIP", label: `Payslips (${payslipsCount})` },
           ].map((cat) => (
             <button
               key={cat.id}
@@ -399,7 +405,9 @@ export default function MyDocumentsCard() {
         </div>
 
         <div className="relative w-full md:w-72">
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+            <SearchIcon className="w-3.5 h-3.5" />
+          </span>
           <input
             type="text"
             placeholder="Search by file name or notes..."
@@ -416,7 +424,7 @@ export default function MyDocumentsCard() {
           {/* Header Row */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-lg">📅</span>
+              <CalendarIcon className="w-4 h-4 text-emerald-700" />
               <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Filter by Pay Period</h3>
             </div>
             <button

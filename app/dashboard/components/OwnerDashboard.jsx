@@ -78,7 +78,11 @@ export default function OwnerDashboard({
         <div className="bg-white border border-sky-100 rounded-2xl p-5 space-y-2 hover:border-sky-300 transition shadow-2xs">
           <div className="flex items-center justify-between text-slate-500">
             <span className="text-xs font-semibold uppercase tracking-wider">Owner Control Tier</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center text-base">👑</div>
+            <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
           </div>
           <div className="text-lg font-bold text-amber-700">Full Workspace Admin</div>
           <span className="text-[11px] text-slate-500">Realtime Operations Sync</span>

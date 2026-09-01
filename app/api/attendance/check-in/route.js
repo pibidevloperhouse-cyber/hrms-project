@@ -408,9 +408,12 @@ export async function POST(req) {
         timeZone,
       });
 
+      const employeeId = empRecord.employee_id || (empRecord.id ? `EMP-${empRecord.id.slice(0, 5).toUpperCase()}` : "EMP-001");
+
       try {
         const emailHtml = buildLateCheckInEmailHTML({
           employeeName: empRecord.full_name || "Employee",
+          employeeId,
           companyName,
           scheduledTime: delayInfo.scheduledTime,
           checkInTime: delayInfo.checkInTime,
@@ -425,7 +428,7 @@ export async function POST(req) {
         const sendRes = await transporter.sendMail({
           from: senderAddress,
           to: targetEmail,
-          subject: `⏰ Late Check-In Notice (${delayInfo.delayDuration} Delayed) - ${companyName}`,
+          subject: `Late Check-In Notice - ${empRecord.full_name || "Employee"} (${dateStr})`,
           html: emailHtml,
         });
         emailDispatched = true;

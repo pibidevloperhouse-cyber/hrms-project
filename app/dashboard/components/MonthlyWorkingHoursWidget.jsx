@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { BarChartIcon, CalendarIcon, ShieldIcon } from "./AttendanceIcons";
 
 export default function MonthlyWorkingHoursWidget() {
   const [targetMonth, setTargetMonth] = useState(
@@ -56,12 +57,12 @@ export default function MonthlyWorkingHoursWidget() {
   const absentDays = summary.absentDays ?? 0;
 
   return (
-    <div className="bg-white border border-sky-100 rounded-2xl p-6 shadow-2xs space-y-5 flex flex-col justify-between hover:border-sky-300 transition duration-300">
+    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs space-y-5 flex flex-col justify-between hover:border-sky-200 transition duration-300">
       {/* Widget Header & Month Picker */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sky-100 pb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-lg text-sky-600 shadow-2xs">
-            📊
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+            <BarChartIcon className="w-4 h-4" />
           </div>
           <div>
             <h3 className="text-base font-extrabold text-slate-900">
@@ -73,8 +74,8 @@ export default function MonthlyWorkingHoursWidget() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-sky-50/50 border border-sky-200 rounded-xl px-3 py-1.5 self-start sm:self-auto">
-          <span className="text-slate-500 text-xs">📅</span>
+        <div className="flex items-center gap-2 bg-slate-50/70 border border-slate-200 rounded-xl px-3 py-1.5 self-start sm:self-auto">
+          <CalendarIcon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
           <input
             type="month"
             value={targetMonth}
@@ -92,7 +93,7 @@ export default function MonthlyWorkingHoursWidget() {
       ) : (
         <div className="space-y-5">
           {/* Main Big Metric & Progress */}
-          <div className="bg-sky-50/50 border border-sky-100 rounded-xl p-4 space-y-3">
+          <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -110,7 +111,7 @@ export default function MonthlyWorkingHoursWidget() {
             </div>
 
             {/* Progress Bar */}
-            <div className="w-full bg-sky-100 h-2.5 rounded-full overflow-hidden border border-sky-200/60">
+            <div className="w-full bg-slate-200/70 h-2.5 rounded-full overflow-hidden border border-slate-200/60">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   completionRate >= 95
@@ -129,7 +130,7 @@ export default function MonthlyWorkingHoursWidget() {
           {/* Breakdown Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             {/* Shift Hours Worked */}
-            <div className="bg-sky-50/40 p-3 rounded-xl border border-sky-100 space-y-0.5">
+            <div className="bg-slate-50/60 p-3 rounded-xl border border-slate-200 space-y-0.5">
               <span className="text-[10px] text-slate-500 font-bold uppercase block">
                 Shift Worked
               </span>
@@ -139,7 +140,7 @@ export default function MonthlyWorkingHoursWidget() {
             </div>
 
             {/* Approved Leave Credit */}
-            <div className="bg-sky-50/40 p-3 rounded-xl border border-sky-200 space-y-0.5">
+            <div className="bg-sky-50/60 p-3 rounded-xl border border-sky-200 space-y-0.5">
               <span className="text-[10px] text-sky-800 font-bold uppercase block">
                 Leave Credit
               </span>
@@ -159,7 +160,7 @@ export default function MonthlyWorkingHoursWidget() {
             </div>
 
             {/* Absent Days */}
-            <div className="bg-sky-50/40 p-3 rounded-xl border border-sky-100 space-y-0.5">
+            <div className="bg-slate-50/60 p-3 rounded-xl border border-slate-200 space-y-0.5">
               <span className="text-[10px] text-slate-500 font-bold uppercase block">
                 Absent Days
               </span>
@@ -173,7 +174,7 @@ export default function MonthlyWorkingHoursWidget() {
           {summary.evaluationBadge && (
             <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2">
-                <span className="text-sm">🛡️</span>
+                <ShieldIcon className="w-4 h-4 text-sky-700 shrink-0" />
                 <span className="font-extrabold text-slate-900">
                   {summary.evaluationBadge}
                 </span>

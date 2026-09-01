@@ -157,8 +157,13 @@ export async function POST(req) {
     });
 
     if (authError) {
-      if (authError.message?.includes("already been registered") || authError.status === 422) {
-        const { data: usersList } = await adminSupabase.auth.admin.listUsers();
+      if (
+        authError.message?.includes("already been registered") ||
+        authError.message?.includes("already exists") ||
+        authError.status === 422 ||
+        authError.code === "email_exists"
+      ) {
+        const { data: usersList, error: listErr } = await adminSupabase.auth.admin.listUsers();
         const existingUser = usersList?.users?.find(
           (u) => u.email?.toLowerCase() === cleanEmail
         );
@@ -179,26 +184,35 @@ export async function POST(req) {
           );
 
           if (updateErr) {
+            console.error("Failed to update auth password:", updateErr);
             return NextResponse.json(
-              { message: "Failed to set user password: " + updateErr.message },
+              { message: "Failed to update account password: " + updateErr.message },
               { status: 400 }
             );
           }
-          authUser = updatedUser.user;
+          authUser = updatedUser?.user || updatedUser || existingUser;
         } else {
           return NextResponse.json(
-            { message: "Account creation error: " + authError.message },
+            { message: "User account already exists. Please log in directly or reset your password." },
             { status: 400 }
           );
         }
       } else {
+        console.error("Auth creation error:", authError);
         return NextResponse.json(
           { message: "Failed to create authentication user: " + authError.message },
           { status: 400 }
         );
       }
     } else {
-      authUser = createdAuthUser.user;
+      authUser = createdAuthUser?.user || createdAuthUser;
+    }
+
+    if (!authUser || !authUser.id) {
+      return NextResponse.json(
+        { message: "Failed to configure user authentication. Please try again." },
+        { status: 500 }
+      );
     }
 
     // 4. Generate Username and activate Employee record
@@ -208,7 +222,7 @@ export async function POST(req) {
       .from("employees")
       .select("id")
       .eq("company_id", invitation.company_id)
-      .eq("email", cleanEmail)
+      .ilike("email", cleanEmail)
       .maybeSingle();
 
     let employeeRecord = null;
@@ -287,10 +301,17 @@ export async function POST(req) {
 
     // 6. Mark invitation status as 'accepted'
     try {
-      await adminSupabase
-        .from("invitations")
-        .update({ status: "accepted" })
-        .eq("token", token);
+      if (invitation?.id) {
+        await adminSupabase
+          .from("invitations")
+          .update({ status: "accepted" })
+          .eq("id", invitation.id);
+      } else if (token) {
+        await adminSupabase
+          .from("invitations")
+          .update({ status: "accepted" })
+          .or(`token.eq.${token},id.eq.${token}`);
+      }
     } catch (invUpdateErr) {
       console.warn("Notice updating invitations status:", invUpdateErr);
     }
@@ -304,7 +325,7 @@ export async function POST(req) {
   } catch (error) {
     console.error("Complete Invitation API Error:", error);
     return NextResponse.json(
-      { message: "Internal server error." },
+      { message: "Internal server error: " + (error?.message || "Please try again.") },
       { status: 500 }
     );
   }

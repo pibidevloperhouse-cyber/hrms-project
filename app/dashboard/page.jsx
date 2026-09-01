@@ -16,15 +16,77 @@ import MyDocumentsCard from "./components/MyDocumentsCard";
 
 // ─── NAV CONFIG ──────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { key: "overview", label: "Overview", icon: "◈" },
-  { key: "attendance", label: "Attendance", icon: "⏱" },
-  { key: "calendar", label: "Work Calendar", icon: "📅" },
-  { key: "leave-requests", label: "Leave Requests", icon: "✈" },
-  { key: "documents", label: "Documents & Payslips", icon: "📄" },
-  { key: "employees", label: "Team Directory", icon: "⊞" },
-  { key: "departments", label: "Departments", icon: "⊟" },
-  { key: "settings", label: "My Profile", icon: "◎" },
+  { key: "overview", label: "Overview" },
+  { key: "attendance", label: "Attendance" },
+  { key: "calendar", label: "Work Calendar" },
+  { key: "leave-requests", label: "Leave Requests" },
+  { key: "documents", label: "Documents & Payslips" },
+  { key: "employees", label: "Team Directory" },
+  { key: "departments", label: "Departments" },
+  { key: "settings", label: "My Profile" },
 ];
+
+function getNavIcon(key, className = "w-4 h-4 shrink-0") {
+  switch (key) {
+    case "overview":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" />
+          <rect x="14" y="14" width="7" height="7" rx="1.5" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+      );
+    case "attendance":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
+        </svg>
+      );
+    case "calendar":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="4" width="18" height="18" rx="2" />
+          <line x1="16" y1="2" x2="16" y2="6" />
+          <line x1="8" y1="2" x2="8" y2="6" />
+          <line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      );
+    case "leave-requests":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+        </svg>
+      );
+    case "documents":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      );
+    case "employees":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      );
+    case "departments":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      );
+    case "settings":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+}
 
 // ─── ROLE CONFIG ──────────────────────────────────────────────────────────────
 const ROLE_MAP = {
@@ -45,7 +107,7 @@ const STATUS_MAP = {
 function RoleBadge({ role }) {
   const r = ROLE_MAP[role] || ROLE_MAP.employee;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold border ${r.bg} ${r.color}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${r.bg} ${r.color}`}>
       {r.label}
     </span>
   );
@@ -102,7 +164,7 @@ function DashboardContent() {
   const [onlineUserIds, setOnlineUserIds] = useState(new Set());
 
   const [activeTab, setActiveTab] = useState("overview");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -563,66 +625,72 @@ function DashboardContent() {
   return (
     <div className="flex h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50/50 text-slate-800 overflow-hidden font-sans">
 
-      {/* --- SIDEBAR --- */}
+      {/* Backdrop overlay for mobile screen */}
       {sidebarOpen && (
-        <div onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs md:hidden" />
+        <div
+          onClick={() => setSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-xs md:hidden"
+        />
       )}
 
-      <aside className={`
-        fixed md:relative z-50 h-full w-64 flex flex-col
-        bg-white/90 backdrop-blur-xl border-r border-sky-100/90 shadow-sm
-        transition-transform duration-300
-        ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-      `}>
-        {/* Brand */}
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-sky-100/80">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-sky-500/20">
-            {company?.name?.charAt(0)?.toUpperCase() || "H"}
+      {/* --- COLLAPSIBLE ENTERPRISE SIDEBAR --- */}
+      <aside
+        className={`
+          fixed md:relative z-50 h-full flex flex-col
+          bg-white/95 backdrop-blur-xl border-r border-sky-100/90 shadow-sm
+          transition-all duration-300 ease-in-out shrink-0
+          ${sidebarOpen
+            ? "w-64 translate-x-0"
+            : "-translate-x-full md:translate-x-0 md:w-0 md:opacity-0 md:pointer-events-none md:border-r-0 md:overflow-hidden"
+          }
+        `}
+      >
+        {/* Brand Header */}
+        <div className="flex items-center justify-between px-4 py-4 border-b border-sky-100/80">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 via-cyan-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-sky-500/20 shrink-0">
+              {company?.name?.charAt(0)?.toUpperCase() || "H"}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 truncate">{company?.name || "Workspace"}</p>
+              <p className="text-[10px] text-sky-600 font-semibold uppercase tracking-wider">HRMS Portal</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-sm font-bold text-slate-900 truncate">{company?.name || "Workspace"}</p>
-            <p className="text-[10px] text-sky-600 font-semibold uppercase tracking-wider">HRMS Portal</p>
-          </div>
-          <button onClick={() => setSidebarOpen(false)} className="ml-auto md:hidden text-slate-400 hover:text-slate-700">
-            ✕
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-sky-50 transition cursor-pointer"
+            title="Collapse Sidebar"
+          >
+            <span className="text-sm font-bold">✕</span>
           </button>
         </div>
 
-        {/* User Profile */}
-        <div className="px-4 py-4 border-b border-sky-100/80">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow-sm">
-              {avatar}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-slate-900 truncate">{displayName}</p>
-              <p className="text-[10px] text-slate-500 truncate">{employeeProfile?.email || userSession?.email}</p>
-            </div>
-          </div>
-          <div className="mt-2.5">
-            <RoleBadge role={userRole} />
-          </div>
-        </div>
-
-        {/* Nav Items */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-          <p className="px-3 mb-2 text-[9px] font-bold text-sky-800/60 uppercase tracking-widest">Navigation</p>
+        {/* Navigation Items with Enhanced Hover Effects */}
+        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1 custom-scroll">
           {NAV_ITEMS.filter((item) => !(item.key === "leave-requests" && userRole === "ADMIN")).map((item) => {
             const active = activeTab === item.key;
             return (
-              <button key={item.key}
-                onClick={() => { setActiveTab(item.key); setSidebarOpen(false); }}
+              <button
+                key={item.key}
+                onClick={() => {
+                  setActiveTab(item.key);
+                  if (typeof window !== "undefined" && window.innerWidth < 768) {
+                    setSidebarOpen(false);
+                  }
+                }}
                 className={`
-                  w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200
+                  w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer group
                   ${active
-                    ? "bg-sky-600 text-white shadow-md shadow-sky-500/20"
-                    : "text-slate-600 hover:text-sky-900 hover:bg-sky-50/80"
+                    ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 text-white shadow-md shadow-cyan-500/20"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-sky-50/80 hover:translate-x-1"
                   }
                 `}
               >
-                <span className="text-base leading-none">{item.icon}</span>
-                <span>{item.label}</span>
+                {getNavIcon(
+                  item.key,
+                  `w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${active ? "text-white" : "text-slate-500 group-hover:text-sky-600"}`
+                )}
+                <span className="truncate">{item.label}</span>
                 {item.key === "employees" && (
                   <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-md ${active ? "bg-white/20 text-white" : "bg-sky-100 text-sky-700"}`}>
                     {employees.length}
@@ -638,36 +706,64 @@ function DashboardContent() {
           })}
 
           {canInvite && (
-            <>
-              <div className="pt-4 pb-1">
-                <p className="px-3 mb-2 text-[9px] font-bold text-sky-800/60 uppercase tracking-widest">Actions</p>
-              </div>
+            <div className="pt-2 border-t border-sky-100/60 mt-2">
               <button
-                onClick={() => { openInviteModal("employee"); setSidebarOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-sky-700 hover:bg-sky-100/70 border border-sky-200 transition-all"
+                onClick={() => {
+                  openInviteModal("employee");
+                  if (typeof window !== "undefined" && window.innerWidth < 768) {
+                    setSidebarOpen(false);
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-sky-700 hover:bg-sky-50 border border-sky-200/80 hover:border-sky-300 transition-all cursor-pointer group"
               >
-                <span className="text-base">＋</span>
+                <span className="w-5 h-5 rounded-md bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-xs group-hover:bg-sky-200 transition">＋</span>
                 <span>Invite Employee</span>
               </button>
-            </>
+            </div>
           )}
         </nav>
 
-        {/* Footer */}
-        <div className="px-4 pb-5 pt-3 border-t border-sky-100/80 space-y-3">
-          {/* Realtime Status */}
-          <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-sky-50/70 border border-sky-100">
-            <div className="flex items-center gap-2 text-[10px] text-slate-500">
-              <span className={`w-1.5 h-1.5 rounded-full ${realtimeStatus === "active" || realtimeStatus === "synced" ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
-              <span>Realtime</span>
+        {/* Footer: User Profile, Email, Role & Realtime Status at the Bottom */}
+        <div className="p-3 border-t border-sky-100/80 space-y-2.5 bg-slate-50/50">
+          {/* User Profile Card */}
+          <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+            <div className="flex items-center gap-2.5">
+              <div className="relative shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 via-cyan-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-2xs">
+                  {avatar}
+                </div>
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
+                    realtimeStatus === "active" || realtimeStatus === "synced"
+                      ? "bg-emerald-500 animate-pulse"
+                      : "bg-amber-500"
+                  }`}
+                  title={realtimeStatus === "active" || realtimeStatus === "synced" ? "Online & Synced" : "Connecting..."}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-900 truncate leading-tight">{displayName}</p>
+                <p className="text-[10px] text-slate-500 truncate">{employeeProfile?.email || userSession?.email}</p>
+              </div>
             </div>
-            <span className={`text-[10px] font-bold font-mono ${realtimeStatus === "active" || realtimeStatus === "synced" ? "text-emerald-700" : "text-amber-700"}`}>
-              {realtimeStatus}
-            </span>
+
+            <div className="flex items-center justify-between pt-1 border-t border-slate-100 gap-1">
+              <RoleBadge role={userRole} />
+              <span className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ${
+                realtimeStatus === "active" || realtimeStatus === "synced"
+                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
+                  : "bg-amber-50 text-amber-700 border border-amber-200/60"
+              }`}>
+                {realtimeStatus}
+              </span>
+            </div>
           </div>
 
-          <button onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-sky-100 hover:border-rose-200 transition-all">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-200 transition-all cursor-pointer"
+          >
             <span>→</span>
             <span>Sign Out</span>
           </button>
@@ -677,11 +773,17 @@ function DashboardContent() {
       {/* --- MAIN AREA --- */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
-        {/* Top Bar */}
-        <header className="h-14 shrink-0 flex items-center justify-between px-5 border-b border-sky-100/90 bg-white/80 backdrop-blur-md shadow-2xs">
+        {/* Top Header with Responsive Hamburger Menu Toggle */}
+        <header className="h-14 shrink-0 flex items-center justify-between px-4 sm:px-6 border-b border-sky-100/90 bg-white/80 backdrop-blur-md shadow-2xs">
           <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-sky-50">
-              ☰
+            <button
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-sky-50 border border-transparent hover:border-slate-200/80 transition-all cursor-pointer flex items-center justify-center"
+              title={sidebarOpen ? "Collapse Navigation Menu" : "Expand Navigation Menu"}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
             </button>
             <div>
               <p className="text-sm font-bold text-slate-900">
@@ -695,8 +797,10 @@ function DashboardContent() {
 
           <div className="flex items-center gap-3">
             {canInvite && (
-              <button onClick={() => openInviteModal("employee")}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition shadow-md shadow-sky-500/20">
+              <button
+                onClick={() => openInviteModal("employee")}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-xs font-semibold transition shadow-md shadow-cyan-500/20 cursor-pointer"
+              >
                 ＋ Invite
               </button>
             )}
@@ -800,7 +904,10 @@ function DashboardContent() {
                   <div className="bg-white border border-sky-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-2xs">
                     <div>
                       <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                        <span>✈️</span> {isHR ? "HR Leave Approval Inbox" : "Employee Leave Request Portal"}
+                        <svg className="w-5 h-5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        <span>{isHR ? "HR Leave Approval Inbox" : "Employee Leave Request Portal"}</span>
                       </h3>
                       <p className="text-xs text-slate-500 mt-1">
                         {isHR

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { UsersIcon, CheckCircleIcon, SparklesIcon } from "./AttendanceIcons";
 
 /**
  * AttendanceOverviewCard Component
@@ -51,26 +52,27 @@ export default function AttendanceOverviewCard({ totalStaffCount = 1 }) {
   const offlineCount = Math.max(0, effectiveTotalStaff - presentCount);
 
   return (
-    <div className="bg-white border border-sky-100 rounded-3xl p-6 sm:p-7 space-y-5 hover:border-sky-300 transition duration-300 shadow-2xs flex flex-col justify-between">
+    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 hover:border-sky-200 transition duration-300 shadow-xs flex flex-col justify-between">
       <div className="space-y-4">
-        <div className="flex items-center justify-between border-b border-sky-100 pb-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center text-lg">
-              ⏱️
+        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+              <UsersIcon className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">Today's Attendance Overview</h3>
-              <p className="text-xs text-slate-500">Live PostgreSQL organization presence</p>
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight">Today&apos;s Attendance Overview</h3>
+              <p className="text-[11px] text-slate-500">Live organization presence</p>
             </div>
           </div>
 
-          <span className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
-            {attendanceRate}% On-Duty
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{attendanceRate}% On-Duty</span>
           </span>
         </div>
 
         {/* Attendance Rate Metric */}
-        <div className="flex items-center justify-between bg-sky-50/50 p-4 rounded-2xl border border-sky-100">
+        <div className="flex items-center justify-between bg-slate-50/70 p-4 rounded-xl border border-slate-200/80">
           <div>
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Attendance Rate</span>
             <div className="text-2xl font-black text-slate-900">{presentCount} / {effectiveTotalStaff} Present</div>
@@ -95,7 +97,10 @@ export default function AttendanceOverviewCard({ totalStaffCount = 1 }) {
       </div>
 
       <div className="pt-2 text-center">
-        <span className="text-[11px] text-slate-500 italic">⚡ Live attendance updates automatically as staff check in</span>
+        <span className="text-[11px] text-slate-500 italic flex items-center justify-center gap-1">
+          <SparklesIcon className="w-3 h-3 text-sky-500" />
+          <span>Live attendance updates automatically as staff check in</span>
+        </span>
       </div>
     </div>
   );

@@ -3,6 +3,17 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import {
+  CalendarIcon,
+  RefreshCwIcon,
+  SearchIcon,
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  BarChartIcon,
+  FileTextIcon,
+  UsersIcon,
+} from "./AttendanceIcons";
 
 function formatDurationHMS(totalSeconds) {
   if (!totalSeconds || isNaN(totalSeconds) || totalSeconds <= 0) return "00h 00m 00s";
@@ -14,7 +25,7 @@ function formatDurationHMS(totalSeconds) {
   return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 }
 
-export default function EmployeeMonthlySummaryTable() {
+export default function EmployeeMonthlySummaryTable({ embedded = false }) {
   const [selectedMonth, setSelectedMonth] = useState(
     new Date().toISOString().slice(0, 7) // 'YYYY-MM'
   );
@@ -217,67 +228,69 @@ export default function EmployeeMonthlySummaryTable() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className={embedded ? "space-y-6" : "space-y-6 bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs"}>
       {/* --- HEADER CONTROLS & METRICS --- */}
-      <div className="bg-white border border-sky-100 rounded-2xl p-6 shadow-2xs space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-sky-100 pb-5">
-          <div>
-            <h2 className="text-xl md:text-2xl font-extrabold text-slate-900 flex items-center gap-2">
+      <div className="space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+              <BarChartIcon className="w-4 h-4" />
+            </div>
+            <h2 className="text-lg md:text-xl font-bold text-slate-900">
               Employee Monthly Summary
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Working days, required hours, worked hours, shortfalls, Loss of Pay (LOP), and HR holidays.
-            </p>
           </div>
 
           {/* Month Selector & Controls */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 bg-sky-50/50 border border-sky-200 rounded-xl px-3 py-2">
-              <span className="text-slate-500 text-xs">📅</span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-2 bg-slate-50/70 border border-slate-200/80 rounded-xl px-3 py-1.5 shadow-2xs">
+              <CalendarIcon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
               <input
                 type="month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(e.target.value)}
-                className="bg-transparent text-xs font-mono text-slate-800 focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs font-mono text-slate-800 focus:outline-none cursor-pointer font-medium"
               />
             </div>
 
             <button
               onClick={() => fetchMonthlySummary(selectedMonth, false)}
-              className="p-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+              className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
               title="Refresh / Recalculate"
             >
-              <span>🔄</span>
+              <RefreshCwIcon className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Refresh</span>
             </button>
 
             <button
               onClick={exportToCSV}
               disabled={filteredStaff.length === 0}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-2 shadow-md shadow-emerald-500/20 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer active:scale-[0.98]"
             >
-              <span>📥</span>
+              <FileTextIcon className="w-3.5 h-3.5" />
               <span>Export CSV</span>
             </button>
           </div>
         </div>
 
         {/* Filter Toolbar */}
-        <div className="flex flex-col sm:flex-row items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-50/70 p-3 rounded-xl border border-slate-200/80">
           {/* Search Box */}
           <div className="relative flex-1 w-full">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+              <SearchIcon className="w-3.5 h-3.5" />
+            </span>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by employee name, email, department or designation..."
-              className="w-full bg-sky-50/40 border border-sky-200 rounded-xl pl-9 pr-4 py-2 text-xs text-slate-800 placeholder-sky-400 focus:outline-none focus:border-sky-500 transition"
+              className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 transition shadow-2xs"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs"
               >
                 ✕
               </button>
@@ -286,11 +299,11 @@ export default function EmployeeMonthlySummaryTable() {
 
           {/* Department Filter */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
-            <span className="text-xs text-slate-500 shrink-0">Dept:</span>
+            <span className="text-xs text-slate-500 shrink-0 font-medium">Dept:</span>
             <select
               value={departmentFilter}
               onChange={(e) => setDepartmentFilter(e.target.value)}
-              className="w-full sm:w-48 bg-white border border-sky-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer"
+              className="w-full sm:w-48 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer shadow-2xs font-medium"
             >
               <option value="ALL">All Departments</option>
               {uniqueDepartments.map((dept) => (
@@ -305,15 +318,17 @@ export default function EmployeeMonthlySummaryTable() {
 
       {/* Error Alert */}
       {errorNotice && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center justify-between">
-          <span>⚠️ {errorNotice}</span>
-          <button onClick={() => setErrorNotice("")} className="hover:text-slate-900">✕</button>
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangleIcon className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{errorNotice}</span>
+          </div>
+          <button onClick={() => setErrorNotice("")} className="hover:text-slate-900 cursor-pointer">✕</button>
         </div>
       )}
 
-
       {/* --- EMPLOYEE MONTHLY SUMMARY TABLE --- */}
-      <div className="bg-white border border-sky-100 rounded-2xl overflow-hidden shadow-2xs">
+      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
         {loading ? (
           <div className="py-20 text-center space-y-3">
             <div className="w-8 h-8 border-3 border-sky-600 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -323,7 +338,7 @@ export default function EmployeeMonthlySummaryTable() {
           </div>
         ) : filteredStaff.length === 0 ? (
           <div className="py-16 text-center space-y-2">
-            <div className="text-3xl">📂</div>
+            <UsersIcon className="w-10 h-10 text-slate-300 mx-auto stroke-1" />
             <p className="text-sm font-semibold text-slate-800">No Employee Records Found</p>
             <p className="text-xs text-slate-500">
               No matching employee monthly summary records for {selectedMonth}.
@@ -428,9 +443,9 @@ export default function EmployeeMonthlySummaryTable() {
                               +{emp.overtimeHours.toFixed(1)} hrs
                             </span>
                             {emp.burnoutRiskLevel === "HIGH" && (
-                              <div className="text-[9px] text-amber-700 font-bold flex items-center justify-end gap-0.5">
-                                <span>🔥</span>
-                                <span>Burnout Risk</span>
+                              <div className="text-[9px] text-amber-700 font-bold flex items-center justify-end gap-1">
+                                <AlertTriangleIcon className="w-3 h-3 text-amber-600" />
+                                <span>High Overtime</span>
                               </div>
                             )}
                           </div>
@@ -443,7 +458,7 @@ export default function EmployeeMonthlySummaryTable() {
                       <td className="py-3.5 px-4 text-center whitespace-nowrap">
                         <div className="inline-flex flex-col items-center gap-1">
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
                               completionPct >= 100
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                 : completionPct >= 85
@@ -451,7 +466,11 @@ export default function EmployeeMonthlySummaryTable() {
                                 : "bg-amber-50 text-amber-700 border-amber-200"
                             }`}
                           >
-                            <span>{completionPct >= 100 ? "✓" : "⏱"}</span>
+                            {completionPct >= 100 ? (
+                              <CheckCircleIcon className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <ClockIcon className="w-3 h-3 text-amber-600" />
+                            )}
                             <span>{completionPct}% Fulfilled</span>
                           </span>
                           {emp.totalLopShortageHours > 0 && (
@@ -469,9 +488,7 @@ export default function EmployeeMonthlySummaryTable() {
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-sky-50 text-sky-700 hover:text-sky-800 border border-slate-200 hover:border-sky-200 text-xs font-semibold transition cursor-pointer shadow-2xs mx-auto"
                           title={`View monthly summary report for ${emp.fullName}`}
                         >
-                          <svg className="w-3.5 h-3.5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                          </svg>
+                          <FileTextIcon className="w-3.5 h-3.5 text-sky-600" />
                           <span>Monthly Report</span>
                         </button>
                       </td>
@@ -491,18 +508,19 @@ export default function EmployeeMonthlySummaryTable() {
           onClick={() => setActiveModalEmp(null)}
         >
           <div
-            className="relative w-full max-w-4xl bg-white border border-sky-100 rounded-2xl p-5 sm:p-6 space-y-5 shadow-2xl max-h-[90vh] flex flex-col my-auto animate-scaleUp"
+            className="relative w-full max-w-4xl bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-2xl max-h-[90vh] flex flex-col my-auto animate-scaleUp"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-sky-100 pb-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-sky-600 flex items-center justify-center font-extrabold text-white text-lg shadow-md shadow-sky-500/20 shrink-0">
                   {activeModalEmp.fullName?.charAt(0).toUpperCase()}
                 </div>
                 <div>
                   <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 text-[10px] font-bold uppercase tracking-wider border border-sky-200 mb-1">
-                    <span>📊</span> Monthly Summary Report
+                    <BarChartIcon className="w-3 h-3 text-sky-600" />
+                    <span>Monthly Summary Report</span>
                   </div>
                   <h3 className="text-base sm:text-lg font-extrabold text-slate-900">
                     {activeModalEmp.fullName} — Daily Shift Records ({selectedMonth})

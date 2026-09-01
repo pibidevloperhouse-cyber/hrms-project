@@ -31,14 +31,15 @@ function AcceptInviteContent() {
 
     const verifyToken = async () => {
       try {
-        const res = await fetch(`/api/invitations/verify-token?token=${token}`);
+        const res = await fetch(`/api/invitations/verify-token?token=${encodeURIComponent(token)}`);
+        const contentType = res.headers.get("content-type") || "";
         let data = {};
-        try {
+        if (contentType.includes("application/json")) {
           data = await res.json();
-        } catch (jsonErr) {
-          console.error("Non-JSON response received:", jsonErr);
-          setLoadError("Server returned an invalid response. Please try again.");
-          return;
+        } else {
+          const rawText = await res.text();
+          console.warn("Non-JSON response from verify-token:", res.status, rawText.slice(0, 200));
+          data = { message: "Failed to verify invitation link. Please verify the URL or request a new invite." };
         }
 
         if (!res.ok) {
@@ -108,14 +109,14 @@ function AcceptInviteContent() {
         body: JSON.stringify({ token, password }),
       });
 
+      const contentType = res.headers.get("content-type") || "";
       let data = {};
-      try {
+      if (contentType.includes("application/json")) {
         data = await res.json();
-      } catch (jsonErr) {
-        console.error("Non-JSON response during password creation:", jsonErr);
-        setSubmitError("Server error while activating account. Please try again.");
-        setIsSubmitting(false);
-        return;
+      } else {
+        const rawText = await res.text();
+        console.warn("Non-JSON response during password creation:", res.status, rawText.slice(0, 200));
+        data = { message: "Server encountered an error activating account. Please try again." };
       }
 
       if (!res.ok) {

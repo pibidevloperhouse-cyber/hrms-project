@@ -4,6 +4,28 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import EmployeeMonthlySummaryTable from "./EmployeeMonthlySummaryTable";
+import {
+  ClockIcon,
+  LogInIcon,
+  LogOutIcon,
+  CoffeeIcon,
+  PauseIcon,
+  PlayIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  AlertTriangleIcon,
+  CalendarIcon,
+  SendMailIcon,
+  BarChartIcon,
+  ShieldIcon,
+  SunIcon,
+  PlaneIcon,
+  UsersIcon,
+  SearchIcon,
+  RefreshCwIcon,
+  TimerIcon,
+  FileTextIcon,
+} from "./AttendanceIcons";
 
 function formatTimeString(isoString) {
   if (!isoString) return "—";
@@ -24,7 +46,7 @@ function formatDurationHMS(totalSeconds) {
   return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 }
 
-export default function HRAttendanceTracker() {
+export default function HRAttendanceTracker({ embedded = false }) {
   const [hrTab, setHrTab] = useState("daily"); // "daily" | "monthly"
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [records, setRecords] = useState([]);
@@ -49,6 +71,13 @@ export default function HRAttendanceTracker() {
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("hrms_summary_sent_dates");
+      } catch {
+        // Ignore
+      }
+    }
   }, []);
 
   // Lock body scroll and handle Escape key when modal is open
@@ -67,31 +96,13 @@ export default function HRAttendanceTracker() {
       document.body.style.overflow = originalOverflow;
     };
   }, [rejectingAttId]);
+
   const [dispatchLoading, setDispatchLoading] = useState(false);
-  const [dispatchedDates, setDispatchedDates] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("hrms_summary_sent_dates");
-        return stored ? JSON.parse(stored) : {};
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  });
+  const [dispatchedDates, setDispatchedDates] = useState({});
 
   const markDateAsDispatched = (dateKey) => {
-    setDispatchedDates((prev) => {
-      const updated = { ...prev, [dateKey]: true };
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("hrms_summary_sent_dates", JSON.stringify(updated));
-        } catch {
-          // Ignore localStorage quota errors
-        }
-      }
-      return updated;
-    });
+    if (!dateKey) return;
+    setDispatchedDates((prev) => ({ ...prev, [dateKey]: true }));
   };
 
   const handleDispatchDailySummary = async () => {
@@ -305,18 +316,10 @@ export default function HRAttendanceTracker() {
   );
   const isSentForSelectedDate =
     Boolean(dispatchedDates[selectedDate]) ||
-    (typeof window !== "undefined" && (() => {
-      try {
-        const stored = localStorage.getItem("hrms_summary_sent_dates");
-        return stored ? Boolean(JSON.parse(stored)[selectedDate]) : false;
-      } catch {
-        return false;
-      }
-    })()) ||
     notifications.some(
       (n) =>
         (n.title?.includes("Daily Attendance Summary") || n.title?.includes("Daily Summary")) &&
-        (n.title?.includes(selectedDate) || n.message?.includes(selectedDate))
+        (n.title?.includes(selectedDate) || (n.message && n.message.includes(selectedDate)))
     );
 
   const filteredRecords = records.filter((rec) => {
@@ -336,89 +339,37 @@ export default function HRAttendanceTracker() {
     return matchesSearch && matchesStatus;
   });
 
-  return (
-    <div className="space-y-6">
-      {/* Sliding Segmented Controller - Full Width & Bigger Size */}
-      <div className="w-full bg-slate-100/90 p-1.5 sm:p-2 rounded-2xl border border-slate-200/90 shadow-2xs relative select-none">
-        {/* Animated Sliding Blue Pill Indicator */}
-        <div
-          className="absolute top-1.5 bottom-1.5 sm:top-2 sm:bottom-2 w-[calc(50%-6px)] sm:w-[calc(50%-8px)] bg-sky-600 rounded-xl shadow-md shadow-sky-500/25 transition-transform duration-300 ease-out"
-          style={{
-            transform: hrTab === "monthly" ? "translateX(calc(100% + 6px))" : "translateX(0px)",
-            left: "6px",
-          }}
-        />
-
-        {/* Tab Triggers */}
-        <div className="relative z-10 flex items-center">
-          <button
-            type="button"
-            onClick={() => setHrTab("daily")}
-            className={`flex-1 py-3.5 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2.5 cursor-pointer ${hrTab === "daily" ? "text-white" : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <span className="text-base sm:text-lg">🕒</span>
-            <span>Daily Shift Tracker &amp; Approvals</span>
-            {pendingEarlyCount > 0 && (
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-black animate-pulse ${hrTab === "daily" ? "bg-white text-amber-600 shadow-2xs" : "bg-amber-500 text-white"
-                  }`}
-              >
-                {pendingEarlyCount} Pending
-              </span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setHrTab("monthly")}
-            className={`flex-1 py-3.5 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2.5 cursor-pointer ${hrTab === "monthly" ? "text-white" : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <span className="text-base sm:text-lg">📊</span>
-            <span>Employee Monthly Summary</span>
-          </button>
+  const renderDailyTracker = () => (
+    <div className={embedded ? "space-y-6" : "bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-6 shadow-xs relative"}>
+      {/* Header & Date Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+            <UsersIcon className="w-4 h-4" />
+          </div>
+          <h2 className="text-lg font-bold text-slate-900">
+            Team Shift Tracker &amp; Approvals
+          </h2>
         </div>
-      </div>
 
-      {/* Tab Panes */}
-      <div className="w-full">
-        {/* Pane 1: Daily Shift Tracker & Approvals */}
-        <div className={hrTab === "daily" ? "w-full animate-fadeIn" : "hidden"}>
-          <div className="bg-white border border-sky-100 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xs relative">
-
-            {/* Header & Date Selector */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-sky-100 pb-5">
-              <div>
-                <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[10px] font-bold uppercase tracking-wider border border-sky-200 mb-2">
-                  <span>🛡️</span> HR Management Control
-                </div>
-                <h2 className="text-lg md:text-xl font-extrabold text-slate-900 flex items-center gap-2">
-                  Employee Attendance Tracker & Approval Inbox
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Overall working standard is 8 Hours. Approve early check-outs or reject with Loss of Pay (LOP)
-                </p>
-              </div>
-
-              {/* Date Selector & Refresh & Send Report */}
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <div className="flex items-center gap-2 bg-sky-50/50 border border-sky-200 rounded-xl px-3 py-2">
-                  <span className="text-slate-500 text-xs">📅</span>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="bg-transparent text-xs text-slate-800 focus:outline-none font-mono cursor-pointer"
-                  />
-                </div>
-                <button
-                  onClick={() => fetchAttendanceList(selectedDate)}
-                  className="p-2.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold transition cursor-pointer"
-                  title="Refresh List"
-                >
-                  🔄
-                </button>
+        {/* Date Selector & Refresh & Send Report */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 bg-slate-50/70 border border-slate-200/80 rounded-xl px-3 py-1.5 shadow-2xs">
+            <CalendarIcon className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-transparent text-xs text-slate-800 focus:outline-none font-mono cursor-pointer font-medium"
+            />
+          </div>
+          <button
+            onClick={() => fetchAttendanceList(selectedDate)}
+            className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 text-xs font-semibold transition cursor-pointer flex items-center justify-center shadow-2xs"
+            title="Refresh List"
+          >
+            <RefreshCwIcon className="w-3.5 h-3.5" />
+          </button>
                 <button
                   onClick={handleDispatchDailySummary}
                   disabled={dispatchLoading || isSentForSelectedDate || activeStaffList.length > 0 || completedStaffList.length === 0}
@@ -426,7 +377,7 @@ export default function HRAttendanceTracker() {
                     ? "bg-emerald-50 text-emerald-700 border border-emerald-300 cursor-not-allowed opacity-90"
                     : activeStaffList.length > 0 || completedStaffList.length === 0
                       ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
-                      : "bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white shadow-md shadow-sky-500/20 cursor-pointer"
+                      : "bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white shadow-md shadow-cyan-500/20 cursor-pointer active:scale-[0.98]"
                     }`}
                   title={
                     isSentForSelectedDate
@@ -445,12 +396,12 @@ export default function HRAttendanceTracker() {
                     </>
                   ) : isSentForSelectedDate ? (
                     <>
-                      <span>✅</span>
+                      <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-600" />
                       <span>Report Sent</span>
                     </>
                   ) : (
                     <>
-                      <span>✉️</span>
+                      <SendMailIcon className="w-3.5 h-3.5" />
                       <span>Send Report</span>
                     </>
                   )}
@@ -462,7 +413,7 @@ export default function HRAttendanceTracker() {
             {unreadCount > 0 && (
               <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-3 animate-pulse shadow-2xs">
                 <div className="flex items-center gap-2.5">
-                  <span className="text-base">🔔</span>
+                  <AlertTriangleIcon className="w-5 h-5 text-amber-700 shrink-0" />
                   <div>
                     <span className="font-bold text-amber-900 block text-xs">
                       {unreadCount} New Check-Out Request / Reason Noted by HR
@@ -476,7 +427,7 @@ export default function HRAttendanceTracker() {
                   onClick={markNotificationsAsRead}
                   className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-[11px] transition shrink-0 cursor-pointer"
                 >
-                  Mark as Read & Noted
+                  Mark as Read &amp; Noted
                 </button>
               </div>
             )}
@@ -485,66 +436,85 @@ export default function HRAttendanceTracker() {
             {actionNotice.success && (
               <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center justify-between">
                 <span>{actionNotice.success}</span>
-                <button onClick={() => setActionNotice({ error: "", success: "" })} className="text-emerald-700 text-xs">✕</button>
+                <button onClick={() => setActionNotice({ error: "", success: "" })} className="text-emerald-700 text-xs cursor-pointer">✕</button>
               </div>
             )}
             {actionNotice.error && (
               <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between">
                 <span>{actionNotice.error}</span>
-                <button onClick={() => setActionNotice({ error: "", success: "" })} className="text-rose-700 text-xs">✕</button>
+                <button onClick={() => setActionNotice({ error: "", success: "" })} className="text-rose-700 text-xs cursor-pointer">✕</button>
               </div>
             )}
 
-            {/* Summary Stat Cards Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="p-4 rounded-xl bg-sky-50/50 border border-sky-100 space-y-1">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Staff</span>
-                <div className="text-2xl font-black text-slate-900">{summary.totalStaff}</div>
-                <span className="text-[10px] text-slate-500">Registered members</span>
+            {/* Summary Stat Cards Grid - Professional Document & Payslips Theme */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              {/* Card 1: Total Staff */}
+              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Staff</span>
+                  <UsersIcon className="w-3.5 h-3.5 text-slate-400" />
+                </div>
+                <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{summary.totalStaff}</div>
               </div>
 
-              <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-1">
-                <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">On Duty</span>
-                <div className="text-2xl font-black text-emerald-700">{summary.checkedInCount}</div>
-                <span className="text-[10px] text-emerald-600">Active shifts</span>
+              {/* Card 2: On Duty */}
+              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">On Duty</span>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200/60">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
+                  </span>
+                </div>
+                <div className="text-xl sm:text-2xl font-bold text-emerald-700 font-mono">{summary.checkedInCount}</div>
               </div>
 
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-1">
-                <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Pending Early Requests</span>
-                <div className="text-2xl font-black text-amber-700">{pendingEarlyCount}</div>
-                <span className="text-[10px] text-amber-600">Early check-out reason submitted</span>
+              {/* Card 3: Off Duty */}
+              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Off Duty</span>
+                  <ClockIcon className="w-3.5 h-3.5 text-slate-400" />
+                </div>
+                <div className="text-xl sm:text-2xl font-bold text-slate-700 font-mono">{summary.notCheckedInCount}</div>
               </div>
 
-              <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 space-y-1">
-                <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider block">Completed Shifts</span>
-                <div className="text-2xl font-black text-sky-700">{summary.checkedOutCount}</div>
-                <span className="text-[10px] text-sky-600">Checked out today</span>
+              {/* Card 4: Pending Early Requests */}
+              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Pending Requests</span>
+                  <TimerIcon className="w-3.5 h-3.5 text-amber-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-bold text-amber-700 font-mono">{pendingEarlyCount}</div>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Not Checked In</span>
-                <div className="text-2xl font-black text-slate-700">{summary.notCheckedInCount}</div>
-                <span className="text-[10px] text-slate-500">Off duty</span>
+              {/* Card 5: Completed Shifts */}
+              <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Completed Shifts</span>
+                  <CheckCircleIcon className="w-3.5 h-3.5 text-sky-500" />
+                </div>
+                <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{summary.checkedOutCount}</div>
               </div>
             </div>
 
             {/* Search & Filter Toolbar */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 bg-sky-50/40 p-3 rounded-xl border border-sky-100">
+            <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-50/70 p-3 rounded-xl border border-slate-200/80">
               <div className="relative flex-1 w-full">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">
+                  <SearchIcon className="w-3.5 h-3.5" />
+                </span>
                 <input
                   type="text"
                   placeholder="Search employee name, email, department…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-sky-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-sky-400 focus:outline-none focus:border-sky-500 transition"
+                  className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 transition shadow-2xs"
                 />
               </div>
 
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full sm:w-auto bg-white border border-sky-200 text-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-sky-500"
+                className="w-full sm:w-auto bg-white border border-slate-200 text-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-sky-500 cursor-pointer shadow-2xs font-medium"
               >
                 <option value="all">All Statuses ({records.length})</option>
                 <option value="PENDING_APPROVAL">Pending HR Review ({pendingEarlyCount})</option>
@@ -566,14 +536,14 @@ export default function HRAttendanceTracker() {
               </div>
             ) : filteredRecords.length === 0 ? (
               <div className="py-12 text-center text-slate-500 space-y-2">
-                <p className="text-3xl">👥</p>
+                <UsersIcon className="w-10 h-10 text-slate-300 mx-auto stroke-1" />
                 <p className="text-xs">No employee records match the selected filter on {selectedDate}.</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto bg-white border border-slate-200/80 rounded-2xl shadow-xs">
                 <table className="w-full text-xs text-left min-w-[700px]">
                   <thead>
-                    <tr className="border-b border-sky-100 text-sky-900 text-[10px] font-bold uppercase tracking-wider bg-sky-50/50">
+                    <tr className="border-b border-slate-100 text-slate-700 text-[10px] font-bold uppercase tracking-wider bg-slate-50/70">
                       <th className="py-3 px-4">Employee</th>
                       <th className="py-3 px-4">Check-In / Out</th>
                       <th className="py-3 px-4">Shift Duration</th>
@@ -582,13 +552,13 @@ export default function HRAttendanceTracker() {
                       <th className="py-3 px-4 text-right">HR Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-sky-100">
+                  <tbody className="divide-y divide-slate-100">
                     {filteredRecords.map((emp) => {
                       const isPendingHR = emp.status === "PENDING_APPROVAL" || emp.approvalStatus === "PENDING";
                       const isRejectedLop = emp.status === "REJECTED_LOP" || emp.approvalStatus === "REJECTED" || emp.isLop;
 
                       return (
-                        <tr key={emp.employeeId} className={`hover:bg-sky-50/50 transition group ${isPendingHR ? "bg-amber-50/60" : ""}`}>
+                        <tr key={emp.employeeId} className={`hover:bg-slate-50/60 transition group ${isPendingHR ? "bg-amber-50/60" : ""}`}>
                           {/* Employee info */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-3">
@@ -638,13 +608,22 @@ export default function HRAttendanceTracker() {
                               </div>
                             )}
                             {emp.status === "ON_BREAK" && (
-                              <span className="block text-[9px] font-sans text-amber-700 font-semibold">🍱 Shift Paused (Lunch Break)</span>
+                              <span className="block text-[9px] font-sans text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                                <CoffeeIcon className="w-2.5 h-2.5" />
+                                <span>Shift Paused (Lunch Break)</span>
+                              </span>
                             )}
                             {emp.status === "COMPANY_HOLIDAY" && (
-                              <span className="block text-[9px] font-sans text-purple-700 font-semibold">Holiday Credit</span>
+                              <span className="block text-[9px] font-sans text-purple-700 font-semibold flex items-center gap-1 mt-0.5">
+                                <SunIcon className="w-2.5 h-2.5" />
+                                <span>Holiday Credit</span>
+                              </span>
                             )}
                             {emp.status === "ON_LEAVE" && (
-                              <span className="block text-[9px] font-sans text-cyan-700 font-semibold">Leave Credit</span>
+                              <span className="block text-[9px] font-sans text-cyan-700 font-semibold flex items-center gap-1 mt-0.5">
+                                <PlaneIcon className="w-2.5 h-2.5" />
+                                <span>Leave Credit</span>
+                              </span>
                             )}
                             {emp.earlyCheckout && emp.status !== "NOT_CHECKED_IN" && emp.status !== "CHECKED_IN" && emp.status !== "ON_BREAK" && emp.status !== "ON_LEAVE" && emp.status !== "COMPANY_HOLIDAY" && (
                               <span className="block text-[9px] font-sans text-amber-700 font-semibold">Under company shift standard</span>
@@ -655,7 +634,10 @@ export default function HRAttendanceTracker() {
                           <td className="py-3.5 px-4 max-w-xs">
                             {emp.earlyReason ? (
                               <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-medium leading-relaxed shadow-2xs">
-                                <span className="block text-[9px] font-bold text-amber-800 uppercase tracking-wider mb-0.5">📝 Reason Noted by Employee:</span>
+                                <span className="block text-[9px] font-bold text-amber-800 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+                                  <FileTextIcon className="w-3 h-3" />
+                                  <span>Reason Noted by Employee:</span>
+                                </span>
                                 &quot;{emp.earlyReason}&quot;
                               </div>
                             ) : emp.earlyCheckout && emp.status !== "CHECKED_IN" && emp.status !== "NOT_CHECKED_IN" && emp.status !== "COMPANY_HOLIDAY" ? (
@@ -668,7 +650,7 @@ export default function HRAttendanceTracker() {
                           {/* Status Badge */}
                           <td className="py-3.5 px-4">
                             <span
-                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${emp.status === "ON_BREAK"
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${emp.status === "ON_BREAK"
                                 ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
                                 : emp.status === "CHECKED_IN"
                                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -685,21 +667,47 @@ export default function HRAttendanceTracker() {
                                             : "bg-sky-50 text-sky-700 border-sky-200"
                                 }`}
                             >
-                              {emp.status === "ON_BREAK"
-                                ? "🍱 ON LUNCH BREAK"
-                                : emp.status === "CHECKED_IN"
-                                  ? "● ON DUTY"
-                                  : emp.status === "ON_LEAVE"
-                                    ? `✈️ ON APPROVED LEAVE${emp.leaveType ? ` (${emp.leaveType})` : ""}`
-                                    : emp.status === "COMPANY_HOLIDAY"
-                                      ? `🎉 COMPANY HOLIDAY${emp.holidayTitle ? ` (${emp.holidayTitle})` : ""}`
-                                      : isPendingHR
-                                        ? "⌛ PENDING HR APPROVAL"
-                                        : isRejectedLop
-                                          ? "✖ REJECTED (LOSS OF PAY / LOP)"
-                                          : emp.status === "NOT_CHECKED_IN"
-                                            ? "○ OFF DUTY"
-                                            : "✓ APPROVED (COMPLETED)"}
+                              {emp.status === "ON_BREAK" ? (
+                                <>
+                                  <CoffeeIcon className="w-3 h-3" />
+                                  <span>ON LUNCH BREAK</span>
+                                </>
+                              ) : emp.status === "CHECKED_IN" ? (
+                                <>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  <span>ON DUTY</span>
+                                </>
+                              ) : emp.status === "ON_LEAVE" ? (
+                                <>
+                                  <PlaneIcon className="w-3 h-3" />
+                                  <span>ON APPROVED LEAVE{emp.leaveType ? ` (${emp.leaveType})` : ""}</span>
+                                </>
+                              ) : emp.status === "COMPANY_HOLIDAY" ? (
+                                <>
+                                  <SunIcon className="w-3 h-3" />
+                                  <span>COMPANY HOLIDAY{emp.holidayTitle ? ` (${emp.holidayTitle})` : ""}</span>
+                                </>
+                              ) : isPendingHR ? (
+                                <>
+                                  <TimerIcon className="w-3 h-3" />
+                                  <span>PENDING HR APPROVAL</span>
+                                </>
+                              ) : isRejectedLop ? (
+                                <>
+                                  <XCircleIcon className="w-3 h-3" />
+                                  <span>REJECTED (LOSS OF PAY / LOP)</span>
+                                </>
+                              ) : emp.status === "NOT_CHECKED_IN" ? (
+                                <>
+                                  <ClockIcon className="w-3 h-3" />
+                                  <span>OFF DUTY</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircleIcon className="w-3 h-3" />
+                                  <span>APPROVED (COMPLETED)</span>
+                                </>
+                              )}
                             </span>
                           </td>
 
@@ -715,7 +723,8 @@ export default function HRAttendanceTracker() {
                                   disabled={actionLoadingId === emp.attendanceRecordId}
                                   className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-200 text-[11px] font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                                 >
-                                  <span>📝 Review Reason & Decide</span>
+                                  <FileTextIcon className="w-3.5 h-3.5" />
+                                  <span>Review Reason &amp; Decide</span>
                                 </button>
                               </div>
                             ) : isRejectedLop ? (
@@ -749,10 +758,11 @@ export default function HRAttendanceTracker() {
                     <div className="flex items-center justify-between border-b border-sky-100 pb-3.5">
                       <div>
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-wider border border-amber-200 mb-1">
-                          <span>⌛</span> Early Check-Out Request Review
+                          <TimerIcon className="w-3 h-3 shrink-0" />
+                          <span>Early Check-Out Request Review</span>
                         </div>
                         <h3 className="text-base font-extrabold text-slate-900">
-                          HR Approval Inbox & Decision
+                          HR Approval Inbox &amp; Decision
                         </h3>
                       </div>
                       <button
@@ -786,7 +796,8 @@ export default function HRAttendanceTracker() {
                         {/* PROMINENT REASON BOX */}
                         <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 space-y-2 shadow-inner">
                           <div className="flex items-center gap-2 font-bold text-amber-800 text-xs uppercase tracking-wider">
-                            <span>📝</span> Employee&apos;s Submitted Check-Out Reason:
+                            <FileTextIcon className="w-3.5 h-3.5" />
+                            <span>Employee&apos;s Submitted Check-Out Reason:</span>
                           </div>
                           <div className="bg-white p-3.5 rounded-lg border border-amber-200 text-xs text-slate-800 italic leading-relaxed font-sans">
                             &quot;{targetRec.earlyReason || "No reason recorded in system"}&quot;
@@ -813,13 +824,13 @@ export default function HRAttendanceTracker() {
                             type="button"
                             disabled={actionLoadingId === rejectingAttId}
                             onClick={() => handleActionEarlyCheckout(rejectingAttId, "APPROVE", rejectFeedbackInput.trim())}
-                            className="py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 cursor-pointer disabled:opacity-50"
+                            className="py-3 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-cyan-500/20 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                           >
                             {actionLoadingId === rejectingAttId ? (
                               <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <>
-                                <span>✓</span>
+                                <CheckCircleIcon className="w-4 h-4 text-white" />
                                 <span>Approve Early Check-Out</span>
                               </>
                             )}
@@ -835,7 +846,7 @@ export default function HRAttendanceTracker() {
                               <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <>
-                                <span>✖</span>
+                                <XCircleIcon className="w-4 h-4 text-white" />
                                 <span>Reject (Loss of Pay)</span>
                               </>
                             )}
@@ -848,8 +859,63 @@ export default function HRAttendanceTracker() {
                 document.body
               );
             })()}
+    </div>
+  );
 
-          </div>
+  if (embedded) {
+    return renderDailyTracker();
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Sliding Segmented Controller - Full Width & Bigger Size */}
+      <div className="w-full bg-slate-100/90 p-1.5 sm:p-2 rounded-2xl border border-slate-200/90 shadow-2xs relative select-none">
+        {/* Animated Sliding Blue Pill Indicator */}
+        <div
+          className="absolute top-1.5 bottom-1.5 sm:top-2 sm:bottom-2 w-[calc(50%-6px)] sm:w-[calc(50%-8px)] bg-sky-600 rounded-xl shadow-md shadow-sky-500/25 transition-transform duration-300 ease-out"
+          style={{
+            transform: hrTab === "monthly" ? "translateX(calc(100% + 6px))" : "translateX(0px)",
+            left: "6px",
+          }}
+        />
+
+        {/* Tab Triggers */}
+        <div className="relative z-10 flex items-center">
+          <button
+            type="button"
+            onClick={() => setHrTab("daily")}
+            className={`flex-1 py-3.5 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2.5 cursor-pointer ${hrTab === "daily" ? "text-white" : "text-slate-600 hover:text-slate-900"
+              }`}
+          >
+            <ClockIcon className="w-4 h-4 shrink-0" />
+            <span>Daily Shift Tracker &amp; Approvals</span>
+            {pendingEarlyCount > 0 && (
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-black animate-pulse ${hrTab === "daily" ? "bg-white text-amber-600 shadow-2xs" : "bg-amber-500 text-white"
+                  }`}
+              >
+                {pendingEarlyCount} Pending
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setHrTab("monthly")}
+            className={`flex-1 py-3.5 sm:py-4 px-4 sm:px-6 rounded-xl text-xs sm:text-sm font-extrabold transition-all flex items-center justify-center gap-2.5 cursor-pointer ${hrTab === "monthly" ? "text-white" : "text-slate-600 hover:text-slate-900"
+              }`}
+          >
+            <BarChartIcon className="w-4 h-4 shrink-0" />
+            <span>Employee Monthly Summary</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tab Panes */}
+      <div className="w-full">
+        {/* Pane 1: Daily Shift Tracker & Approvals */}
+        <div className={hrTab === "daily" ? "w-full animate-fadeIn" : "hidden"}>
+          {renderDailyTracker()}
         </div>
 
         {/* Pane 2: Employee Monthly Summary */}

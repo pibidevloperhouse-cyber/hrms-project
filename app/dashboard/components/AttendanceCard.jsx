@@ -2,6 +2,21 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  ClockIcon,
+  LogInIcon,
+  LogOutIcon,
+  CoffeeIcon,
+  PauseIcon,
+  PlayIcon,
+  CheckCircleIcon,
+  XCircleIcon,
+  AlertTriangleIcon,
+  CalendarIcon,
+  SunIcon,
+  PlaneIcon,
+  TimerIcon,
+} from "./AttendanceIcons";
 
 function formatSecondsToHHMMSS(totalSeconds) {
   if (isNaN(totalSeconds) || totalSeconds < 0) return "00h 00m 00s";
@@ -549,20 +564,25 @@ export default function AttendanceCard() {
   const progressPercentInt = Math.min(100, Math.round(progressRatio * 100));
 
   return (
-    <div className="bg-white border border-sky-100 rounded-2xl p-5 sm:p-6 flex flex-col justify-between space-y-5 shadow-2xs hover:border-sky-200 transition-all duration-300 relative">
+    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 flex flex-col justify-between space-y-5 shadow-xs hover:border-sky-200 transition-all duration-300 relative">
 
       {/* Header Bar */}
-      <div className="flex items-center justify-between border-b border-sky-100 pb-3.5">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-            <span>⏱️</span> Daily Attendance
-          </h3>
-          <p className="text-[11px] text-slate-500 mt-0.5">Overall company working time: {dailyTargetHours.toFixed(1)} Hours</p>
+      <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+            <ClockIcon className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">
+              Daily Attendance
+            </h3>
+            <p className="text-[11px] text-slate-500">Overall company working standard: {dailyTargetHours.toFixed(1)} Hours</p>
+          </div>
         </div>
 
-        {/* Dynamic Status Badge */}
+        {/* Dynamic Status Badge matching Document Manager */}
         <span
-          className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors ${isOnBreak
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border transition-colors ${isOnBreak
               ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
               : checkedIn
                 ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
@@ -572,27 +592,47 @@ export default function AttendanceCard() {
                     ? "bg-rose-50 text-rose-700 border-rose-200"
                     : hasCompletedToday
                       ? "bg-sky-50 text-sky-700 border-sky-200"
-                      : "bg-slate-100 text-slate-600 border-slate-200"
+                      : "bg-slate-100 text-slate-700 border-slate-200"
             }`}
         >
-          {isOnBreak
-            ? "🍱 ON LUNCH BREAK (PAUSED)"
-            : checkedIn
-              ? "● ON DUTY"
-              : hasCompletedToday && approvalStatus === "PENDING"
-                ? "⌛ PENDING HR APPROVAL"
-                : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
-                  ? "✖ REJECTED (LOSS OF PAY)"
-                  : hasCompletedToday
-                    ? "✓ SHIFT COMPLETED"
-                    : "○ OFF DUTY"}
+          {isOnBreak ? (
+            <>
+              <CoffeeIcon className="w-3 h-3" />
+              <span>ON LUNCH BREAK</span>
+            </>
+          ) : checkedIn ? (
+            <>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>ON DUTY</span>
+            </>
+          ) : hasCompletedToday && approvalStatus === "PENDING" ? (
+            <>
+              <TimerIcon className="w-3 h-3" />
+              <span>PENDING HR REVIEW</span>
+            </>
+          ) : hasCompletedToday && (approvalStatus === "REJECTED" || isLop) ? (
+            <>
+              <XCircleIcon className="w-3 h-3" />
+              <span>REJECTED (LOP)</span>
+            </>
+          ) : hasCompletedToday ? (
+            <>
+              <CheckCircleIcon className="w-3 h-3" />
+              <span>SHIFT COMPLETED</span>
+            </>
+          ) : (
+            <>
+              <ClockIcon className="w-3 h-3" />
+              <span>OFF DUTY</span>
+            </>
+          )}
         </span>
       </div>
 
       {isHoliday && (
         <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
-            <span>🎉</span>
+            <SunIcon className="w-4 h-4 text-purple-700 shrink-0" />
             <span className="truncate">Holiday Today: &quot;{holidayTitle}&quot;</span>
           </div>
           <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[9px] font-mono font-bold uppercase tracking-wider border border-purple-300 shrink-0">
@@ -604,7 +644,7 @@ export default function AttendanceCard() {
       {isNonWorkingDay && (
         <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
-            <span>🏝️</span>
+            <CalendarIcon className="w-4 h-4 text-amber-700 shrink-0" />
             <span className="truncate">Company Off-Day ({todayDayName}): Non-working day</span>
           </div>
           <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[9px] font-mono font-bold uppercase tracking-wider border border-amber-300 shrink-0">
@@ -637,19 +677,19 @@ export default function AttendanceCard() {
               subLabel = "Lunch Break (Shift Paused)";
               strokeColor = "stroke-teal-500";
               textColor = "text-teal-700";
-              ringBadge = "⏸ Break";
+              ringBadge = "Break Paused";
             } else if (checkedIn) {
               timeDisplay = formatSecondsToHHMMSS(elapsedSeconds);
               subLabel = `${runtimeWorkingHoursDecimal} / ${dailyTargetHours.toFixed(1)} hrs`;
               strokeColor = "stroke-teal-500";
               textColor = "text-teal-700";
-              ringBadge = `${progressPercentInt}%`;
+              ringBadge = `${progressPercentInt}% Target`;
             } else if (hasCompletedToday) {
               timeDisplay = `${totalWorkingHoursToday.toFixed(2)} hrs`;
               subLabel = "Shift Completed";
               strokeColor = isLop || approvalStatus === "REJECTED" ? "stroke-rose-500" : approvalStatus === "PENDING" ? "stroke-amber-500" : "stroke-sky-600";
               textColor = isLop || approvalStatus === "REJECTED" ? "text-rose-700" : approvalStatus === "PENDING" ? "text-amber-700" : "text-sky-700";
-              ringBadge = isLop || approvalStatus === "REJECTED" ? "✖ LOP" : approvalStatus === "PENDING" ? "⌛ Pending" : "✓ Done";
+              ringBadge = isLop || approvalStatus === "REJECTED" ? "LOP Applied" : approvalStatus === "PENDING" ? "Pending HR" : "Completed";
             }
 
             return (
@@ -661,7 +701,7 @@ export default function AttendanceCard() {
                       cx="65"
                       cy="65"
                       r={circleRadius}
-                      className="stroke-sky-100"
+                      className="stroke-slate-100"
                       strokeWidth="7"
                       fill="transparent"
                     />
@@ -702,7 +742,8 @@ export default function AttendanceCard() {
           {hasCompletedToday && (approvalStatus === "REJECTED" || isLop) && (
             <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-1">
               <div className="font-bold flex items-center gap-1.5 text-rose-700">
-                <span>⚠️</span> HR Decision: Loss of Pay (LOP) Applied
+                <AlertTriangleIcon className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>HR Decision: Loss of Pay (LOP) Applied</span>
               </div>
               <p className="text-[11px] leading-relaxed">
                 Your early check-out request (8h) was rejected by HR. Marked as Loss of Pay.
@@ -715,7 +756,8 @@ export default function AttendanceCard() {
           {hasCompletedToday && approvalStatus === "PENDING" && (
             <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs space-y-1">
               <div className="font-bold flex items-center gap-1.5 text-amber-700">
-                <span>⌛</span> HR Approval Pending
+                <TimerIcon className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>HR Approval Pending</span>
               </div>
               <p className="text-[11px] leading-relaxed">
                 Early check-out note delivered to HR. Pending HR review and decision.
@@ -741,12 +783,12 @@ export default function AttendanceCard() {
             {checkedIn ? (
               <div className="space-y-2.5">
                 {isOnBreak ? (
-                  /* Resuming Shift from Lunch Break (Teal Theme with Resume Icon) */
+                  /* Resuming Shift from Lunch Break */
                   <button
                     type="button"
                     onClick={() => handleToggleBreak("END")}
                     disabled={actionLoading}
-                    className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-700 hover:from-teal-400 hover:via-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/25 hover:shadow-teal-500/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                   >
                     {actionLoading ? (
                       <>
@@ -755,28 +797,23 @@ export default function AttendanceCard() {
                       </>
                     ) : (
                       <>
-                        <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <PlayIcon className="w-4 h-4 shrink-0" />
                         <span className="tracking-wide">Finish Lunch Break &amp; Resume Shift</span>
                       </>
                     )}
                   </button>
                 ) : (hasCompletedBreak || totalBreakSeconds > 0) ? (
-                  /* Break completed today, only Check Out available (Blue Theme) */
+                  /* Break completed today, only Check Out available */
                   <div className="space-y-2">
                     <div className="py-2 px-3 rounded-xl bg-teal-50/80 border border-teal-200 text-teal-800 text-[11px] font-semibold text-center flex items-center justify-center gap-1.5">
-                      <svg className="w-3.5 h-3.5 text-teal-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
+                      <CheckCircleIcon className="w-3.5 h-3.5 text-teal-600 shrink-0" />
                       <span>Lunch break logged ({formatSecondsToHHMMSS(totalBreakSeconds)})</span>
                     </div>
                     <button
                       type="button"
                       onClick={initiateCheckOut}
                       disabled={actionLoading}
-                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/25 hover:shadow-blue-500/40 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
                       {actionLoading ? (
                         <>
@@ -785,26 +822,22 @@ export default function AttendanceCard() {
                         </>
                       ) : (
                         <>
-                          <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                          </svg>
+                          <LogOutIcon className="w-4 h-4 shrink-0" />
                           <span className="tracking-wide">Check Out</span>
                         </>
                       )}
                     </button>
                   </div>
                 ) : (
-                  /* Active shift: Start Lunch Break (Teal Theme with Icon) & Check Out (Blue Theme) */
+                  /* Active shift: Start Lunch Break & Check Out */
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <button
                       type="button"
                       onClick={() => handleToggleBreak("START")}
                       disabled={actionLoading || hasCompletedBreak || totalBreakSeconds > 0}
-                      className="py-3.5 rounded-2xl bg-gradient-to-r from-teal-500 via-teal-600 to-cyan-700 hover:from-teal-400 hover:via-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/20 hover:shadow-teal-500/35 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="py-3.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
-                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
+                      <CoffeeIcon className="w-4 h-4 shrink-0" />
                       <span className="tracking-wide">Start Lunch Break</span>
                     </button>
 
@@ -812,11 +845,9 @@ export default function AttendanceCard() {
                       type="button"
                       onClick={initiateCheckOut}
                       disabled={actionLoading}
-                      className="py-3.5 rounded-2xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/20 hover:shadow-blue-500/35 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="py-3.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
-                      <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                      </svg>
+                      <LogOutIcon className="w-4 h-4 shrink-0" />
                       <span className="tracking-wide">Check Out</span>
                     </button>
                   </div>
@@ -825,7 +856,7 @@ export default function AttendanceCard() {
             ) : hasCompletedToday ? (
               <div className="p-3.5 rounded-2xl bg-sky-50/50 border border-sky-200 text-center space-y-1">
                 <p className={`text-xs font-bold flex items-center justify-center gap-1.5 ${isLop ? "text-rose-700" : approvalStatus === "PENDING" ? "text-amber-700" : "text-sky-800"}`}>
-                  <span>{isLop ? "✖" : approvalStatus === "PENDING" ? "⌛" : "✓"}</span>
+                  {isLop ? <XCircleIcon className="w-3.5 h-3.5 text-rose-700" /> : approvalStatus === "PENDING" ? <TimerIcon className="w-3.5 h-3.5 text-amber-700" /> : <CheckCircleIcon className="w-3.5 h-3.5 text-sky-700" />}
                   <span>
                     {isLop
                       ? "Attendance Completed (Loss of Pay)"
@@ -843,14 +874,14 @@ export default function AttendanceCard() {
                 type="button"
                 onClick={handleCheckIn}
                 disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-                className={`w-full rounded-2xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2.5 relative overflow-hidden group ${
+                className={`w-full rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2.5 relative overflow-hidden group ${
                   isHoliday
                     ? "py-3.5 bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                     : isNonWorkingDay
                       ? "py-3.5 bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
                       : isOnLeaveToday
                         ? "py-3.5 bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
-                        : "py-4 bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 hover:from-emerald-400 hover:via-emerald-500 hover:to-teal-600 text-white shadow-md shadow-emerald-500/25 hover:shadow-emerald-500/40 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
+                        : "py-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-md shadow-emerald-500/20 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
                 }`}
               >
                 {!isHoliday && !isNonWorkingDay && !isOnLeaveToday && (
@@ -863,25 +894,22 @@ export default function AttendanceCard() {
                   </>
                 ) : isHoliday ? (
                   <>
-                    <span>🎉</span>
+                    <SunIcon className="w-4 h-4 text-purple-700 shrink-0" />
                     <span>Company Holiday — Check-In Closed</span>
                   </>
                 ) : isNonWorkingDay ? (
                   <>
-                    <span>🏝️</span>
+                    <CalendarIcon className="w-4 h-4 text-amber-700 shrink-0" />
                     <span>Off Day ({todayDayName}) — No Shift Today</span>
                   </>
                 ) : isOnLeaveToday ? (
                   <>
-                    <span>✈️</span>
+                    <PlaneIcon className="w-4 h-4 text-cyan-700 shrink-0" />
                     <span>On Approved Leave Today</span>
                   </>
                 ) : (
                   <>
-                    <svg className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11c0-1.657-1.343-3-3-3S6 9.343 6 11v2a6 6 0 0012 0v-1a9 9 0 00-9-9" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 11v5m0 0a3 3 0 01-3-3m3 3a3 3 0 003-3" />
-                    </svg>
+                    <LogInIcon className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
                     <span className="tracking-wide">Start My Shift</span>
                   </>
                 )}
@@ -894,16 +922,16 @@ export default function AttendanceCard() {
       {/* --- EARLY CHECKOUT REASON POP-UP MODAL --- */}
       {showReasonModal && (
         <div className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white border border-sky-100 rounded-2xl p-6 space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between border-b border-sky-100 pb-3">
+          <div className="w-full max-w-md bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-2xl animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
-                <span className="text-lg">⏱️</span>
+                <AlertTriangleIcon className="w-5 h-5 text-amber-600" />
                 <span>Early Check-Out Reason Required</span>
               </div>
               <button
                 type="button"
                 onClick={() => setShowReasonModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm"
+                className="text-slate-400 hover:text-slate-700 text-sm cursor-pointer"
               >
                 ✕
               </button>
@@ -926,7 +954,7 @@ export default function AttendanceCard() {
 
             <form onSubmit={handleReasonSubmit} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-bold text-sky-900 uppercase mb-1">
+                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
                   Reason for Early Check-Out *
                 </label>
                 <textarea
@@ -934,7 +962,7 @@ export default function AttendanceCard() {
                   value={reasonInput}
                   onChange={(e) => setReasonInput(e.target.value)}
                   placeholder="e.g. Medical emergency / Personal work / Prior approval from manager..."
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-xs text-slate-800 placeholder-sky-400 focus:bg-white focus:border-sky-500 outline-none transition"
+                  className="w-full bg-slate-50/50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-sky-500 outline-none transition"
                   required
                 />
               </div>
@@ -943,7 +971,7 @@ export default function AttendanceCard() {
                 <button
                   type="button"
                   onClick={() => setShowReasonModal(false)}
-                  className="flex-1 py-2.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-slate-700 text-xs font-semibold transition"
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
                 >
                   Cancel
                 </button>
