@@ -614,17 +614,22 @@ export default function HRAttendanceTracker() {
                               <span className="font-bold text-slate-400">00h 00m 00s</span>
                             ) : (
                               <div>
-                                <div className={`font-bold flex items-center gap-1.5 ${emp.status === "COMPANY_HOLIDAY"
-                                  ? "text-purple-700"
-                                  : emp.status === "ON_LEAVE"
-                                    ? "text-cyan-700"
-                                    : emp.earlyCheckout
-                                      ? "text-amber-700"
-                                      : "text-emerald-700"
+                                <div className={`font-bold flex items-center gap-1.5 ${emp.status === "ON_BREAK"
+                                  ? "text-amber-700"
+                                  : emp.status === "COMPANY_HOLIDAY"
+                                    ? "text-purple-700"
+                                    : emp.status === "ON_LEAVE"
+                                      ? "text-cyan-700"
+                                      : emp.earlyCheckout
+                                        ? "text-amber-700"
+                                        : "text-emerald-700"
                                   }`}>
                                   <span>{formatDurationHMS(emp.netWorkingSeconds || Math.round(emp.workingHours * 3600))}</span>
                                   {emp.status === "CHECKED_IN" && (
                                     <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping" title="Live Shift Running Timer" />
+                                  )}
+                                  {emp.status === "ON_BREAK" && (
+                                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Shift Paused on Lunch Break" />
                                   )}
                                 </div>
                                 <span className="text-[10px] text-slate-500 block font-sans">
@@ -632,13 +637,16 @@ export default function HRAttendanceTracker() {
                                 </span>
                               </div>
                             )}
+                            {emp.status === "ON_BREAK" && (
+                              <span className="block text-[9px] font-sans text-amber-700 font-semibold">🍱 Shift Paused (Lunch Break)</span>
+                            )}
                             {emp.status === "COMPANY_HOLIDAY" && (
                               <span className="block text-[9px] font-sans text-purple-700 font-semibold">Holiday Credit</span>
                             )}
                             {emp.status === "ON_LEAVE" && (
                               <span className="block text-[9px] font-sans text-cyan-700 font-semibold">Leave Credit</span>
                             )}
-                            {emp.earlyCheckout && emp.status !== "NOT_CHECKED_IN" && emp.status !== "CHECKED_IN" && emp.status !== "ON_LEAVE" && emp.status !== "COMPANY_HOLIDAY" && (
+                            {emp.earlyCheckout && emp.status !== "NOT_CHECKED_IN" && emp.status !== "CHECKED_IN" && emp.status !== "ON_BREAK" && emp.status !== "ON_LEAVE" && emp.status !== "COMPANY_HOLIDAY" && (
                               <span className="block text-[9px] font-sans text-amber-700 font-semibold">Under company shift standard</span>
                             )}
                           </td>

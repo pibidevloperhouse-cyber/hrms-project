@@ -375,35 +375,35 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
     switch (status) {
       case "APPROVED":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            Approved {isApplicantHR ? "(by Owner)" : "(by HR)"}
+            <span>Approved {isApplicantHR ? "(by Owner)" : "(by HR)"}</span>
           </span>
         );
       case "REJECTED":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-            Rejected {isApplicantHR ? "(by Owner)" : "(by HR)"}
+            <span>Rejected {isApplicantHR ? "(by Owner)" : "(by HR)"}</span>
           </span>
         );
       case "CANCELLED":
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
             <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-            Cancelled
+            <span>Cancelled</span>
           </span>
         );
       default:
         return isApplicantHR ? (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200 animate-pulse">
-            <span>👑</span>
-            Pending Owner Approval
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
+            <span>Pending Owner Review</span>
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-            Pending HR Review
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            <span>Pending HR Review</span>
           </span>
         );
     }
@@ -417,181 +417,187 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
   return (
     <div className="space-y-6">
       {/* Header Banner & Messages */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-sky-100 shadow-2xs">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Leave Management</h1>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Leave Management</h1>
             {isHR && (
-              <span className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200 uppercase tracking-wider">
-                HR Portal Access
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                HR Portal
               </span>
             )}
           </div>
-          <p className="text-sm text-slate-500 mt-1">
-            Apply for leave, track monthly allowance balance (3 days / month), and manage HR approvals.
+          <p className="text-xs text-slate-500">
+            Submit leave requests, review employee applications, and track your monthly quota.
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Month / Year Display (Disabled) */}
-          <div className="flex items-center gap-2 bg-sky-50/50 p-1.5 rounded-xl border border-sky-200 opacity-75 cursor-not-allowed">
-            <select
-              disabled
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="bg-transparent text-xs font-medium text-slate-600 focus:outline-none cursor-not-allowed px-2 py-1"
-            >
-              {monthNames.map((m, idx) => (
-                <option key={m} value={idx + 1} className="bg-white text-slate-800">
-                  {m}
-                </option>
-              ))}
-            </select>
-            <select
-              disabled
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="bg-transparent text-xs font-medium text-slate-600 focus:outline-none cursor-not-allowed px-2 py-1"
-            >
-              {[2025, 2026, 2027].map((y) => (
-                <option key={y} value={y} className="bg-white text-slate-800">
-                  {y}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <button
             onClick={() => setIsApplyModalOpen(true)}
-            className="flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white font-semibold px-4 py-2.5 rounded-xl text-sm shadow-md shadow-sky-500/20 transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-xs shadow-sky-600/20 transition-colors cursor-pointer"
           >
-            <span>+ Apply For Leave</span>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.25">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            <span>Apply For Leave</span>
           </button>
         </div>
       </div>
 
       {/* Notifications / Alerts */}
       {warningNotice && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm flex items-start gap-3">
-          <span className="text-lg">⚠️</span>
+        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start gap-2.5">
+          <svg className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
           <div>
-            <p className="font-semibold">Database Setup Required</p>
+            <p className="font-bold">Database Setup Notice</p>
             <p className="text-xs text-amber-700 mt-0.5">{warningNotice}</p>
           </div>
         </div>
       )}
 
       {errorMsg && (
-        <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-center justify-between">
-          <span>❌ {errorMsg}</span>
-          <button onClick={() => setErrorMsg("")} className="text-xs text-rose-700 hover:underline">Dismiss</button>
+        <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
+          <span>{errorMsg}</span>
+          <button onClick={() => setErrorMsg("")} className="text-rose-400 hover:text-rose-700 cursor-pointer">✕</button>
         </div>
       )}
 
       {successMsg && (
-        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm flex items-center justify-between">
-          <span>✅ {successMsg}</span>
-          <button onClick={() => setSuccessMsg("")} className="text-xs text-emerald-800 hover:underline">Dismiss</button>
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between">
+          <span>{successMsg}</span>
+          <button onClick={() => setSuccessMsg("")} className="text-emerald-500 hover:text-emerald-800 cursor-pointer">✕</button>
         </div>
       )}
 
       {/* Leave Balance Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* Card 1: Monthly Allowance */}
-        <div className="bg-white border border-sky-100 p-5 rounded-2xl relative overflow-hidden group shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">
-            <span>Monthly Allowance</span>
-            <span className="p-2 rounded-xl bg-sky-50 text-sky-600 border border-sky-100">📅</span>
+        <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Monthly Allowance</span>
+            <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
           </div>
-          <p className="text-3xl font-extrabold text-slate-900">3.0 <span className="text-sm font-medium text-slate-500">Days</span></p>
-          <p className="text-xs text-slate-500 mt-2">Standard quota for {monthNames[selectedMonth - 1]}</p>
+          <div className="text-xl font-bold text-slate-900">3.0 <span className="text-xs font-normal text-slate-500">Days</span></div>
+          <p className="text-[11px] text-slate-500">Standard quota for {monthNames[selectedMonth - 1]}</p>
         </div>
 
         {/* Card 2: Used Days */}
-        <div className="bg-white border border-sky-100 p-5 rounded-2xl relative overflow-hidden group shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">
-            <span>Days Used</span>
-            <span className="p-2 rounded-xl bg-amber-50 text-amber-600 border border-amber-100">⏳</span>
+        <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Days Consumed</span>
+            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
           </div>
-          <p className="text-3xl font-extrabold text-amber-700">{balance.used.toFixed(1)} <span className="text-sm font-medium text-slate-500">Days</span></p>
-          <p className="text-xs text-slate-500 mt-2">Approved & Pending this month</p>
+          <div className="text-xl font-bold text-amber-700">{balance.used.toFixed(1)} <span className="text-xs font-normal text-slate-500">Days</span></div>
+          <p className="text-[11px] text-slate-500">Approved &amp; pending this month</p>
         </div>
 
         {/* Card 3: Available Balance */}
-        <div className="bg-white border border-sky-100 p-5 rounded-2xl relative overflow-hidden group shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">
-            <span>Available Balance</span>
-            <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">✨</span>
+        <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Available Balance</span>
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
           </div>
-          <p className="text-3xl font-extrabold text-emerald-700">{balance.available.toFixed(1)} <span className="text-sm font-medium text-slate-500">Days</span></p>
-          <p className="text-xs text-slate-500 mt-2">Remaining allowance for {monthNames[selectedMonth - 1]}</p>
+          <div className="text-xl font-bold text-emerald-700">{balance.available.toFixed(1)} <span className="text-xs font-normal text-slate-500">Days</span></div>
+          <p className="text-[11px] text-slate-500">Remaining allowance for current month</p>
         </div>
 
         {/* Card 4: Monthly Refresh Info */}
-        <div className="bg-white border border-sky-100 p-5 rounded-2xl relative overflow-hidden group shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2">
-            <span>Quota Refresh Rule</span>
-            <span className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">🔄</span>
+        <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Allowance Rule</span>
+            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </div>
           </div>
-          <p className="text-lg font-bold text-slate-800">Auto Refreshes</p>
-          <p className="text-xs text-sky-700 font-medium mt-1">
-            Resets to 3 days on 1st of next month
-          </p>
+          <div className="text-base font-bold text-slate-900">Auto Refreshed</div>
+          <p className="text-[11px] text-slate-500">Resets to 3.0 days on 1st of month</p>
         </div>
       </div>
 
       {/* Main Tabs (If HR, show tab switcher between My Leaves & HR Approval Inbox) */}
-      <div className="bg-white border border-sky-100 rounded-2xl overflow-hidden shadow-2xs">
-        <div className="p-4 border-b border-sky-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             {isHR ? (
-              <div className="flex bg-sky-50/50 p-1 rounded-xl border border-sky-200">
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
                 <button
                   onClick={() => setActiveTab("hr-inbox")}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                     activeTab === "hr-inbox"
-                      ? "bg-sky-600 text-white shadow-2xs"
+                      ? "bg-white text-slate-900 shadow-2xs font-bold"
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  🏢 HR Approval Inbox ({leaves.filter((l) => l.status === "PENDING").length})
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                  </svg>
+                  <span>Approval Inbox ({leaves.filter((l) => l.status === "PENDING").length})</span>
                 </button>
                 <button
                   onClick={() => setActiveTab("my-leaves")}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg transition-all ${
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                     activeTab === "my-leaves"
-                      ? "bg-sky-600 text-white shadow-2xs"
+                      ? "bg-white text-slate-900 shadow-2xs font-bold"
                       : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
-                  👤 My Leave Requests
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                  </svg>
+                  <span>My Requests</span>
                 </button>
               </div>
             ) : (
-              <h2 className="text-lg font-bold text-slate-900">My Leave History</h2>
+              <h2 className="text-sm font-bold text-slate-900">My Leave History</h2>
             )}
           </div>
 
           {/* Status & Search Filter Controls */}
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </span>
               <input
                 type="text"
                 placeholder="Search leaves..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-sky-50/50 text-xs text-slate-800 placeholder-sky-400 pl-8 pr-3 py-2 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
+                className="bg-white text-xs text-slate-800 placeholder-slate-400 pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs"
               />
-              <span className="absolute left-2.5 top-2.5 text-xs text-slate-400">🔍</span>
             </div>
 
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-sky-50/50 text-xs font-medium text-slate-800 px-3 py-2 rounded-xl border border-sky-200 focus:outline-none cursor-pointer"
+              className="bg-white text-xs font-semibold text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none cursor-pointer shadow-2xs"
             >
               <option value="ALL" className="bg-white">All Statuses</option>
-              <option value="PENDING" className="bg-white">Pending HR Review</option>
+              <option value="PENDING" className="bg-white">Pending Review</option>
               <option value="APPROVED" className="bg-white">Approved</option>
               <option value="REJECTED" className="bg-white">Rejected</option>
               <option value="CANCELLED" className="bg-white">Cancelled</option>
@@ -602,43 +608,47 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
         {/* Leaves Table */}
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-12 text-center text-slate-500 flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-2 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-sm">Loading leave records...</p>
+            <div className="p-16 text-center text-slate-500 flex flex-col items-center gap-2.5">
+              <div className="w-6 h-6 border-2 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
+              <p className="text-xs font-medium">Loading leave records...</p>
             </div>
           ) : filteredLeaves.length === 0 ? (
-            <div className="p-12 text-center text-slate-500">
-              <p className="text-4xl mb-3">🌴</p>
-              <p className="text-base font-semibold text-slate-800">No leave requests found</p>
-              <p className="text-xs text-slate-500 mt-1">
+            <div className="py-16 text-center space-y-2 bg-slate-50/50">
+              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="text-xs font-bold text-slate-800">No Leave Requests Found</p>
+              <p className="text-xs text-slate-400 max-w-sm mx-auto">
                 {activeTab === "hr-inbox"
-                  ? "No employee leave requests submitted for this month."
-                  : "You haven't submitted any leave requests for this month."}
+                  ? "No employee leave requests submitted for this period."
+                  : "You haven't submitted any leave requests for this period."}
               </p>
             </div>
           ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-sky-50/50 text-xs uppercase font-semibold text-sky-900 tracking-wider border-b border-sky-100">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/90 text-[10px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-200/80">
                 <tr>
-                  <th className="py-3.5 px-4">Employee</th>
-                  <th className="py-3.5 px-4">Type</th>
-                  <th className="py-3.5 px-4">Date Range</th>
-                  <th className="py-3.5 px-4">Days</th>
-                  <th className="py-3.5 px-4">Reason</th>
-                  <th className="py-3.5 px-4">Status</th>
-                  <th className="py-3.5 px-4">HR Feedback Note</th>
-                  <th className="py-3.5 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">Employee</th>
+                  <th className="py-3 px-4">Type</th>
+                  <th className="py-3 px-4">Date Range</th>
+                  <th className="py-3 px-4">Days</th>
+                  <th className="py-3 px-4">Reason</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">HR Feedback Note</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-sky-100 text-slate-700">
+              <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredLeaves.map((l) => {
                   const isApplicantHR = ["hr_manager", "hr_executive"].includes(l.employees?.role);
 
                   return (
-                    <tr key={l.id} className="hover:bg-sky-50/50 transition-colors">
-                      <td className="py-4 px-4 font-medium text-slate-900">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs uppercase border ${
+                    <tr key={l.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3.5 px-4 font-medium text-slate-900">
+                        <div className="flex items-center gap-2.5">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase border shadow-2xs ${
                             isApplicantHR
                               ? "bg-purple-50 text-purple-700 border-purple-200"
                               : "bg-sky-50 text-sky-700 border-sky-200"
@@ -646,21 +656,21 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                             {l.employees?.full_name ? l.employees.full_name.charAt(0) : "E"}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
-                              <p className="font-semibold text-slate-900">{l.employees?.full_name || "Employee"}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-semibold text-slate-900 text-xs">{l.employees?.full_name || "Employee"}</p>
                               {isApplicantHR && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 uppercase">
-                                  HR Staff
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 uppercase">
+                                  HR
                                 </span>
                               )}
                             </div>
-                            <p className="text-xs text-slate-500">{l.employees?.email || ""}</p>
+                            <p className="text-[11px] text-slate-400 font-mono">{l.employees?.email || ""}</p>
                           </div>
                         </div>
                       </td>
 
-                      <td className="py-4 px-4">
-                        <span className="px-2 py-1 rounded bg-sky-50 border border-sky-200 text-xs font-medium text-sky-800">
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
                           {l.leave_type}
                         </span>
                       </td>
@@ -737,39 +747,39 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
 
       {/* --- APPLY LEAVE MODAL --- */}
       {isApplyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white border border-sky-100 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            <div className="p-5 border-b border-sky-100 flex items-center justify-between bg-sky-50/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white border border-slate-200 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Submit Leave Request</h3>
+                <h3 className="text-base font-bold text-slate-900">Submit Leave Request</h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Available Monthly Balance: <span className="font-bold text-emerald-700">{balance.available} Days</span>
                 </p>
               </div>
               <button
                 onClick={() => setIsApplyModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-lg p-1 cursor-pointer"
+                className="text-slate-400 hover:text-slate-700 text-base p-1 cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmitLeaveRequest} className="p-6 space-y-4">
+            <form onSubmit={handleSubmitLeaveRequest} className="p-5 space-y-4">
               {isHRUser && (
                 <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-2">
-                  <span>👑</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />
                   <span>As HR Personnel, your request will be routed directly to the <strong>Company Owner</strong> for approval.</span>
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
                   Leave Type
                 </label>
                 <select
                   value={leaveForm.leave_type}
                   onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
-                  className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
+                  className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs"
                 >
                   <option value="Casual">Casual Leave</option>
                   <option value="Sick">Sick Leave</option>
@@ -779,30 +789,30 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
-                    Start Date 📅
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Start Date
                   </label>
                   <input
                     type="date"
                     min={new Date().toISOString().split("T")[0]}
                     value={leaveForm.start_date}
                     onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
-                    className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
+                    className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs font-mono"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
-                    End Date 📅
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    End Date
                   </label>
                   <input
                     type="date"
                     min={leaveForm.start_date || new Date().toISOString().split("T")[0]}
                     value={leaveForm.end_date}
                     onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
-                    className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
+                    className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs font-mono"
                     required
                   />
                 </div>
@@ -810,17 +820,17 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
 
               <div className={`p-3.5 rounded-xl border text-xs flex items-center justify-between ${
                 isFormValid
-                  ? "bg-sky-50 border-sky-200 text-sky-800"
+                  ? "bg-slate-50 border-slate-200 text-slate-800"
                   : "bg-rose-50 border-rose-200 text-rose-700"
               }`}>
                 <div className="space-y-1">
-                  <p className="font-bold text-sm">
+                  <p className="font-bold text-xs text-slate-900">
                     Net Working Leave Deducted: {calculatedDays} {calculatedDays === 1 ? "Working Day" : "Working Days"}
                   </p>
                   
                   {isFormValid && (totalOffDays > 0 || totalHolidays > 0) && (
-                    <p className="text-[11px] text-amber-800 font-semibold flex items-center gap-1">
-                      <span>⚡</span>
+                    <p className="text-[11px] text-amber-800 font-semibold flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
                       <span>
                         Excluded {totalOffDays > 0 ? `${totalOffDays} off-day(s)` : ""}{totalOffDays > 0 && totalHolidays > 0 ? " & " : ""}{totalHolidays > 0 ? `${totalHolidays} holiday(s)` : ""} (0 leave charged for non-working days)
                       </span>
@@ -837,7 +847,19 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                     </p>
                   )}
                 </div>
-                <span className="text-2xl shrink-0 ml-2">{isFormValid ? "✅" : "⚠️"}</span>
+                {isFormValid ? (
+                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 ml-2">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                ) : (
+                  <div className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 ml-2">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -886,47 +908,41 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
         const isActionTargetHR = ["hr_manager", "hr_executive"].includes(selectedLeaveForAction.employees?.role);
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-            <div className="bg-white border border-sky-100 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-              <div className="p-5 border-b border-sky-100 bg-sky-50/50 flex items-center justify-between">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+            <div className="bg-white border border-slate-200 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">
-                    {isAdmin
-                      ? isActionTargetHR
-                        ? "👑 Company Owner Review & Approval"
-                        : "Company Owner Review & Action"
-                      : "HR Review & Action"}
+                  <h3 className="text-base font-bold text-slate-900">
+                    {isAdmin && isActionTargetHR ? "Owner Review: HR Leave Request" : "HR Review & Approval Action"}
                   </h3>
-                  <p className="text-xs text-sky-700 font-semibold">
-                    {isAdmin
-                      ? "Company Owner decision authority"
-                      : "HR Department approval authority"}
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Review applicant details and record an official approval or rejection decision.
                   </p>
                 </div>
                 <button
                   onClick={() => setSelectedLeaveForAction(null)}
-                  className="text-slate-400 hover:text-slate-700 text-lg p-1 cursor-pointer"
+                  className="text-slate-400 hover:text-slate-700 text-base p-1 cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="bg-sky-50/40 p-4 rounded-xl border border-sky-100 space-y-2 text-xs">
+              <div className="p-5 space-y-4">
+                <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-2 text-xs">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Applicant:</span>
-                    <span className="font-bold text-slate-900">
+                    <span className="font-semibold text-slate-900">
                       {selectedLeaveForAction.employees?.full_name || "Employee"}
                       {isActionTargetHR && (
                         <span className="ml-2 text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
-                          HR Staff
+                          HR
                         </span>
                       )}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Department:</span>
-                    <span className="text-slate-700">{selectedLeaveForAction.employees?.department || "General"}</span>
+                    <span className="text-slate-700 font-medium">{selectedLeaveForAction.employees?.department || "General"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Leave Type:</span>
@@ -938,31 +954,31 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                       {selectedLeaveForAction.start_date} to {selectedLeaveForAction.end_date} ({selectedLeaveForAction.total_days} days)
                     </span>
                   </div>
-                  <div className="pt-2 border-t border-sky-100">
+                  <div className="pt-2 border-t border-slate-200/80">
                     <span className="text-slate-500 block mb-1">Reason:</span>
                     <p className="text-slate-700 italic">{selectedLeaveForAction.reason}</p>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
-                    {isAdmin ? "Owner Feedback Note / Remarks" : "HR Feedback Note / Comments"}{" "}
-                    <span className="text-sky-700 font-normal">(Visible to Applicant)</span>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    {isAdmin ? "Owner Feedback Note" : "HR Feedback Note"}{" "}
+                    <span className="text-slate-400 font-normal">(Visible to Applicant)</span>
                   </label>
                   <textarea
                     rows={3}
                     value={hrFeedback}
                     onChange={(e) => setHrFeedback(e.target.value)}
                     placeholder="Enter feedback message (e.g. 'Approved: Have a good vacation!' or 'Rejected: Key deliverables scheduled on these dates')."
-                    className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
+                    className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs"
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-sky-100">
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setSelectedLeaveForAction(null)}
-                    className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-sky-100 border border-sky-200 cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -971,18 +987,18 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleHrAction("REJECTED")}
-                    className="px-4 py-2.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    ✕ Reject Request
+                    Reject Request
                   </button>
 
                   <button
                     type="button"
                     disabled={actionLoading}
                     onClick={() => handleHrAction("APPROVED")}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 shadow-md shadow-emerald-500/20 transition-all cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
                   >
-                    ✓ Approve Request
+                    {actionLoading ? "Processing..." : "Approve Request"}
                   </button>
                 </div>
               </div>

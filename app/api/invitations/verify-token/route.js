@@ -88,6 +88,35 @@ export async function GET(req) {
       );
     }
 
+    const cleanEmail = (invitation.email || "").trim().toLowerCase();
+
+    // Check if email belongs to Company Owner
+    const companyObj = invitation.companies;
+    const companyEmail = (companyObj?.email || "").trim().toLowerCase();
+    if (companyEmail && cleanEmail === companyEmail) {
+      return NextResponse.json(
+        { message: "This email belongs to the Company Owner and cannot accept an employee invitation. Please log in directly as Company Owner.", isOwner: true },
+        { status: 400 }
+      );
+    }
+
+    // Check if user is already an active joined employee in the company
+    if (invitation.company_id && cleanEmail) {
+      const { data: existingEmps } = await adminSupabase
+        .from("employees")
+        .select("id, status, auth_user_id")
+        .eq("company_id", invitation.company_id)
+        .ilike("email", cleanEmail);
+
+      const activeMember = existingEmps?.find((emp) => emp.status === "active" || Boolean(emp.auth_user_id));
+      if (activeMember) {
+        return NextResponse.json(
+          { message: "You have already joined this company as an active team member. Please log in directly.", alreadyAccepted: true },
+          { status: 400 }
+        );
+      }
+    }
+
     if (invitation.status !== "pending" && invitation.status !== "pending_offer") {
       return NextResponse.json(
         { message: `This invitation is no longer active (Status: ${invitation.status}).` },

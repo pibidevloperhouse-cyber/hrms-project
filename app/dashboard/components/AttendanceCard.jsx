@@ -76,10 +76,13 @@ export default function AttendanceCard() {
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState({ error: "", success: "" });
 
-  // ─── Timer refs (never stale, no closure issues) ─────────────────────────────
+  // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
+  const checkInTimeRef = useRef(null);
+  const breakStartRef = useRef(null);
+  const totalBreakSecondsRef = useRef(0);
+  const isOnBreakRef = useRef(false);
   const workSecondsRef = useRef(0);
   const breakSecondsRef = useRef(0);
-  const isOnBreakRef = useRef(false);
   const timerRef = useRef(null);
 
   const lastCheckedDateRef = useRef(typeof window !== "undefined" ? new Date().toDateString() : "");
@@ -120,39 +123,52 @@ export default function AttendanceCard() {
         setIsOnLeaveToday(Boolean(data.isOnLeave));
         setLeaveTypeToday(data.leaveType || "");
 
-        // If today is a clean new day (neither checked in nor completed today)
-        if (!data.checkedIn && !data.hasCompletedToday) {
+        // ─── Timer & Break State Synchronization (Authoritative) ─────────────
+        if (data.checkedIn) {
+          const onBreak = Boolean(data.isOnBreak);
+          const breakStartIso = data.breakStart || null;
+          const totalBreakSec = Number(data.totalBreakSeconds) || 0;
+          const netSec = Number(data.netWorkingSeconds ?? data.elapsedSeconds) || 0;
+          const breakSec = Number(data.currentBreakSeconds) || 0;
+
+          checkInTimeRef.current = data.checkInTime;
+          breakStartRef.current = breakStartIso;
+          totalBreakSecondsRef.current = totalBreakSec;
+          isOnBreakRef.current = onBreak;
+          workSecondsRef.current = netSec;
+          breakSecondsRef.current = breakSec;
+
+          setIsOnBreak(onBreak);
+          setBreakStart(breakStartIso);
+          setTotalBreakSeconds(totalBreakSec);
+          setCurrentBreakSeconds(breakSec);
+          setElapsedSeconds(netSec);
+          setHasCompletedBreak(Boolean(data.hasCompletedBreak || (totalBreakSec > 0 && !onBreak)));
+        } else if (data.hasCompletedToday) {
+          checkInTimeRef.current = data.checkInTime || null;
+          breakStartRef.current = null;
+          isOnBreakRef.current = false;
+          setIsOnBreak(false);
+          setBreakStart(null);
+          setTotalBreakSeconds(Number(data.totalBreakSeconds) || 0);
+          setHasCompletedBreak(Boolean(data.totalBreakSeconds > 0));
+          const totalSec = Math.round(Number(data.workingHours || 0) * 3600);
+          workSecondsRef.current = totalSec;
+          setElapsedSeconds(totalSec);
+        } else {
+          // If today is a clean new day (neither checked in nor completed today)
+          checkInTimeRef.current = null;
+          breakStartRef.current = null;
+          totalBreakSecondsRef.current = 0;
+          isOnBreakRef.current = false;
           workSecondsRef.current = 0;
           breakSecondsRef.current = 0;
-          isOnBreakRef.current = false;
           setIsOnBreak(false);
           setHasCompletedBreak(false);
           setBreakStart(null);
           setTotalBreakSeconds(0);
           setCurrentBreakSeconds(0);
           setElapsedSeconds(0);
-        } else {
-          if (data.hasCompletedBreak || (data.totalBreakSeconds > 0 && !data.isOnBreak)) {
-            setHasCompletedBreak(true);
-          }
-        }
-
-        // ─── Timer / break state — initial load OR session active ──────────────
-        if (!isSilent && (data.checkedIn || data.hasCompletedToday)) {
-          const onBreak = data.isOnBreak || false;
-          const netSeconds = Number(data.netWorkingSeconds ?? data.elapsedSeconds) || 0;
-          const breakSec = Number(data.currentBreakSeconds) || 0;
-
-          workSecondsRef.current = netSeconds;
-          breakSecondsRef.current = breakSec;
-          isOnBreakRef.current = onBreak;
-
-          setElapsedSeconds(netSeconds);
-          setCurrentBreakSeconds(breakSec);
-          setIsOnBreak(onBreak);
-          setBreakStart(data.breakStart || null);
-          setTotalBreakSeconds(Number(data.totalBreakSeconds) || 0);
-          setHasCompletedBreak(Boolean(data.hasCompletedBreak || (data.totalBreakSeconds > 0 && !onBreak)));
         }
       }
     } catch (err) {
@@ -174,7 +190,7 @@ export default function AttendanceCard() {
         lastCheckedDateRef.current = currentDateStr;
         fetchAttendanceStatus(false); // Midnight rollover — full refresh
       } else {
-        fetchAttendanceStatus(true); // Silent background polling
+        fetchAttendanceStatus(true); // Background polling
       }
     }, 15000);
 
@@ -191,11 +207,9 @@ export default function AttendanceCard() {
     };
   }, []);
 
-  // ─── SINGLE INTERVAL TIMER ────────────────────────────────────────────────────
-  // One interval runs whenever checkedIn=true.
-  // Every tick reads isOnBreakRef (a ref — never stale) to decide what to count:
-  //   isOnBreakRef=false → increment workSecondsRef → update elapsedSeconds display
-  //   isOnBreakRef=true  → increment breakSecondsRef → update currentBreakSeconds display
+  // ─── WALL-CLOCK ACCURATE LIVE INTERVAL TIMER ─────────────────────────────────
+  // Uses authoritative timestamps to compute live elapsed and break seconds.
+  // Guarantees zero drift across background tabs, sleep mode, and page switches.
   // ─────────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -208,15 +222,33 @@ export default function AttendanceCard() {
       return;
     }
 
-    timerRef.current = setInterval(() => {
+    const updateTimerTick = () => {
+      const nowMs = Date.now();
+      const checkInMs = checkInTimeRef.current ? new Date(checkInTimeRef.current).getTime() : nowMs;
+
       if (isOnBreakRef.current) {
-        breakSecondsRef.current += 1;
-        setCurrentBreakSeconds(breakSecondsRef.current);
+        const breakStartMs = breakStartRef.current ? new Date(breakStartRef.current).getTime() : nowMs;
+        const currentBreakSec = Math.max(0, Math.floor((nowMs - breakStartMs) / 1000));
+        breakSecondsRef.current = currentBreakSec;
+        setCurrentBreakSeconds(currentBreakSec);
+
+        // While on break, working time is strictly frozen at the break_start instant
+        const grossAtBreak = Math.max(0, Math.floor((breakStartMs - checkInMs) / 1000));
+        const frozenNetSec = Math.max(0, grossAtBreak - totalBreakSecondsRef.current);
+        workSecondsRef.current = frozenNetSec;
+        setElapsedSeconds(frozenNetSec);
       } else {
-        workSecondsRef.current += 1;
-        setElapsedSeconds(workSecondsRef.current);
+        // Active shift: net working time = total elapsed wall-clock minus accumulated completed breaks
+        const grossSec = Math.max(0, Math.floor((nowMs - checkInMs) / 1000));
+        const netSec = Math.max(0, grossSec - totalBreakSecondsRef.current);
+        workSecondsRef.current = netSec;
+        setElapsedSeconds(netSec);
+        breakSecondsRef.current = 0;
       }
-    }, 1000);
+    };
+
+    updateTimerTick();
+    timerRef.current = setInterval(updateTimerTick, 1000);
 
     return () => clearInterval(timerRef.current);
   }, [checkedIn]);
@@ -259,10 +291,14 @@ export default function AttendanceCard() {
         if (data.hasCompletedToday) setHasCompletedToday(true);
       } else {
         setCheckedIn(true);
-        // Reset all timer refs for the fresh session
+        // Anchor refs for the fresh session
+        checkInTimeRef.current = data.checkInTime;
+        breakStartRef.current = null;
+        totalBreakSecondsRef.current = 0;
+        isOnBreakRef.current = false;
         workSecondsRef.current = 0;
         breakSecondsRef.current = 0;
-        isOnBreakRef.current = false;
+
         setIsOnBreak(false);
         setHasCompletedBreak(false);
         setBreakStart(null);
@@ -290,8 +326,13 @@ export default function AttendanceCard() {
   };
 
   // ─── LUNCH BREAK HANDLER ─────────────────────────────────────────────────────
-  // START: isOnBreakRef=true  → interval immediately stops touching workSecondsRef
-  // END  : isOnBreakRef=false → interval immediately resumes from workSecondsRef
+  // START:
+  //   1. Sets isOnBreakRef to true & records breakStartRef
+  //   2. Live timer immediately pauses working seconds and starts ticking break seconds
+  //
+  // END:
+  //   1. Accurately computes finished break duration and adds to totalBreakSecondsRef
+  //   2. Resumes active working seconds from the exact paused value with zero gap
   // ─────────────────────────────────────────────────────────────────────────────
   const handleToggleBreak = async (actionType) => {
     // Hard guard: only one lunch break per day (blocked if break was already taken or completed)
@@ -308,19 +349,30 @@ export default function AttendanceCard() {
     const prevBreakSeconds = breakSecondsRef.current;
 
     if (actionType === "START") {
+      const nowIso = new Date().toISOString();
       isOnBreakRef.current = true;
+      breakStartRef.current = nowIso;
       breakSecondsRef.current = 0;
+
       setIsOnBreak(true);
-      setBreakStart(new Date().toISOString());
+      setBreakStart(nowIso);
       setCurrentBreakSeconds(0);
     } else {
+      const nowMs = Date.now();
+      const breakStartMs = breakStartRef.current ? new Date(breakStartRef.current).getTime() : nowMs;
+      const finishedBreakSec = Math.max(1, Math.floor((nowMs - breakStartMs) / 1000));
+      const newTotalBreak = totalBreakSecondsRef.current + finishedBreakSec;
+
       isOnBreakRef.current = false;
+      breakStartRef.current = null;
+      totalBreakSecondsRef.current = newTotalBreak;
       breakSecondsRef.current = 0;
+
       setIsOnBreak(false);
-      setElapsedSeconds(workSecondsRef.current);
-      setCurrentBreakSeconds(0);
-      setHasCompletedBreak(true);
       setBreakStart(null);
+      setTotalBreakSeconds(newTotalBreak);
+      setHasCompletedBreak(true);
+      setCurrentBreakSeconds(0);
     }
 
     try {
@@ -343,18 +395,29 @@ export default function AttendanceCard() {
       const data = await res.json();
 
       if (!res.ok) {
+        // Rollback refs and state
         isOnBreakRef.current = prevIsOnBreak;
+        breakStartRef.current = prevBreakStart;
+        totalBreakSecondsRef.current = prevTotalBreakSeconds;
         workSecondsRef.current = prevWorkSeconds;
         breakSecondsRef.current = prevBreakSeconds;
+
         setIsOnBreak(prevIsOnBreak);
         setBreakStart(prevBreakStart);
         setTotalBreakSeconds(prevTotalBreakSeconds);
         setHasCompletedBreak(prevHasCompletedBreak);
         setElapsedSeconds(prevWorkSeconds);
+        setCurrentBreakSeconds(prevBreakSeconds);
         setNotice({ error: data.message || "Failed to update lunch break status.", success: "" });
       } else {
-        if ((actionType === "END" || actionType === "FINISH") && data.totalBreakSeconds !== undefined) {
-          setTotalBreakSeconds(Number(data.totalBreakSeconds) || 0);
+        if (actionType === "START") {
+          const confirmedBreakStart = data.breakStart || data.attendance?.break_start || new Date().toISOString();
+          breakStartRef.current = confirmedBreakStart;
+          setBreakStart(confirmedBreakStart);
+        } else {
+          const authoritativeTotalBreak = Number(data.totalBreakSeconds ?? data.attendance?.total_break_seconds) || totalBreakSecondsRef.current;
+          totalBreakSecondsRef.current = authoritativeTotalBreak;
+          setTotalBreakSeconds(authoritativeTotalBreak);
           if (data.netWorkingSeconds !== undefined) {
             const netSec = Number(data.netWorkingSeconds) || 0;
             workSecondsRef.current = netSec;
@@ -365,14 +428,19 @@ export default function AttendanceCard() {
         if (typeof window !== "undefined") window.dispatchEvent(new Event("attendance-updated"));
       }
     } catch {
+      // Rollback on network error
       isOnBreakRef.current = prevIsOnBreak;
+      breakStartRef.current = prevBreakStart;
+      totalBreakSecondsRef.current = prevTotalBreakSeconds;
       workSecondsRef.current = prevWorkSeconds;
       breakSecondsRef.current = prevBreakSeconds;
+
       setIsOnBreak(prevIsOnBreak);
       setBreakStart(prevBreakStart);
       setTotalBreakSeconds(prevTotalBreakSeconds);
       setHasCompletedBreak(prevHasCompletedBreak);
       setElapsedSeconds(prevWorkSeconds);
+      setCurrentBreakSeconds(prevBreakSeconds);
       setNotice({ error: "Network error updating break status.", success: "" });
     } finally {
       setActionLoading(false);
@@ -402,10 +470,13 @@ export default function AttendanceCard() {
       const headers = { "Content-Type": "application/json" };
       if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
 
+      const clientTimeZone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+
       const res = await fetch("/api/attendance/check-out", {
         method: "POST",
         headers,
-        body: JSON.stringify({ reason: reasonText }),
+        body: JSON.stringify({ reason: reasonText, timeZone: clientTimeZone }),
       });
 
       if (res.status === 401) {

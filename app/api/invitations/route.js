@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { getCompanyAndRoleForUser, validateInvitationTargetEmail } from "@/lib/supabase/companyHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildOfferEmailHTML } from "@/lib/mail/offerEmail";
 
@@ -135,6 +135,16 @@ export async function POST(req) {
         { status: 403 }
       );
     }
+
+    // Validate that candidate is NOT the Company Owner and has NOT already joined the company
+    const emailValidation = await validateInvitationTargetEmail(adminSupabase, company, cleanEmail, user);
+    if (!emailValidation.valid) {
+      return NextResponse.json(
+        { message: emailValidation.message },
+        { status: 400 }
+      );
+    }
+
     const { data: existingInvite } = await adminSupabase
       .from("invitations")
       .select("id, status, token")

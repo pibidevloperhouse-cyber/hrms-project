@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { getCompanyAndRoleForUser, validateInvitationTargetEmail } from "@/lib/supabase/companyHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildOfferEmailHTML } from "@/lib/mail/offerEmail";
 
@@ -82,17 +82,11 @@ export async function POST(req) {
       );
     }
 
-    // 4. Check for active employee with this email
-    const { data: activeEmp } = await adminSupabase
-      .from("employees")
-      .select("id, status")
-      .eq("company_id", company.id)
-      .eq("email", cleanEmail)
-      .maybeSingle();
-
-    if (activeEmp && activeEmp.status === "active") {
+    // 4. Validate that candidate is NOT the Company Owner and has NOT already joined the company
+    const emailValidation = await validateInvitationTargetEmail(adminSupabase, company, cleanEmail, user);
+    if (!emailValidation.valid) {
       return NextResponse.json(
-        { message: `An active team member with email ${cleanEmail} already exists in your company.` },
+        { message: emailValidation.message },
         { status: 400 }
       );
     }

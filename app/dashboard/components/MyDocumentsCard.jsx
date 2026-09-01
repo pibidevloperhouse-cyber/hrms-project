@@ -15,27 +15,99 @@ function getFileFormatDetails(fileType, docType, fileName) {
   const ext = fileName?.split('.').pop()?.toUpperCase() || 'FILE';
   
   if (docType === "SALARY_PAYSLIP" || docType === "PAYSLIP") {
-    return { icon: "💳", color: "bg-emerald-50 text-emerald-700 border-emerald-200", badge: "PAYSLIP", ext };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+        </svg>
+      ),
+      color: "bg-emerald-50 text-emerald-700 border-emerald-200",
+      badge: "PAYSLIP",
+      ext,
+    };
   }
   if (docType === "OFFER_LETTER") {
-    return { icon: "📜", color: "bg-indigo-50 text-indigo-700 border-indigo-200", badge: "OFFER LETTER", ext };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+      color: "bg-indigo-50 text-indigo-700 border-indigo-200",
+      badge: "OFFER LETTER",
+      ext,
+    };
   }
   if (docType === "EXPERIENCE_CERTIFICATE") {
-    return { icon: "🎓", color: "bg-purple-50 text-purple-700 border-purple-200", badge: "EXPERIENCE CERTIFICATE", ext };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+        </svg>
+      ),
+      color: "bg-purple-50 text-purple-700 border-purple-200",
+      badge: "EXPERIENCE CERTIFICATE",
+      ext,
+    };
   }
   if (docType === "PERSONAL_DETAILS" || docType === "PERSONAL_INFORMATION") {
-    return { icon: "👤", color: "bg-amber-50 text-amber-700 border-amber-200", badge: "PERSONAL DETAILS", ext };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
+        </svg>
+      ),
+      color: "bg-amber-50 text-amber-700 border-amber-200",
+      badge: "PERSONAL DETAILS",
+      ext,
+    };
   }
   if (fileType?.includes("pdf") || fileName?.endsWith(".pdf")) {
-    return { icon: "📕", color: "bg-rose-50 text-rose-700 border-rose-200", badge: "PDF", ext: "PDF" };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      ),
+      color: "bg-rose-50 text-rose-700 border-rose-200",
+      badge: "PDF",
+      ext: "PDF",
+    };
   }
   if (fileType?.includes("image") || /\.(png|jpe?g|webp|gif)$/i.test(fileName || "")) {
-    return { icon: "🖼️", color: "bg-amber-50 text-amber-700 border-amber-200", badge: "IMAGE", ext: ext || "IMG" };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+        </svg>
+      ),
+      color: "bg-sky-50 text-sky-700 border-sky-200",
+      badge: "IMAGE",
+      ext: ext || "IMG",
+    };
   }
   if (fileType?.includes("word") || fileType?.includes("document") || /\.(docx?|rtf)$/i.test(fileName || "")) {
-    return { icon: "📘", color: "bg-sky-50 text-sky-700 border-sky-200", badge: "DOC", ext: ext || "DOC" };
+    return {
+      icon: (
+        <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+      color: "bg-blue-50 text-blue-700 border-blue-200",
+      badge: "DOC",
+      ext: ext || "DOC",
+    };
   }
-  return { icon: "📄", color: "bg-slate-100 text-slate-700 border-slate-200", badge: "DOCUMENT", ext };
+  return {
+    icon: (
+      <svg className="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+      </svg>
+    ),
+    color: "bg-slate-100 text-slate-700 border-slate-200",
+    badge: "DOCUMENT",
+    ext,
+  };
 }
 
 const MONTH_NAMES = [
@@ -248,43 +320,47 @@ export default function MyDocumentsCard() {
   };
 
   return (
-    <div className="bg-white border border-sky-100 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xs">
+    <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-6 shadow-xs">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-sky-100 pb-5">
-        <div>
-
-          <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2 tracking-tight">
-            Employee Document Vault
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">
-            Secure file repository for your official HR documents, employment records, and payslips.
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              My Documents &amp; Payslips
+            </h2>
+          </div>
+          <p className="text-xs text-slate-500">
+            Access your verified employment records, official documents, and monthly payslips.
           </p>
         </div>
 
         {/* Quick Stats Banner */}
-        <div className="flex items-center gap-2 sm:gap-3 bg-sky-50/60 p-2.5 rounded-2xl border border-sky-100 self-start md:self-auto">
-          <div className="px-3 py-1 bg-white rounded-xl border border-sky-100 text-center">
-            <span className="block text-[10px] uppercase font-bold text-slate-400">Total Files</span>
-            <span className="text-sm font-extrabold text-slate-800">{documents.length}</span>
+        <div className="flex items-center gap-2 bg-slate-50/80 p-2 rounded-xl border border-slate-200/80 self-start md:self-auto">
+          <div className="px-3 py-1 bg-white rounded-lg border border-slate-200/80 text-center shadow-2xs">
+            <span className="block text-[10px] uppercase font-semibold text-slate-400">Total Files</span>
+            <span className="text-xs font-bold text-slate-900">{documents.length}</span>
           </div>
-          <div className="px-3 py-1 bg-white rounded-xl border border-sky-100 text-center">
-            <span className="block text-[10px] uppercase font-bold text-slate-400">Personal</span>
-            <span className="text-sm font-extrabold text-sky-700">{personalDocsCount}</span>
+          <div className="px-3 py-1 bg-white rounded-lg border border-slate-200/80 text-center shadow-2xs">
+            <span className="block text-[10px] uppercase font-semibold text-slate-400">Personal</span>
+            <span className="text-xs font-bold text-sky-700">{personalDocsCount}</span>
           </div>
-          <div className="px-3 py-1 bg-white rounded-xl border border-sky-100 text-center">
-            <span className="block text-[10px] uppercase font-bold text-slate-400">Payslips</span>
-            <span className="text-sm font-extrabold text-emerald-700">{payslipsCount}</span>
-          </div>
-          <div className="px-3 py-1 bg-white rounded-xl border border-sky-100 text-center hidden sm:block">
-            <span className="block text-[10px] uppercase font-bold text-slate-400">Vault Storage</span>
-            <span className="text-sm font-extrabold text-slate-800">{formatBytes(totalBytes)}</span>
+          <div className="px-3 py-1 bg-white rounded-lg border border-slate-200/80 text-center shadow-2xs">
+            <span className="block text-[10px] uppercase font-semibold text-slate-400">Payslips</span>
+            <span className="text-xs font-bold text-emerald-700">{payslipsCount}</span>
           </div>
           <button
             onClick={() => fetchMyDocuments(false)}
-            className="p-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition cursor-pointer shadow-2xs ml-1"
-            title="Refresh"
+            className="p-2 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-600 transition-colors shadow-2xs cursor-pointer"
+            title="Refresh Documents"
           >
-            🔄
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
           </button>
         </div>
       </div>

@@ -15,23 +15,41 @@ function formatDuration(totalSeconds) {
   return `${s}s`;
 }
 
-function formatTime12h(dateInput) {
+function formatTime12h(dateInput, timeZone = "Asia/Kolkata") {
   if (!dateInput) return "—";
   const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
   if (isNaN(d.getTime())) return String(dateInput);
-  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  const tz = timeZone || "Asia/Kolkata";
+  try {
+    return d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: tz,
+    });
+  } catch {
+    return d.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
 }
 
 function formatGapDuration(gapSeconds) {
   const hours = Math.floor(gapSeconds / 3600);
   const mins = Math.floor((gapSeconds % 3600) / 60);
+  const secs = gapSeconds % 60;
   if (hours > 0 && mins > 0) {
     return `${hours} hr${hours > 1 ? "s" : ""} ${mins} min${mins > 1 ? "s" : ""} short`;
   }
   if (hours > 0) {
     return `${hours} hour${hours > 1 ? "s" : ""} short`;
   }
-  return `${mins} minute${mins > 1 ? "s" : ""} short`;
+  if (mins > 0) {
+    return `${mins} minute${mins > 1 ? "s" : ""} short`;
+  }
+  return `${secs} second${secs !== 1 ? "s" : ""} short`;
 }
 
 /**
@@ -57,7 +75,11 @@ export async function POST(req) {
     } catch {
       // Body optional if standard checkout
     }
-    const { reason } = body;
+    const { reason, timeZone: clientTz } = body;
+    const timeZone =
+      clientTz ||
+      req.headers.get("x-timezone") ||
+      "Asia/Kolkata";
 
     const adminSupabase = createAdminClient();
     const empRecord = await resolveEmployeeFast(adminSupabase, user);
@@ -196,16 +218,28 @@ export async function POST(req) {
     // Trigger Early Check-Out Email Notification if departing early
     if (isEarly && empRecord.email) {
       const companyName = empRecord.companies?.name || "Company";
-      const gapSeconds = Math.max(0, Math.round((companyTargetHours - workingHours) * 3600));
+      const targetSeconds = Math.round(companyTargetHours * 3600);
+      const gapSeconds = Math.max(0, targetSeconds - netWorkingSeconds);
       const timeGapDuration = formatGapDuration(gapSeconds);
-      const checkInFormatted = formatTime12h(activeSession.check_in);
-      const checkOutFormatted = formatTime12h(checkOutTimeIso);
-      const dateStr = new Date(checkOutTimeIso).toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
+      const checkInFormatted = formatTime12h(activeSession.check_in, timeZone);
+      const checkOutFormatted = formatTime12h(checkOutTimeIso, timeZone);
+      let dateStr = "";
+      try {
+        dateStr = new Date(checkOutTimeIso).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          timeZone,
+        });
+      } catch {
+        dateStr = new Date(checkOutTimeIso).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      }
 
       const targetEmail = (empRecord.email || user.email || "").trim().toLowerCase();
 
@@ -217,6 +251,7 @@ export async function POST(req) {
             checkInTime: checkInFormatted,
             checkOutTime: checkOutFormatted,
             workingHours,
+            workingTimeFormatted: durationFormatted,
             targetHours: companyTargetHours,
             timeGapDuration,
             breakDuration: totalBreakSec > 0 ? breakDurationFormatted : null,
@@ -230,7 +265,7 @@ export async function POST(req) {
             subject: `🚪 Early Check-Out Notice (${timeGapDuration}) - ${companyName}`,
             html: emailHtml,
           });
-          console.log(`⚡ Early check-out email sent to ${targetEmail} (${timeGapDuration})`);
+          console.log(`⚡ Early check-out email sent to ${targetEmail} (${timeGapDuration}) at ${checkOutFormatted} [${timeZone}]`);
         } catch (mailErr) {
           console.error("❌ Failed to send early check-out email:", mailErr.message);
         }
@@ -243,7 +278,7 @@ export async function POST(req) {
             company_id: empRecord.company_id,
             employee_id: empRecord.id,
             title: "🚪 Early Check-Out Recorded",
-            message: `Checked out at ${checkOutFormatted} (${workingHours} hrs worked, ${timeGapDuration} of required ${companyTargetHours} hrs).`,
+            message: `Checked out at ${checkOutFormatted} (${durationFormatted || `${workingHours} hrs`}, ${timeGapDuration} of required ${companyTargetHours} hrs).`,
             is_read: false,
             created_at: checkOutTimeIso,
           },

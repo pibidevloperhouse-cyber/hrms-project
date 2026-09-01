@@ -115,6 +115,33 @@ export async function POST(req) {
     const cleanEmail = invitation.email.trim().toLowerCase();
     const fullName = invitation.full_name.trim();
 
+    // Check if email belongs to Company Owner
+    const companyObj = invitation.companies;
+    const companyEmail = (companyObj?.email || "").trim().toLowerCase();
+    if (companyEmail && cleanEmail === companyEmail) {
+      return NextResponse.json(
+        { message: "This email belongs to the Company Owner and cannot accept an employee invitation. Please log in as Company Owner." },
+        { status: 400 }
+      );
+    }
+
+    // Check if user is already an active joined member of the company
+    if (invitation.company_id && cleanEmail) {
+      const { data: existingEmps } = await adminSupabase
+        .from("employees")
+        .select("id, status, auth_user_id")
+        .eq("company_id", invitation.company_id)
+        .ilike("email", cleanEmail);
+
+      const activeMember = existingEmps?.find((emp) => emp.status === "active" && Boolean(emp.auth_user_id));
+      if (activeMember) {
+        return NextResponse.json(
+          { message: "You have already joined this company as an active team member. Please log in directly." },
+          { status: 400 }
+        );
+      }
+    }
+
     // 3. Create or Update Supabase Auth User with Password
     let authUser = null;
     const { data: createdAuthUser, error: authError } = await adminSupabase.auth.admin.createUser({
