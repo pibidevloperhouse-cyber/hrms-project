@@ -156,6 +156,7 @@ export async function POST(req) {
     // Generate explicit crypto token
     const token = crypto.randomBytes(32).toString("hex");
     let invitationRecord = null;
+    const resolvedDepartment = department?.trim() || (isHrRoleTarget ? "Human Resources" : "General");
 
     if (existingInvite) {
       const { data: updatedInv, error: updateErr } = await adminSupabase
@@ -164,7 +165,7 @@ export async function POST(req) {
           token: token,
           full_name: fullName.trim(),
           phone: phone?.trim() || null,
-          department: department?.trim() || null,
+          department: resolvedDepartment,
           designation: designation?.trim() || null,
           role: role || "hr_manager",
           expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -185,7 +186,7 @@ export async function POST(req) {
             email: cleanEmail,
             full_name: fullName.trim(),
             phone: phone?.trim() || null,
-            department: department?.trim() || null,
+            department: resolvedDepartment,
             designation: designation?.trim() || null,
             role: role || "hr_manager",
             token: token,

@@ -124,27 +124,63 @@ function StatusBadge({ status }) {
 }
 
 // ─── STAT CARD ────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, icon, accent = "indigo" }) {
-  const colors = {
-    indigo: "from-sky-500/10 to-indigo-500/10 border-sky-200 text-sky-700",
-    emerald: "from-emerald-500/10 to-teal-500/10 border-emerald-200 text-emerald-700",
-    amber: "from-amber-500/10 to-orange-500/10 border-amber-200 text-amber-700",
-    cyan: "from-cyan-500/10 to-blue-500/10 border-cyan-200 text-blue-700",
-  };
+function StatCard({ label, value, sub, icon }) {
   return (
-    <div className="relative bg-white border border-sky-100/90 rounded-2xl p-5 overflow-hidden group hover:border-sky-300 hover:shadow-md transition-all duration-300 shadow-2xs">
-      <div className={`absolute inset-0 bg-gradient-to-br ${colors[accent]} opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
-      <div className="relative z-10">
-        <div className="flex items-start justify-between mb-4">
-          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
-          <div className={`w-9 h-9 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sm shadow-2xs`}>
-            {icon}
-          </div>
-        </div>
-        {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+    <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">{label}</span>
+        {icon && <span className="text-slate-400">{icon}</span>}
       </div>
+      <div className="text-xl font-bold text-slate-900">{value}</div>
+      {sub && <span className="text-[11px] text-slate-500">{sub}</span>}
     </div>
   );
+}
+
+// ─── ROLE-BASED DEPARTMENT RESOLVER & FILTER ─────────────────────────────────
+/**
+ * Resolves the list of departments strictly related to a given system role.
+ * - HR roles ("hr_manager", "hr_executive"): Shows ONLY Human Resources. All unrelated departments are hidden.
+ * - Non-HR roles ("employee", "team_lead", "manager"): Shows operational departments; Human Resources is hidden.
+ */
+function getDepartmentsForRole(role, availableDepartments = []) {
+  const deptList = availableDepartments.length > 0
+    ? availableDepartments.map((d) => (typeof d === "string" ? d : d.name))
+    : ["Engineering", "Human Resources", "Sales", "Finance", "Operations", "Design", "Support", "General"];
+
+  const isHrRole = ["hr_manager", "hr_executive"].includes(role);
+
+  if (isHrRole) {
+    const hrDepts = deptList.filter((d) => {
+      const lower = d.toLowerCase().trim();
+      return lower === "human resources" || lower === "hr" || lower.includes("human resource") || lower.includes("people");
+    });
+    return hrDepts.length > 0 ? hrDepts : ["Human Resources"];
+  }
+
+  // For non-HR roles (employee, team_lead, manager), hide HR departments
+  const nonHrDepts = deptList.filter((d) => {
+    const lower = d.toLowerCase().trim();
+    return lower !== "human resources" && lower !== "hr" && !lower.includes("human resource") && !lower.includes("people");
+  });
+
+  return nonHrDepts.length > 0 ? nonHrDepts : ["Engineering", "Sales", "Finance", "Operations", "Design", "Support", "General"];
+}
+
+/**
+ * Automatically allocates the corresponding company department for a system role in real time.
+ * - HR roles ("hr_manager", "hr_executive") -> "Human Resources" (or matched company HR dept)
+ * - Non-HR roles transitioning from HR -> Default company department ("Engineering" or first non-HR dept)
+ * - Otherwise retains the chosen department if already valid in the role's related departments
+ */
+function resolveDepartmentForRole(role, availableDepartments = [], currentDepartment = "") {
+  const relatedDepts = getDepartmentsForRole(role, availableDepartments);
+
+  if (currentDepartment && relatedDepts.includes(currentDepartment)) {
+    return currentDepartment;
+  }
+
+  return relatedDepts[0] || (["hr_manager", "hr_executive"].includes(role) ? "Human Resources" : "Engineering");
 }
 
 // ─── MAIN DASHBOARD CONTENT ──────────────────────────────────────────────────
@@ -358,6 +394,23 @@ function DashboardContent() {
           if (data.role) setUserRole(data.role);
           if (data.employee) setEmployeeProfile(data.employee);
           if (data.user) setUserSession(data.user);
+
+          if (typeof window !== "undefined") {
+            const welcomeDataStr = sessionStorage.getItem("login_welcome");
+            if (welcomeDataStr) {
+              sessionStorage.removeItem("login_welcome");
+              try {
+                const w = JSON.parse(welcomeDataStr);
+                const dName = data.employee?.full_name || w.name || "User";
+                const cName = data.company?.name || w.company || "Workspace";
+                showToast(
+                  `Welcome to ${cName}`,
+                  `Signed in as ${dName}. Your workspace session is active.`,
+                  "success"
+                );
+              } catch (_) {}
+            }
+          }
         }
       } catch {
         if (isMounted) setAuthError("Network error. Could not load dashboard.");
@@ -375,22 +428,32 @@ function DashboardContent() {
     setLoadingEmployees(true);
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await new Promise((r) => setTimeout(r, 300));
+        const retry = await supabase.auth.getSession();
+        session = retry.data?.session || null;
+      }
       const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
       const res = await fetch("/api/employees/list", { headers });
       const ct = res.headers.get("content-type") || "";
       if (res.ok && ct.includes("application/json")) {
         const d = await res.json();
-        if (d.employees) setEmployees(d.employees);
+        if (Array.isArray(d.employees)) setEmployees(d.employees);
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("fetchEmployees error:", e); }
     finally { setLoadingEmployees(false); }
   };
 
   const fetchDepts = async () => {
     try {
       const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await new Promise((r) => setTimeout(r, 300));
+        const retry = await supabase.auth.getSession();
+        session = retry.data?.session || null;
+      }
       const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
       const res = await fetch("/api/departments", { headers });
       const ct = res.headers.get("content-type") || "";
@@ -398,8 +461,10 @@ function DashboardContent() {
         const d = await res.json();
         if (Array.isArray(d.departments)) {
           setDbDepartments(d.departments);
-          if (d.departments.length > 0 && !inviteForm.department)
-            setInviteForm((p) => ({ ...p, department: d.departments[0].name }));
+          if (d.departments.length > 0 && !inviteForm.department) {
+            const initialDept = resolveDepartmentForRole(inviteForm.role, d.departments, "");
+            setInviteForm((p) => ({ ...p, department: initialDept }));
+          }
         }
       }
     } catch (e) { console.error(e); }
@@ -417,6 +482,13 @@ function DashboardContent() {
     loadCompanyData();
     return () => { active = false; };
   }, [company?.id]);
+
+  // Ensure employees are immediately loaded/refreshed when switching to Team Directory tab
+  useEffect(() => {
+    if (activeTab === "employees" && company?.id) {
+      fetchEmployees();
+    }
+  }, [activeTab, company?.id]);
 
   // Realtime subscriptions
   useEffect(() => {
@@ -437,13 +509,19 @@ function DashboardContent() {
         { event: "*", schema: "public", table: "employees", filter: `company_id=eq.${company.id}` },
         (p) => {
           if (p.eventType === "INSERT") {
-            setEmployees((prev) => [p.new, ...prev]);
+            setEmployees((prev) => {
+              if (prev.some((e) => e.id === p.new?.id)) return prev;
+              return [p.new, ...prev];
+            });
             showToast("New Member", `${p.new?.full_name || "Employee"} joined the team.`, "success");
+            fetchEmployees();
           } else if (p.eventType === "UPDATE") {
             setEmployees((prev) => prev.map((e) => e.id === p.new.id ? { ...e, ...p.new } : e));
             showToast("Member Updated", `${p.new?.full_name || "Employee"} profile updated.`);
+            fetchEmployees();
           } else if (p.eventType === "DELETE") {
             setEmployees((prev) => prev.filter((e) => e.id !== p.old.id));
+            fetchEmployees();
           }
         }
       )
@@ -553,10 +631,20 @@ function DashboardContent() {
         setInviteError(data.message || "Failed to send invitation.");
       } else {
         setInviteSuccessData(data);
-        setInviteForm({ fullName: "", email: "", phone: "", department: dbDepartments[0]?.name || "Engineering", designation: "", role: "employee" });
+        const defaultDept = resolveDepartmentForRole("employee", dbDepartments);
+        setInviteForm({ fullName: "", email: "", phone: "", department: defaultDept, designation: "", role: "employee" });
       }
     } catch { setInviteError("Network error. Please try again."); }
     finally { setIsSubmittingInvite(false); }
+  };
+
+  const handleRoleChange = (newRole) => {
+    const allocatedDept = resolveDepartmentForRole(newRole, dbDepartments, inviteForm.department);
+    setInviteForm((prev) => ({
+      ...prev,
+      role: newRole,
+      department: allocatedDept,
+    }));
   };
 
   const openInviteModal = (defaultRole = "employee") => {
@@ -565,7 +653,15 @@ function DashboardContent() {
       : "employee";
     const isHrTarget = ["hr_manager", "hr_executive"].includes(validRole);
     const initialRole = (isHrTarget && userRole !== "ADMIN") ? "employee" : validRole;
-    setInviteForm((prev) => ({ ...prev, role: initialRole }));
+    const initialDept = resolveDepartmentForRole(initialRole, dbDepartments, "");
+    setInviteForm({
+      fullName: "",
+      email: "",
+      phone: "",
+      department: initialDept,
+      designation: "",
+      role: initialRole,
+    });
     setInviteError("");
     setInviteSuccessData(null);
     setIsInviteModalOpen(true);
@@ -623,7 +719,7 @@ function DashboardContent() {
   // ── MAIN LAYOUT ─────────────────────────────────────────────────────────────
   // ── MAIN LAYOUT ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-screen bg-gradient-to-br from-sky-50 via-blue-50 to-indigo-50/50 text-slate-800 overflow-hidden font-sans">
+    <div className="flex h-screen bg-[#f8fafc] text-slate-800 overflow-hidden font-sans">
 
       {/* Backdrop overlay for mobile screen */}
       {sidebarOpen && (
@@ -637,36 +733,36 @@ function DashboardContent() {
       <aside
         className={`
           fixed md:relative z-50 h-full flex flex-col
-          bg-white/95 backdrop-blur-xl border-r border-sky-100/90 shadow-sm
+          bg-white border-r border-slate-200/80 shadow-xs
           transition-all duration-300 ease-in-out shrink-0
           ${sidebarOpen
-            ? "w-64 translate-x-0"
+            ? "w-72 translate-x-0"
             : "-translate-x-full md:translate-x-0 md:w-0 md:opacity-0 md:pointer-events-none md:border-r-0 md:overflow-hidden"
           }
         `}
       >
         {/* Brand Header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-sky-100/80">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500 via-cyan-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-sky-500/20 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-sky-600 flex items-center justify-center text-white font-extrabold text-base shadow-xs shadow-sky-600/25 shrink-0">
               {company?.name?.charAt(0)?.toUpperCase() || "H"}
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-900 truncate">{company?.name || "Workspace"}</p>
-              <p className="text-[10px] text-sky-600 font-semibold uppercase tracking-wider">HRMS Portal</p>
+              <p className="text-base font-extrabold text-slate-900 truncate tracking-tight">{company?.name || "Workspace"}</p>
+              <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">Enterprise HRMS</p>
             </div>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-sky-50 transition cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
             title="Collapse Sidebar"
           >
             <span className="text-sm font-bold">✕</span>
           </button>
         </div>
 
-        {/* Navigation Items with Enhanced Hover Effects */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1 custom-scroll">
+        {/* Navigation Items with Enhanced Hover & Smooth Scroll */}
+        <nav className="flex-1 overflow-y-auto px-3.5 py-3.5 space-y-1.5 custom-scroll scroll-smooth">
           {NAV_ITEMS.filter((item) => !(item.key === "leave-requests" && userRole === "ADMIN")).map((item) => {
             const active = activeTab === item.key;
             return (
@@ -679,25 +775,25 @@ function DashboardContent() {
                   }
                 }}
                 className={`
-                  w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer group
+                  w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[14px] font-bold tracking-tight transition-all duration-200 cursor-pointer group
                   ${active
-                    ? "bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 text-white shadow-md shadow-cyan-500/20"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-sky-50/80 hover:translate-x-1"
+                    ? "bg-sky-600 text-white shadow-md shadow-sky-600/25 scale-[1.01]"
+                    : "text-slate-700 hover:text-slate-950 hover:bg-slate-100 hover:translate-x-1"
                   }
                 `}
               >
                 {getNavIcon(
                   item.key,
-                  `w-4 h-4 shrink-0 transition-transform duration-200 group-hover:scale-110 ${active ? "text-white" : "text-slate-500 group-hover:text-sky-600"}`
+                  `w-5 h-5 shrink-0 transition-transform duration-200 ${active ? "text-white" : "text-slate-500 group-hover:text-slate-800 group-hover:scale-110"}`
                 )}
                 <span className="truncate">{item.label}</span>
                 {item.key === "employees" && (
-                  <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-md ${active ? "bg-white/20 text-white" : "bg-sky-100 text-sky-700"}`}>
+                  <span className={`ml-auto text-xs font-extrabold px-2 py-0.5 rounded-lg ${active ? "bg-white/25 text-white" : "bg-slate-100 text-slate-700"}`}>
                     {employees.length}
                   </span>
                 )}
                 {item.key === "departments" && (
-                  <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-md ${active ? "bg-white/20 text-white" : "bg-sky-100 text-sky-700"}`}>
+                  <span className={`ml-auto text-xs font-extrabold px-2 py-0.5 rounded-lg ${active ? "bg-white/25 text-white" : "bg-slate-100 text-slate-700"}`}>
                     {dbDepartments.length}
                   </span>
                 )}
@@ -706,7 +802,7 @@ function DashboardContent() {
           })}
 
           {canInvite && (
-            <div className="pt-2 border-t border-sky-100/60 mt-2">
+            <div className="pt-2.5 border-t border-slate-100 mt-2.5">
               <button
                 onClick={() => {
                   openInviteModal("employee");
@@ -714,9 +810,9 @@ function DashboardContent() {
                     setSidebarOpen(false);
                   }
                 }}
-                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-sky-700 hover:bg-sky-50 border border-sky-200/80 hover:border-sky-300 transition-all cursor-pointer group"
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-all cursor-pointer group"
               >
-                <span className="w-5 h-5 rounded-md bg-sky-100 text-sky-600 flex items-center justify-center font-bold text-xs group-hover:bg-sky-200 transition">＋</span>
+                <span className="w-4 h-4 text-sky-600 font-bold text-sm">＋</span>
                 <span>Invite Employee</span>
               </button>
             </div>
@@ -724,18 +820,18 @@ function DashboardContent() {
         </nav>
 
         {/* Footer: User Profile, Email, Role & Realtime Status at the Bottom */}
-        <div className="p-3 border-t border-sky-100/80 space-y-2.5 bg-slate-50/50">
+        <div className="p-3.5 border-t border-slate-100 space-y-2.5 bg-slate-50/60">
           {/* User Profile Card */}
-          <div className="p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
-            <div className="flex items-center gap-2.5">
+          <div className="p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
+            <div className="flex items-center gap-3">
               <div className="relative shrink-0">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 via-cyan-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-2xs">
+                <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white font-extrabold text-xs shadow-2xs">
                   {avatar}
                 </div>
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
                     realtimeStatus === "active" || realtimeStatus === "synced"
-                      ? "bg-emerald-500 animate-pulse"
+                      ? "bg-emerald-500"
                       : "bg-amber-500"
                   }`}
                   title={realtimeStatus === "active" || realtimeStatus === "synced" ? "Online & Synced" : "Connecting..."}
@@ -744,13 +840,13 @@ function DashboardContent() {
 
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-slate-900 truncate leading-tight">{displayName}</p>
-                <p className="text-[10px] text-slate-500 truncate">{employeeProfile?.email || userSession?.email}</p>
+                <p className="text-[10px] text-slate-500 truncate font-medium">{employeeProfile?.email || userSession?.email}</p>
               </div>
             </div>
 
-            <div className="flex items-center justify-between pt-1 border-t border-slate-100 gap-1">
+            <div className="flex items-center justify-between pt-1.5 border-t border-slate-100 gap-1">
               <RoleBadge role={userRole} />
-              <span className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded ${
+              <span className={`text-[10px] font-bold font-mono px-1.5 py-0.5 rounded ${
                 realtimeStatus === "active" || realtimeStatus === "synced"
                   ? "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
                   : "bg-amber-50 text-amber-700 border border-amber-200/60"
@@ -762,9 +858,8 @@ function DashboardContent() {
 
           <button
             onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-200 transition-all cursor-pointer"
+            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold text-slate-700 hover:text-rose-600 hover:bg-rose-50 border border-slate-200/80 hover:border-rose-200 transition-all cursor-pointer shadow-2xs"
           >
-            <span>→</span>
             <span>Sign Out</span>
           </button>
         </div>
@@ -774,23 +869,23 @@ function DashboardContent() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Top Header with Responsive Hamburger Menu Toggle */}
-        <header className="h-14 shrink-0 flex items-center justify-between px-4 sm:px-6 border-b border-sky-100/90 bg-white/80 backdrop-blur-md shadow-2xs">
+        <header className="h-14 shrink-0 flex items-center justify-between px-4 sm:px-6 border-b border-slate-200/80 bg-white shadow-2xs">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen((prev) => !prev)}
-              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-sky-50 border border-transparent hover:border-slate-200/80 transition-all cursor-pointer flex items-center justify-center"
+              className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-all cursor-pointer flex items-center justify-center"
               title={sidebarOpen ? "Collapse Navigation Menu" : "Expand Navigation Menu"}
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
             <div>
-              <p className="text-sm font-bold text-slate-900">
+              <p className="text-base sm:text-lg font-bold text-slate-900 font-sans tracking-tight">
                 {NAV_ITEMS.find((n) => n.key === activeTab)?.label || "Dashboard"}
               </p>
-              <p className="text-[10px] text-slate-500 hidden sm:block">
-                {company?.name} · Real-Time Workspace
+              <p className="text-xs sm:text-[13px] text-slate-500 hidden sm:block font-sans font-medium">
+                {company?.name} · Enterprise Workspace
               </p>
             </div>
           </div>
@@ -799,9 +894,10 @@ function DashboardContent() {
             {canInvite && (
               <button
                 onClick={() => openInviteModal("employee")}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-xs font-semibold transition shadow-md shadow-cyan-500/20 cursor-pointer"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition shadow-xs shadow-sky-600/20 cursor-pointer"
               >
-                ＋ Invite
+                <span>＋</span>
+                <span>Invite</span>
               </button>
             )}
             <div className="hidden sm:block"><RoleBadge role={userRole} /></div>
@@ -809,71 +905,95 @@ function DashboardContent() {
         </header>
 
         {/* Page Body */}
-        <main className="flex-1 overflow-y-auto p-5 lg:p-7 space-y-6 animate-fadeIn">
+        <main id="main-scroll-container" className="flex-1 overflow-y-auto p-5 lg:p-7 space-y-6 animate-fadeIn scroll-smooth custom-scroll">
 
           {/* --- TAB: OVERVIEW --- */}
           {activeTab === "overview" && (
-            <>
-              {/* Welcome Banner */}
-              <div className="relative rounded-2xl bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-700 p-6 md:p-8 overflow-hidden shadow-xl shadow-indigo-500/10">
-                <div className="relative z-10">
-                  <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/15 text-white/90 text-[10px] font-semibold uppercase tracking-wider border border-white/20 mb-3">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                    {userRole.replace("_", " ")} Portal Active
-                  </div>
-                  <h1 className="text-xl md:text-3xl font-extrabold text-white tracking-tight">
-                    Welcome back, {displayName}!
-                  </h1>
-                  <p className="mt-1.5 text-sm text-white/70 max-w-xl leading-relaxed">
-                    {isAdmin && "Company Owner Dashboard — Full control over organization, team, setup, and workspace operations."}
-                    {isHR && !isAdmin && "HR Management Portal — Manage employees, send invitations, and oversee onboarding workflows."}
-                    {isManager && !isHR && "Manager Portal — Monitor team directory, department stats, and attendance records."}
-                    {isStaff && "Employee Workspace — View your profile, check-in attendance, and explore your team directory."}
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-4">
-                    <div className="text-xs text-white/60">
-                      Account: <span className="text-white font-mono font-medium">{employeeProfile?.email || userSession?.email}</span>
-                    </div>
-                    {employeeProfile?.username && (
-                      <div className="text-xs text-white/60">
-                        Username: <span className="text-white font-bold font-mono">@{employeeProfile.username}</span>
+            isAdmin ? (
+              <OwnerDashboard
+                company={company}
+                employees={employees}
+                userSession={userSession}
+                employeeProfile={employeeProfile}
+                onOpenInviteModal={() => openInviteModal("hr_manager")}
+                renderRoleBadge={(r) => <RoleBadge role={r} />}
+                renderStatusBadge={(s) => <StatusBadge status={s} />}
+              />
+            ) : (
+              <>
+                {/* Top Welcome & Workspace Banner for Staff / HR */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                          </svg>
+                        </div>
+                        <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                          Welcome back, {displayName}
+                        </h1>
+                        <span className="px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-200 capitalize">
+                          {userRole.replace("_", " ")}
+                        </span>
                       </div>
-                    )}
+                      <p className="text-xs text-slate-500">
+                        {isHR && "HR Management Portal — Manage employees, send invitations, and oversee onboarding workflows."}
+                        {isManager && !isHR && "Manager Portal — Monitor team directory, department stats, and attendance records."}
+                        {isStaff && "Employee Workspace — View profile, record daily attendance, and access workspace documents."}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Sub-role Quick Status Bar */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Organization</span>
+                      <span className="font-semibold text-slate-900 truncate block">{company?.name || "Workspace"}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Assigned Role</span>
+                      <span className="font-semibold text-slate-900 truncate block">{ROLE_MAP[userRole]?.label || userRole}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Department</span>
+                      <span className="font-semibold text-slate-900 truncate block">{employeeProfile?.department || "General"}</span>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Account Status</span>
+                      <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <span>{employeeProfile?.status || "Active"}</span>
+                      </span>
+                    </div>
                   </div>
                 </div>
-                {/* Background Pattern */}
-                <div className="absolute right-0 inset-y-0 w-1/2 pointer-events-none opacity-10"
-                  style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "20px 20px" }}
-                />
-              </div>
 
-              {/* ADMIN — Owner Dashboard */}
-              {isAdmin ? (
-                <OwnerDashboard
-                  company={company}
-                  employees={employees}
-                  userSession={userSession}
-                  employeeProfile={employeeProfile}
-                  onOpenInviteModal={() => openInviteModal("hr_manager")}
-                  renderRoleBadge={(r) => <RoleBadge role={r} />}
-                  renderStatusBadge={(s) => <StatusBadge status={s} />}
-                />
-              ) : (
-                <>
-                  {/* Stat Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                    <StatCard label="Monthly Leave Allowance" value="3.0 Days" sub="Auto resets 1st of month" icon="📅" accent="indigo" />
-                    <StatCard label="Available Leave Balance" value="3.0 Days" sub="Active monthly quota" icon="✨" accent="emerald" />
-                    <StatCard label="Total Staff" value={employees.length} sub="Registered members" icon="⊞" accent="cyan" />
-                    <StatCard label={isHR ? "Pending Offers" : "Your Role"} value={isHR ? pendingCount : (ROLE_MAP[userRole]?.label || userRole)} sub={isHR ? "Awaiting acceptance" : "Access tier"} icon="⊟" accent="amber" />
-                  </div>
+                {/* Stat Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+                  <StatCard label="Monthly Leave Quota" value="3.0 Days" sub="Resets 1st of month" />
+                  <StatCard label="Available Leave Balance" value="3.0 Days" sub="Active monthly quota" />
+                  <StatCard label="Registered Staff" value={employees.length} sub="Active personnel" />
+                  <StatCard label={isHR ? "Pending Offers" : "Access Tier"} value={isHR ? pendingCount : (ROLE_MAP[userRole]?.label || userRole)} sub={isHR ? "Awaiting acceptance" : "Workspace role"} />
+                </div>
 
                   {/* Profile + Attendance Row */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
                     {/* Profile Card */}
-                    <div className="lg:col-span-2 bg-white border border-sky-100 rounded-2xl p-6 space-y-5 shadow-2xs">
-                      <h3 className="text-sm font-bold text-slate-900 border-b border-sky-100 pb-4">My Profile Details</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
+                      <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
+                        <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-900 tracking-tight">My Profile Details</h3>
+                          <p className="text-[11px] text-slate-500">Official employment records & credentials</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {[
                           { label: "Full Name", value: employeeProfile?.full_name || company?.name || "N/A" },
                           { label: "Department", value: employeeProfile?.department || "General" },
@@ -882,11 +1002,11 @@ function DashboardContent() {
                           { label: "Username", value: employeeProfile?.username ? `@${employeeProfile.username}` : "N/A", mono: true },
                           { label: "Status", value: employeeProfile?.status || "active", badge: true },
                         ].map(({ label, value, mono, badge }) => (
-                          <div key={label} className="space-y-1">
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{label}</p>
+                          <div key={label} className="p-3 rounded-xl bg-slate-50/50 border border-slate-200/60 space-y-0.5">
+                            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
                             {badge
                               ? <StatusBadge status={value} />
-                              : <p className={`text-sm font-semibold ${mono ? "text-sky-700 font-mono" : "text-slate-800"}`}>{value}</p>
+                              : <p className={`text-xs font-semibold ${mono ? "text-sky-700 font-mono" : "text-slate-900"}`}>{value}</p>
                             }
                           </div>
                         ))}
@@ -901,30 +1021,29 @@ function DashboardContent() {
                   <MonthlyWorkingHoursWidget />
 
                   {/* Leave Request Quick Action Banner */}
-                  <div className="bg-white border border-sky-100 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-2xs">
-                    <div>
-                      <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                        <svg className="w-5 h-5 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+                    <div className="space-y-1">
+                      <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                        <svg className="w-4 h-4 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                         </svg>
                         <span>{isHR ? "HR Leave Approval Inbox" : "Employee Leave Request Portal"}</span>
                       </h3>
-                      <p className="text-xs text-slate-500 mt-1">
+                      <p className="text-xs text-slate-500">
                         {isHR
                           ? "Review, approve, or reject employee leave requests across the company with custom feedback notes."
-                          : "You have 3.0 days available leave quota for this month. Submit requests for HR approval with automatic monthly refresh and date range validation."}
+                          : "You have 3.0 days available leave quota for this month. Submit requests for HR approval with automatic monthly refresh."}
                       </p>
                     </div>
                     <button
                       onClick={() => setActiveTab("leave-requests")}
-                      className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-bold shadow-md shadow-sky-500/20 transition-all shrink-0 cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold shadow-xs shadow-sky-600/20 transition-colors shrink-0 cursor-pointer"
                     >
-                      {isHR ? "Review HR Approval Inbox →" : "Apply / Manage Leaves →"}
+                      {isHR ? "Review Approval Inbox →" : "Apply / Manage Leaves →"}
                     </button>
                   </div>
                 </>
-              )}
-            </>
+              )
           )}
 
           {/* --- TAB: ATTENDANCE --- */}
@@ -949,7 +1068,7 @@ function DashboardContent() {
           {/* --- TAB: DOCUMENTS & PAYSLIPS --- */}
           {activeTab === "documents" && (
             isHR || isAdmin ? (
-              <EmployeeDocumentManager />
+              <EmployeeDocumentManager initialEmployees={employees} />
             ) : (
               <MyDocumentsCard />
             )
@@ -957,104 +1076,221 @@ function DashboardContent() {
 
           {/* --- TAB: TEAM DIRECTORY --- */}
           {activeTab === "employees" && (
-            <div className="bg-white border border-sky-100 rounded-2xl overflow-hidden shadow-2xs">
-              {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 px-6 py-5 border-b border-sky-100">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                    Team Directory
-                    <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 text-[10px] font-mono border border-sky-100">
-                      {filtered.length}/{employees.length}
-                    </span>
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {canInvite ? "Manage employee accounts and credential status" : "Browse colleagues across departments"}
-                  </p>
+            <div className="space-y-6">
+              {/* Master Card matching Attendance theme */}
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
+                {/* Master Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                      {userRole === "manager"
+                        ? `${employeeProfile?.department ? `${employeeProfile.department} ` : ""}Team Directory`
+                        : "Team & Staff Directory"}
+                    </h2>
+                  </div>
+
+                  <div className="flex items-center gap-2.5">
+                    {canInvite && (
+                      <button
+                        type="button"
+                        onClick={() => openInviteModal("employee")}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-sky-600/20 cursor-pointer"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                        </svg>
+                        <span>Invite Member</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => fetchEmployees()}
+                      className="p-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
+                      title="Refresh Staff Directory"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-                {canInvite && (
-                  <button onClick={() => openInviteModal("employee")}
-                    className="self-start sm:self-auto flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold transition shadow-sm cursor-pointer">
-                    ＋ Invite Member
-                  </button>
+
+                {/* 3 Clean Summary Stat Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                      {userRole === "manager" ? "Department Staff" : "Registered Staff"}
+                    </span>
+                    <div className="text-xl font-bold text-slate-900 font-mono">{employees.length}</div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                      {userRole === "manager" ? "Active In Dept" : "Active Members"}
+                    </span>
+                    <div className="text-xl font-bold text-slate-900 font-mono">{activeCount}</div>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                      {userRole === "manager" ? "Pending Offers" : "Pending Invites"}
+                    </span>
+                    <div className="text-xl font-bold text-slate-900 font-mono">{pendingCount}</div>
+                  </div>
+                </div>
+
+                {/* Search & Filter Controls */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/70">
+                  <div className="relative flex-1 w-full sm:max-w-xs">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </span>
+                    <input
+                      type="text"
+                      placeholder="Search name, email, department…"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full bg-white border border-slate-200/80 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 transition shadow-2xs"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="bg-white border border-slate-200/80 text-slate-800 text-xs font-medium rounded-xl px-3.5 py-2 focus:outline-none focus:border-sky-500 w-full sm:w-auto cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">All Members ({employees.length})</option>
+                      <option value="active">Active ({activeCount})</option>
+                      <option value="pending_offer">Pending ({pendingCount})</option>
+                    </select>
+
+                    <span className="text-xs font-mono font-semibold text-slate-500 bg-white px-3 py-2 rounded-xl border border-slate-200/80 shadow-2xs whitespace-nowrap">
+                      {filtered.length} of {employees.length}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Table */}
+                {loadingEmployees ? (
+                  <div className="py-16 flex items-center justify-center gap-2.5 text-slate-500 text-xs">
+                    <div className="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading staff directory…</span>
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="py-16 text-center space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                    <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                      </svg>
+                    </div>
+                    <p className="text-xs font-bold text-slate-800">
+                      {employees.length === 0
+                        ? userRole === "manager"
+                          ? "No Department Members Found"
+                          : "No Staff Members Added Yet"
+                        : "No Matching Staff Members Found"}
+                    </p>
+                    <p className="text-xs text-slate-400">
+                      {employees.length === 0
+                        ? userRole === "manager"
+                          ? `No members or team leads currently assigned to the ${employeeProfile?.department || "your"} department.`
+                          : "Invite your first team member or employee to begin building your organization."
+                        : `No members match "${searchQuery}". Try adjusting your search query or filter.`}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs bg-white">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs min-w-[700px]">
+                        <thead className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
+                          <tr>
+                            <th className="py-3 px-5">Member &amp; Email</th>
+                            <th className="py-3 px-5">Role Assigned</th>
+                            <th className="py-3 px-5">Department &amp; Title</th>
+                            <th className="py-3 px-5">Joining Date</th>
+                            <th className="py-3 px-5">Username</th>
+                            <th className="py-3 px-5 text-right">Account Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {filtered.map((emp) => {
+                            const initial = emp.full_name ? emp.full_name.charAt(0).toUpperCase() : "?";
+
+                            return (
+                              <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors group">
+                                <td className="py-3.5 px-5">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200/80 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
+                                      {initial}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-slate-900 text-xs truncate max-w-xs flex items-center gap-1.5">
+                                        <span>{emp.full_name}</span>
+                                        {emp.auth_user_id && onlineUserIds.has(emp.auth_user_id) && (
+                                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                            Online
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="text-[11px] text-slate-500 font-mono truncate max-w-xs mt-0.5">{emp.email}</div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                <td className="py-3.5 px-5">
+                                  <RoleBadge role={emp.role} />
+                                </td>
+
+                                <td className="py-3.5 px-5">
+                                  <div className="space-y-0.5">
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                      {emp.department || "General"}
+                                    </span>
+                                    {emp.designation && (
+                                      <p className="text-[11px] text-slate-500">{emp.designation}</p>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="py-3.5 px-5 font-mono text-slate-600 text-[11px]">
+                                  {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : "—"}
+                                </td>
+
+                                <td className="py-3.5 px-5 font-mono text-sky-700 font-semibold text-xs">
+                                  {emp.username ? `@${emp.username}` : <span className="text-slate-400 font-sans italic text-[11px]">Pending</span>}
+                                </td>
+
+                                <td className="py-3.5 px-5 text-right">
+                                  <StatusBadge status={emp.status} />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 )}
               </div>
-
-              {/* Filters */}
-              <div className="flex flex-col sm:flex-row items-center gap-3 px-6 py-3 bg-sky-50/40 border-b border-sky-100">
-                <div className="relative flex-1 w-full sm:max-w-64">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
-                  <input type="text" placeholder="Search name, email, department…" value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full bg-sky-50/50 border border-sky-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-sky-400 focus:outline-none focus:border-sky-500 transition" />
-                </div>
-                <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-                  className="bg-white border border-sky-200 text-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-sky-500 w-full sm:w-auto cursor-pointer">
-                  <option value="all">All Members ({employees.length})</option>
-                  <option value="active">Active ({activeCount})</option>
-                  <option value="pending_offer">Pending ({pendingCount})</option>
-                </select>
-              </div>
-
-              {/* Table */}
-              {loadingEmployees ? (
-                <div className="py-16 flex items-center justify-center gap-2 text-slate-500 text-xs">
-                  <div className="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
-                  Loading directory…
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="py-16 text-center text-slate-500">
-                  <p className="text-2xl mb-2">⊞</p>
-                  <p className="text-sm">No members match your filter.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left min-w-[640px]">
-                    <thead>
-                      <tr className="border-b border-sky-100 bg-sky-50/50">
-                        {["Member", "Role", "Department", "Joining Date", "Username", "Status"].map((h) => (
-                          <th key={h} className="py-3 px-4 text-[10px] font-bold text-sky-900 uppercase tracking-wider">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-sky-100">
-                      {filtered.map((emp) => (
-                        <tr key={emp.id} className="hover:bg-sky-50/50 transition-colors group">
-                          <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 border border-sky-200 flex items-center justify-center font-bold text-xs shrink-0">
-                                {emp.full_name?.charAt(0)?.toUpperCase() || "?"}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-slate-900 flex items-center gap-1.5">
-                                  {emp.full_name}
-                                  {emp.auth_user_id && onlineUserIds.has(emp.auth_user_id) && (
-                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-bold">
-                                      <span className="w-1 h-1 rounded-full bg-emerald-500" />Online
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-slate-500 text-[10px]">{emp.email}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5 px-4"><RoleBadge role={emp.role} /></td>
-                          <td className="py-3.5 px-4">
-                            <p className="font-medium text-slate-800">{emp.department || "General"}</p>
-                            <p className="text-slate-500 text-[10px]">{emp.designation || "—"}</p>
-                          </td>
-                          <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">
-                            {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : "—"}
-                          </td>
-                          <td className="py-3.5 px-4 font-mono text-sky-700 font-semibold">
-                            {emp.username ? `@${emp.username}` : <span className="text-slate-400 font-sans italic">Pending</span>}
-                          </td>
-                          <td className="py-3.5 px-4"><StatusBadge status={emp.status} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
             </div>
           )}
 
@@ -1114,27 +1350,27 @@ function DashboardContent() {
             </div>
           )}
 
-          {/* --- TAB: SETTINGS --- */}
+          {/* --- TAB: SETTINGS (MY PROFILE) --- */}
           {activeTab === "settings" && (
             <div className="max-w-3xl space-y-6">
-              <form onSubmit={handleProfileSave} className="bg-white border border-sky-100 rounded-2xl overflow-hidden shadow-2xs">
+              <form onSubmit={handleProfileSave} className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
                 {/* Profile Header & Photo Upload */}
-                <div className="bg-gradient-to-r from-sky-100 via-blue-50 to-indigo-50 border-b border-sky-100 px-6 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+                <div className="bg-white border-b border-slate-100 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
                   <div className="flex items-center gap-4">
                     <div className="relative group shrink-0">
                       {profileForm.avatarUrl ? (
                         <img
                           src={profileForm.avatarUrl}
                           alt="Profile Avatar"
-                          className="w-20 h-20 rounded-2xl object-cover border-2 border-sky-300 shadow-md"
+                          className="w-16 h-16 rounded-xl object-cover border border-slate-200 shadow-2xs"
                         />
                       ) : (
-                        <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-extrabold text-3xl shadow-md">
+                        <div className="w-16 h-16 rounded-xl bg-sky-50 text-sky-700 border border-sky-200/80 flex items-center justify-center font-bold text-xl shadow-2xs">
                           {avatar}
                         </div>
                       )}
-                      <label className="absolute inset-0 rounded-2xl bg-slate-900/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-xs font-bold gap-1">
-                        📷 Change
+                      <label className="absolute inset-0 rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-[11px] font-semibold">
+                        Change
                         <input
                           type="file"
                           accept="image/*"
@@ -1144,19 +1380,19 @@ function DashboardContent() {
                       </label>
                     </div>
                     <div className="min-w-0">
-                      <h2 className="text-lg font-bold text-slate-900 truncate">{displayName}</h2>
+                      <h2 className="text-base font-bold text-slate-900 tracking-tight truncate">{displayName}</h2>
                       <p className="text-xs text-slate-500 mt-0.5 truncate">{employeeProfile?.email || userSession?.email}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <RoleBadge role={userRole} />
-                        <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                          🔒 {employeeProfile?.employee_id || `EMP-${employeeProfile?.id?.slice(0, 5)?.toUpperCase() || "001"}`}
+                        <span className="text-[10px] font-mono font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                          {employeeProfile?.employee_id || `EMP-${employeeProfile?.id?.slice(0, 5)?.toUpperCase() || "001"}`}
                         </span>
                       </div>
                     </div>
                   </div>
 
-                  <label className="cursor-pointer px-4 py-2 rounded-xl bg-white hover:bg-sky-50 text-sky-700 border border-sky-200 text-xs font-semibold transition flex items-center gap-2 shadow-2xs shrink-0 self-stretch sm:self-auto justify-center">
-                    📷 Upload Photo
+                  <label className="cursor-pointer px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs shrink-0 self-stretch sm:self-auto justify-center">
+                    <span>Upload Photo</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -1168,203 +1404,205 @@ function DashboardContent() {
 
                 {/* Notifications */}
                 {profileMsg.error && (
-                  <div className="mx-6 mt-6 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center gap-2">
-                    <span>⚠️</span>
+                  <div className="mx-6 mt-6 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center justify-between">
                     <span>{profileMsg.error}</span>
+                    <button type="button" onClick={() => setProfileMsg({ error: "", success: "" })} className="text-rose-500">✕</button>
                   </div>
                 )}
                 {profileMsg.success && (
-                  <div className="mx-6 mt-6 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2">
-                    <span>🎉</span>
+                  <div className="mx-6 mt-6 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center justify-between">
                     <span>{profileMsg.success}</span>
+                    <button type="button" onClick={() => setProfileMsg({ error: "", success: "" })} className="text-emerald-600">✕</button>
                   </div>
                 )}
 
                 <div className="p-6 space-y-6">
-                  {/* SECTION 1: Locked / Non-Editable Official Records */}
+                  {/* SECTION 1: Workspace Account Information */}
                   <div className="space-y-3">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-sky-100 pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                      <span>Official Workspace Records</span>
-                      <span className="text-[10px] text-amber-700 normal-case font-medium flex items-center gap-1">
-                        🔒 Read-Only Fields (Managed by Admin)
+                    <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Workspace Account Information
+                      </h3>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        Managed by Organization
                       </span>
-                    </h3>
+                    </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* Employee ID (LOCKED) */}
+                      {/* Employee ID */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
-                          <span>Employee ID *</span>
-                          <span className="text-amber-700 font-semibold normal-case">🔒 Not Editable</span>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                          Employee ID
                         </label>
                         <input
                           type="text"
                           disabled
                           readOnly
                           value={employeeProfile?.employee_id || `EMP-${employeeProfile?.id?.slice(0, 5)?.toUpperCase() || "001"}`}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-amber-800 font-mono font-bold text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none"
                         />
                       </div>
 
-                      {/* Work Email (LOCKED) */}
+                      {/* Work Email */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                          Official Work Email 🔒
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                          Official Work Email
                         </label>
                         <input
                           type="email"
                           disabled
                           readOnly
                           value={employeeProfile?.email || userSession?.email || ""}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-600 font-mono text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-mono text-xs cursor-not-allowed select-none outline-none"
                         />
                       </div>
 
-                      {/* Department (LOCKED) */}
+                      {/* Department */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                          Assigned Department 🔒
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                          Assigned Department
                         </label>
                         <input
                           type="text"
                           disabled
                           readOnly
                           value={employeeProfile?.department || "General"}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-600 text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs cursor-not-allowed select-none outline-none"
                         />
                       </div>
 
-                      {/* Username (LOCKED) */}
+                      {/* Username */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                          Username 🔒
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                          Username
                         </label>
                         <input
                           type="text"
                           disabled
                           readOnly
-                          value={employeeProfile?.username ? `@${employeeProfile.username}` : "N/A"}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-sky-700 font-mono text-xs cursor-not-allowed select-none outline-none"
+                          value={employeeProfile?.username ? `@${employeeProfile.username}` : "Not configured"}
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none"
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* SECTION 2: Editable Personal Details */}
+                  {/* SECTION 2: Personal Profile & Contact Information */}
                   <div className="space-y-4 pt-2">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest border-b border-sky-100 pb-2">
-                      Personal Profile & Contact Info (Editable)
-                    </h3>
+                    <div className="border-b border-slate-100 pb-2">
+                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Personal Profile &amp; Contact Details
+                      </h3>
+                    </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {/* First Name */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                           First Name
                         </label>
                         <input
                           type="text"
                           value={profileForm.firstName}
                           onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
-                          placeholder="e.g. Alex"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition"
+                          placeholder="First Name"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
                         />
                       </div>
 
                       {/* Last Name */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                           Last Name
                         </label>
                         <input
                           type="text"
                           value={profileForm.lastName}
                           onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
-                          placeholder="e.g. Morgan"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition"
+                          placeholder="Last Name"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
                         />
                       </div>
 
                       {/* Personal Email */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                           Personal Email Address
                         </label>
                         <input
                           type="email"
                           value={profileForm.personalEmail}
                           onChange={(e) => setProfileForm({ ...profileForm, personalEmail: e.target.value })}
-                          placeholder="alex.personal@gmail.com"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition"
+                          placeholder="personal.email@example.com"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
                         />
                       </div>
 
                       {/* Phone Number */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
                           Phone Number
                         </label>
                         <input
                           type="tel"
                           value={profileForm.phone}
                           onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                          placeholder="+1 (555) 234-5678"
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition"
+                          placeholder="+1 (555) 000-0000"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
                         />
                       </div>
 
                       {/* Joining Date */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 flex items-center justify-between">
-                          <span>Date of Joining 📅</span>
-                          <span className="text-sky-600 font-semibold normal-case text-[10px]">Editable</span>
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                          Date of Joining
                         </label>
                         <input
                           type="date"
                           value={profileForm.joiningDate}
                           onChange={(e) => setProfileForm({ ...profileForm, joiningDate: e.target.value })}
-                          className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 text-xs focus:border-sky-500 outline-none transition cursor-pointer"
+                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs cursor-pointer"
                         />
                       </div>
                     </div>
 
                     {/* Address */}
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                        Residential / Postal Address
+                      <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        Residential Address
                       </label>
                       <textarea
                         rows={2}
                         value={profileForm.address}
                         onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
-                        placeholder="123 Tech Boulevard, Suite 400, San Francisco, CA 94107"
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 placeholder-sky-400 text-xs focus:border-sky-500 outline-none transition resize-none"
+                        placeholder="Residential address details"
+                        className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs resize-none"
                       />
                     </div>
                   </div>
 
                   {/* Actions */}
-                  <div className="pt-4 border-t border-sky-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 transition w-full sm:w-auto justify-center cursor-pointer"
+                      className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 text-xs font-semibold transition-all w-full sm:w-auto justify-center cursor-pointer shadow-2xs"
                     >
-                      🚪 Sign Out
+                      Sign Out
                     </button>
 
                     <button
                       type="submit"
                       disabled={isSavingProfile}
-                      className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold disabled:opacity-50 transition shadow-md shadow-sky-500/20 w-full sm:w-auto justify-center cursor-pointer"
+                      className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors shadow-xs shadow-sky-600/20 w-full sm:w-auto justify-center cursor-pointer flex items-center gap-2"
                     >
                       {isSavingProfile ? (
                         <>
                           <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Saving Profile...</span>
+                          <span>Saving Changes...</span>
                         </>
                       ) : (
-                        <span>💾 Save Profile Changes</span>
+                        <span>Save Profile Details</span>
                       )}
                     </button>
                   </div>
@@ -1547,7 +1785,7 @@ function DashboardContent() {
                     <select
                       name="role"
                       value={inviteForm.role}
-                      onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
+                      onChange={(e) => handleRoleChange(e.target.value)}
                       className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
                     >
                       <option value="employee">Standard Employee</option>
@@ -1572,7 +1810,7 @@ function DashboardContent() {
                       onChange={(e) => setInviteForm({ ...inviteForm, department: e.target.value })}
                       className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
                     >
-                      {(dbDepartments.length > 0 ? dbDepartments.map((d) => d.name) : ["Engineering", "Human Resources", "Sales", "Finance", "Operations", "Design", "Support", "General"]).map((d) => (
+                      {getDepartmentsForRole(inviteForm.role, dbDepartments).map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>

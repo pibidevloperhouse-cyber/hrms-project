@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
+import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
 /**
  * GET /api/employees/list
@@ -20,29 +21,7 @@ export async function GET(req) {
     }
 
     const adminSupabase = createAdminClient();
-    const userEmail = user.email ? user.email.toLowerCase() : "";
-
-    // Find company associated with user (admin or employee)
-    let company = null;
-    const { data: adminComp } = await adminSupabase
-      .from("companies")
-      .select("*")
-      .or(`admin_id.eq.${user.id},email.eq.${userEmail}`)
-      .maybeSingle();
-
-    if (adminComp) {
-      company = adminComp;
-    } else {
-      const { data: empComp } = await adminSupabase
-        .from("employees")
-        .select("company_id, companies:company_id(*)")
-        .or(`auth_user_id.eq.${user.id},email.eq.${userEmail}`)
-        .maybeSingle();
-
-      if (empComp?.companies) {
-        company = empComp.companies;
-      }
-    }
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
 
     if (!company) {
       return NextResponse.json(
@@ -51,12 +30,34 @@ export async function GET(req) {
       );
     }
 
-    // Fetch all employees for the company
-    const { data: employees, error: fetchError } = await adminSupabase
+    // Build employees query
+    let query = adminSupabase
       .from("employees")
       .select("*")
       .eq("company_id", company.id)
       .order("full_name", { ascending: true });
+
+    // Scoping for Manager role: Manager can ONLY view their department members and team leads
+    if (role === "manager") {
+      const managerDept = employeeProfile?.department?.trim();
+      if (!managerDept) {
+        return NextResponse.json({
+          success: true,
+          companyId: company.id,
+          companyName: company.name,
+          role: "manager",
+          department: null,
+          employees: [],
+          count: 0,
+        });
+      }
+
+      query = query
+        .ilike("department", managerDept)
+        .in("role", ["employee", "team_lead", "manager"]);
+    }
+
+    const { data: employees, error: fetchError } = await query;
 
     if (fetchError) {
       console.error("Employee list fetch error:", fetchError);

@@ -37,11 +37,20 @@ export async function GET(req) {
     const targetMonth = searchParams.get("month") || new Date().toISOString().slice(0, 7); // 'YYYY-MM'
     const reqEmpId = searchParams.get("employeeId");
 
-    const isHR = ["ADMIN", "hr_manager", "hr_executive", "manager", "team_lead"].includes(role);
+    const canViewAll = ["ADMIN", "hr_manager", "hr_executive"].includes(role);
+    const isHR = canViewAll;
+
+    // Disallow non-HR/non-admin roles from requesting other employees' summaries
+    if (reqEmpId && reqEmpId !== employeeProfile?.id && !canViewAll) {
+      return NextResponse.json(
+        { message: "Access denied. You do not have permission to view other employees' monthly summaries." },
+        { status: 403 }
+      );
+    }
 
     // Target employee for individual drill-down
     let targetEmployeeId = employeeProfile?.id;
-    if (isHR && reqEmpId) {
+    if (canViewAll && reqEmpId) {
       targetEmployeeId = reqEmpId;
     }
 
@@ -613,9 +622,9 @@ export async function GET(req) {
       month: targetMonth,
       companyId: company.id,
       userRole: role,
-      isHR,
+      isHR: canViewAll,
       targetEmployee: targetEmployeeDetails,
-      allEmployees: employees,
+      allEmployees: canViewAll ? employees : [],
       dailyTargetHours,
       expectedWorkDaysInMonth: netExpectedWorkDaysInMonth,
       expectedMonthlyHours: netExpectedMonthlyHours,
@@ -623,8 +632,8 @@ export async function GET(req) {
       grossExpectedMonthlyHours: expectedMonthlyHours,
       companyHolidaysCount,
       summary: targetEmpSummary,
-      staffSummaryTable, // All staff real-time summary evaluation list for HR
-      departmentBenchmarks, // Department capacity and health score benchmarks
+      staffSummaryTable: canViewAll ? staffSummaryTable : [], // All staff real-time summary evaluation list for HR
+      departmentBenchmarks: canViewAll ? departmentBenchmarks : [], // Department capacity and health score benchmarks
       dailyBreakdown,
     });
   } catch (error) {

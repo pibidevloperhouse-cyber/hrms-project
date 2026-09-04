@@ -185,9 +185,10 @@ function getPayslipPeriod(doc) {
   return { month: d.getMonth(), year: d.getFullYear() };
 }
 
-export default function EmployeeDocumentManager() {
+export default function EmployeeDocumentManager({ initialEmployees = [] }) {
   const [viewTab, setViewTab] = useState("directory"); // "directory" | "repository"
-  const [employees, setEmployees] = useState([]);
+  const [employees, setEmployees] = useState(initialEmployees);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState("ALL");
   const [selectedDocType, setSelectedDocType] = useState("ALL"); // ALL | PERSONAL_INFORMATION | SALARY_PAYSLIP
   const [searchQuery, setSearchQuery] = useState("");
@@ -211,7 +212,11 @@ export default function EmployeeDocumentManager() {
   const handleDownloadDocument = async (doc) => {
     setDownloadingId(doc.id);
     try {
-      const res = await fetch(`/api/documents/download?id=${doc.id}`);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
+      const res = await fetch(`/api/documents/download?id=${doc.id}`, { headers });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.message || "Failed to download file.");
@@ -241,7 +246,7 @@ export default function EmployeeDocumentManager() {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = React.useRef(null);
   const [uploadForm, setUploadForm] = useState({
-    employeeId: "",
+    employeeId: initialEmployees[0]?.id || "",
     category: "SALARY_PAYSLIP", // "SALARY_PAYSLIP" | "PERSONAL_INFORMATION"
     subType: "OFFER_LETTER", // "OFFER_LETTER" | "PERSONAL_DETAILS" | "EXPERIENCE_CERTIFICATE"
     payslipMonth: "", // e.g. "August 2026"
@@ -255,16 +260,27 @@ export default function EmployeeDocumentManager() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employees/list");
+      setLoadingEmployees(true);
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
+      const res = await fetch("/api/employees/list", { headers });
       if (res.ok) {
         const data = await res.json();
-        setEmployees(data.employees || []);
-        if (data.employees?.length > 0 && !uploadForm.employeeId) {
-          setUploadForm((prev) => ({ ...prev, employeeId: data.employees[0].id }));
+        const loadedEmps = data.employees || [];
+        setEmployees(loadedEmps);
+        if (loadedEmps.length > 0 && !uploadForm.employeeId) {
+          setUploadForm((prev) => ({ ...prev, employeeId: loadedEmps[0].id }));
         }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn("Notice loading employees list:", errJson.message);
       }
     } catch (err) {
       console.error("Failed to fetch employees for document manager:", err);
+    } finally {
+      setLoadingEmployees(false);
     }
   };
 
@@ -310,6 +326,15 @@ export default function EmployeeDocumentManager() {
   };
 
   useEffect(() => {
+    if (initialEmployees && initialEmployees.length > 0) {
+      setEmployees(initialEmployees);
+      if (!uploadForm.employeeId) {
+        setUploadForm((prev) => ({ ...prev, employeeId: initialEmployees[0].id }));
+      }
+    }
+  }, [initialEmployees]);
+
+  useEffect(() => {
     const initEmployees = async () => {
       await fetchEmployees();
     };
@@ -323,10 +348,38 @@ export default function EmployeeDocumentManager() {
     initDocs();
   }, [selectedEmployeeId, selectedDocType]);
 
+  // Real-time listener for employee_documents and employees changes
+  useEffect(() => {
+    const supabase = createClient();
+    const rtChannel = supabase
+      .channel("document-manager-rt")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "employee_documents" },
+        () => {
+          fetchDocuments(true);
+          fetchEmployees();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "employees" },
+        () => {
+          fetchEmployees();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(rtChannel);
+    };
+  }, []);
+
   // Background Sync Interval (Every 10 seconds)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchDocuments(true);
+      fetchEmployees();
     }, 10000);
 
     return () => clearInterval(interval);
@@ -434,8 +487,13 @@ export default function EmployeeDocumentManager() {
       formData.append("documentName", resolvedDocName);
       formData.append("notes", uploadForm.notes);
 
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
       const res = await fetch("/api/documents/upload", {
         method: "POST",
+        headers,
         body: formData,
       });
 
@@ -483,8 +541,13 @@ export default function EmployeeDocumentManager() {
     setNotice({ error: "", success: "" });
 
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+
       const res = await fetch(`/api/documents/${docId}`, {
         method: "DELETE",
+        headers,
       });
 
       const data = await res.json();
@@ -582,20 +645,15 @@ export default function EmployeeDocumentManager() {
       {/* Top Banner Header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Company Documents &amp; Payslips
-              </h2>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
             </div>
-            <p className="text-xs text-slate-500">
-              Manage and archive employee records, verified credentials, and official salary payslips.
-            </p>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              Company Documents &amp; Payslips
+            </h2>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
@@ -647,36 +705,44 @@ export default function EmployeeDocumentManager() {
           </div>
         </div>
 
-        {/* View Switcher Sub-Tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+        {/* Unified Horizontal Navigation Bar Track (One Div) */}
+        <nav className="flex items-center gap-1.5 p-1.5 bg-[#f1f5f9] border border-slate-200/70 rounded-2xl shadow-2xs overflow-x-auto scroll-smooth custom-scroll w-full">
           <button
-            onClick={() => setViewTab("directory")}
-            className={`flex-1 py-2 px-3.5 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            type="button"
+            onClick={(e) => {
+              setViewTab("directory");
+              e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+            }}
+            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
               viewTab === "directory"
-                ? "bg-white text-slate-900 shadow-2xs font-bold"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
             }`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             <span>Staff Directory ({employees.length})</span>
           </button>
 
           <button
-            onClick={() => setViewTab("repository")}
-            className={`flex-1 py-2 px-3.5 rounded-lg font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+            type="button"
+            onClick={(e) => {
+              setViewTab("repository");
+              e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+            }}
+            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
               viewTab === "repository"
-                ? "bg-white text-slate-900 shadow-2xs font-bold"
-                : "text-slate-600 hover:text-slate-900"
+                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
             }`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
-            <span>Documents Repository ({documents.length})</span>
+            <span>Document Repository ({documents.length})</span>
           </button>
-        </div>
+        </nav>
 
         {/* Top Summary Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
@@ -758,7 +824,12 @@ export default function EmployeeDocumentManager() {
             </div>
           </div>
 
-          {filteredEmployees.length === 0 ? (
+          {loadingEmployees && employees.length === 0 ? (
+            <div className="py-16 flex items-center justify-center gap-2.5 text-slate-500 text-xs">
+              <div className="w-4 h-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+              <span>Loading staff directory…</span>
+            </div>
+          ) : filteredEmployees.length === 0 ? (
             <div className="py-16 text-center space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
               <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
@@ -1029,22 +1100,41 @@ export default function EmployeeDocumentManager() {
               <p className="text-xs font-medium text-slate-500">Loading documents...</p>
             </div>
           ) : filteredDocuments.length === 0 ? (
-            <div className="py-16 text-center space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-              <div className="w-10 h-10 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <p className="text-xs font-bold text-slate-800">
-                {isPayslipFilter && selectedMonth !== null && selectedYear !== null
-                  ? `No Payslips for ${MONTH_NAMES_FULL[selectedMonth]} ${selectedYear}`
-                  : "No Documents Found"}
-              </p>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                {isPayslipFilter && selectedMonth !== null && selectedYear !== null
-                  ? `No payslips uploaded for ${MONTH_NAMES_FULL[selectedMonth]} ${selectedYear}. Select another month or click "Show All".`
-                  : "No employee documents match your current filter criteria."}
-              </p>
+            <div className="py-16 px-4 text-center space-y-3 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+              {isPayslipFilter && selectedMonth !== null && selectedYear !== null ? (
+                <>
+                  <div className="relative mx-auto w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 shadow-2xs">
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                    </svg>
+                    <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs" title="No payslip available">
+                      <svg className="w-2.5 h-2.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </span>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wider border border-emerald-200/80">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      No Payslip Available
+                    </span>
+                    <h4 className="text-sm font-bold text-slate-800">
+                      No Payslips for {MONTH_NAMES_FULL[selectedMonth]} {selectedYear}
+                    </h4>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-200/80 flex items-center justify-center text-sky-600 shadow-2xs mx-auto">
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-slate-800">No Documents Found</h4>
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <div className="border border-slate-200/80 rounded-xl overflow-hidden shadow-2xs bg-white">

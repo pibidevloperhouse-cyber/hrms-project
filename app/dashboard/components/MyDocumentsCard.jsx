@@ -518,8 +518,8 @@ export default function MyDocumentsCard() {
           {selectedMonth !== null && selectedYear !== null && (
             <div className="flex items-center justify-center gap-2 pt-1">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-600/10 text-emerald-700 text-[11px] font-bold border border-emerald-200">
-                <span>📋</span>
-                Showing payslips for <strong>{MONTH_NAMES[selectedMonth]} {selectedYear}</strong>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Showing payslips for <strong>{MONTH_NAMES[selectedMonth]} {selectedYear}</strong></span>
               </span>
             </div>
           )}
@@ -533,18 +533,45 @@ export default function MyDocumentsCard() {
           <p className="text-xs font-semibold text-slate-500">Loading documents...</p>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="py-20 text-center space-y-3 bg-slate-50/50 rounded-3xl border border-dashed border-slate-200">
-          <div className="text-5xl">{isPayslipTab && selectedMonth !== null ? "💳" : "📁"}</div>
-          <p className="text-sm font-extrabold text-slate-800">
-            {isPayslipTab && selectedMonth !== null && selectedYear !== null
-              ? `No Payslips for ${MONTH_NAMES[selectedMonth]} ${selectedYear}`
-              : "No Files Stored Yet"}
-          </p>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            {isPayslipTab && selectedMonth !== null && selectedYear !== null
-              ? `Your HR manager has not uploaded any payslips for ${MONTH_NAMES[selectedMonth]} ${selectedYear}. Try selecting a different month or click "Show All Payslips" to view all.`
-              : `Your HR manager has not uploaded any ${selectedType !== "ALL" ? selectedType.replace("_", " ").toLowerCase() : "files"} for you yet.`}
-          </p>
+        <div className="py-16 px-4 text-center space-y-3 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+          {isPayslipTab && selectedMonth !== null && selectedYear !== null ? (
+            <>
+              {/* Professional No Payslip Available Icon */}
+              <div className="relative mx-auto w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200/80 flex items-center justify-center text-emerald-600 shadow-2xs">
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs" title="No payslip available">
+                  <svg className="w-2.5 h-2.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </span>
+              </div>
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold uppercase tracking-wider border border-emerald-200/80">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  No Payslip Available
+                </span>
+                <h4 className="text-sm font-bold text-slate-800">
+                  No Payslip Available for {MONTH_NAMES[selectedMonth]} {selectedYear}
+                </h4>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Professional Generic Document Empty Icon */}
+              <div className="w-14 h-14 rounded-2xl bg-sky-50 border border-sky-200/80 flex items-center justify-center text-sky-600 shadow-2xs mx-auto">
+                <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-sm font-bold text-slate-800">
+                  {searchQuery ? "No Matching Documents Found" : "No Files Stored Yet"}
+                </h4>
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="border border-sky-100 rounded-2xl overflow-hidden shadow-2xs bg-white">

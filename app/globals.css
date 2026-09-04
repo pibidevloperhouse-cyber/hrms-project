@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -10,8 +10,8 @@
   --accent: #0284c7;
   --accent-glow: rgba(2, 132, 199, 0.15);
   
-  --font-body: var(--font-plus-jakarta), "Plus Jakarta Sans", "Inter", system-ui, -apple-system, sans-serif;
-  --font-heading: var(--font-outfit), "Outfit", var(--font-plus-jakarta), sans-serif;
+  --font-body: var(--font-poppins), "Poppins", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-heading: var(--font-poppins), "Poppins", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   --font-code: var(--font-jetbrains-mono), "JetBrains Mono", monospace;
 }
 
@@ -19,20 +19,35 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
+.custom-scroll {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
 body {
   background: #ffffff;
   color: #0f172a;
   font-family: var(--font-body);
-  letter-spacing: -0.012em;
+  letter-spacing: -0.01em;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Heading Typography Override */
-h1, h2, h3, h4, h5, h6 {
+/* Main Page & Banner Headings (Poppins) */
+h1, h2, .main-heading {
   font-family: var(--font-heading);
-  letter-spacing: -0.022em;
+  letter-spacing: -0.02em;
+}
+
+/* Side Headings & Section Card Headings across all views (JetBrains Mono) */
+h3, h4, h5, h6, .side-heading, .section-heading, .card-heading {
+  font-family: var(--font-code);
+  letter-spacing: -0.015em;
 }
 
 /* Code & Numeric Typography Override */

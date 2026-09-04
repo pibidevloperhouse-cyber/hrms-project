@@ -19,6 +19,33 @@ function LoginContent() {
   const [successMessage, setSuccessMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [loginSuccessModal, setLoginSuccessModal] = useState(null);
+
+  const triggerLoginSuccessModal = (info) => {
+    setIsSubmitting(false);
+    setErrorMessage("");
+    setSuccessMessage("");
+    setLoginSuccessModal(info);
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem("login_welcome", JSON.stringify({
+          name: info.userName,
+          company: info.companyName,
+          role: info.role,
+        }));
+      } catch (_) {}
+    }
+  };
+
+  useEffect(() => {
+    if (!loginSuccessModal) return;
+
+    const timer = setTimeout(() => {
+      window.location.replace(loginSuccessModal.targetUrl || "/dashboard");
+    }, 1100);
+
+    return () => clearTimeout(timer);
+  }, [loginSuccessModal]);
 
   useEffect(() => {
     const emailParam = searchParams.get("email");
@@ -68,14 +95,39 @@ function LoginContent() {
 
       // Even if the profile fetch fails, we have a valid session — redirect to dashboard
       const targetUrl = data?.requiresSetup ? "/company-wizard" : "/dashboard";
-      setSuccessMessage("Login successful! Redirecting to workspace...");
-      await new Promise((r) => setTimeout(r, 100));
-      window.location.replace(targetUrl);
+      const resolvedName =
+        data?.employee?.full_name ||
+        data?.user?.user_metadata?.full_name ||
+        data?.user?.email?.split("@")[0] ||
+        formData.email.split("@")[0];
+      const resolvedCompany =
+        data?.company?.name ||
+        data?.company?.legal_name ||
+        "Enterprise Workspace";
+      const resolvedRole =
+        data?.employee?.role ||
+        data?.role ||
+        data?.user?.user_metadata?.role ||
+        "Workspace Member";
+
+      triggerLoginSuccessModal({
+        userName: resolvedName,
+        userEmail: data?.user?.email || formData.email,
+        companyName: resolvedCompany,
+        role: resolvedRole,
+        department: data?.employee?.department || null,
+        targetUrl,
+      });
     } catch (_) {
       // Profile fetch failed or timed out — session is still valid, just go to dashboard
-      setSuccessMessage("Login successful! Redirecting to workspace...");
-      await new Promise((r) => setTimeout(r, 100));
-      window.location.replace("/dashboard");
+      triggerLoginSuccessModal({
+        userName: formData.email.split("@")[0],
+        userEmail: formData.email,
+        companyName: "Enterprise Workspace",
+        role: "Workspace Member",
+        department: null,
+        targetUrl: "/dashboard",
+      });
     }
   };
 
@@ -130,9 +182,28 @@ function LoginContent() {
                 ]);
               } catch (_) { /* non-fatal */ }
               const targetUrl = data.requiresSetup ? "/company-wizard" : "/dashboard";
-              setSuccessMessage("Login successful! Redirecting to workspace...");
-              await new Promise((r) => setTimeout(r, 100));
-              window.location.replace(targetUrl);
+              const resolvedName =
+                data?.employee?.full_name ||
+                data?.user?.user_metadata?.full_name ||
+                data?.user?.email?.split("@")[0] ||
+                emailInput;
+              const resolvedCompany =
+                data?.company?.name ||
+                data?.company?.legal_name ||
+                "Enterprise Workspace";
+              const resolvedRole =
+                data?.employee?.role ||
+                data?.role ||
+                "Workspace Member";
+
+              triggerLoginSuccessModal({
+                userName: resolvedName,
+                userEmail: data?.user?.email || data?.employee?.email || emailInput,
+                companyName: resolvedCompany,
+                role: resolvedRole,
+                department: data?.employee?.department || null,
+                targetUrl,
+              });
               return;
             }
             // Server returned a proper auth error (wrong credentials) — show it and stop
@@ -319,6 +390,27 @@ function LoginContent() {
         </div>
 
       </div>
+
+      {/* --- CLEAN PROFESSIONAL POPUP: SUCCESS LOGIN TO WORKSPACE --- */}
+      {loginSuccessModal && (
+        <div className="fixed inset-0 z-[9999] bg-slate-900/30 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="w-full max-w-sm bg-white border border-slate-200/80 rounded-2xl shadow-xl p-5 text-center space-y-2 animate-scaleUp font-['Poppins']">
+            <div className="flex items-center justify-center gap-2.5">
+              <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs shadow-emerald-500/25">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <h3 className="text-sm sm:text-[15px] font-bold text-slate-900 tracking-tight">
+                Success Login to Workspace
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 font-normal font-['Plus_Jakarta_Sans']">
+              Redirecting to your dashboard...
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

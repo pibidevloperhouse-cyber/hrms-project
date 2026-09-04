@@ -54,7 +54,8 @@ function getDigitsHMS(totalSeconds) {
 }
 
 export default function AttendancePage({ userRole }) {
-  const [activeViewTab, setActiveViewTab] = useState("punch-clock"); // "punch-clock" | "team-tracker" | "monthly-summary"
+  const isAdmin = userRole === "ADMIN";
+  const [activeViewTab, setActiveViewTab] = useState(userRole === "ADMIN" ? "team-tracker" : "punch-clock"); // "punch-clock" | "team-tracker" | "monthly-summary"
   const [checkedIn, setCheckedIn] = useState(false);
   const [hasCompletedToday, setHasCompletedToday] = useState(false);
   const [checkInTime, setCheckInTime] = useState(null);
@@ -561,6 +562,15 @@ export default function AttendancePage({ userRole }) {
     executeCheckOut(reasonInput.trim());
   };
 
+  const isHR = ["ADMIN", "hr_manager", "hr_executive", "manager", "team_lead"].includes(userRole);
+  const canViewMonthlySummary = ["ADMIN", "hr_manager", "hr_executive"].includes(userRole);
+
+  useEffect(() => {
+    if (!canViewMonthlySummary && activeViewTab === "monthly-summary") {
+      setActiveViewTab(isAdmin ? "team-tracker" : "punch-clock");
+    }
+  }, [canViewMonthlySummary, activeViewTab, isAdmin]);
+
   const runtimeDecimal = (elapsedSeconds / 3600).toFixed(2);
   const currentCumulativeHours = Number(
     (totalCompletedHoursToday + (checkedIn ? Number(runtimeDecimal) : totalWorkingHoursToday)).toFixed(2)
@@ -574,8 +584,6 @@ export default function AttendancePage({ userRole }) {
   const progressPercentInt = Math.min(100, Math.round(progressRatio * 100));
 
   // SVG circle constants removed — now using rectangular progress bar
-
-  const isHR = ["ADMIN", "hr_manager", "hr_executive", "manager", "team_lead"].includes(userRole);
 
   return (
     <div className="space-y-6 animate-fadeIn relative">
@@ -638,49 +646,62 @@ export default function AttendancePage({ userRole }) {
           </button>
         </div>
 
-        {/* View Switcher Sub-Tabs for HR/Admins */}
+        {/* View Switcher Sub-Tabs for HR/Admins - Unified Single Nav Track */}
         {isHR && (
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setActiveViewTab("punch-clock")}
-              className={`flex-1 py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${activeViewTab === "punch-clock"
-                ? "bg-white text-slate-900 shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
-                }`}
-            >
-              <ClockIcon className="w-4 h-4" />
-              <span>My Punch Clock</span>
-            </button>
+          <nav className="flex items-center gap-1.5 p-1.5 bg-[#f1f5f9] border border-slate-200/70 rounded-2xl shadow-2xs overflow-x-auto scroll-smooth custom-scroll w-full">
+            {!isAdmin && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  setActiveViewTab("punch-clock");
+                  e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+                }}
+                className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${activeViewTab === "punch-clock"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+              >
+                <ClockIcon className="w-4 h-4 shrink-0" />
+                <span>My Punch Clock</span>
+              </button>
+            )}
 
             <button
               type="button"
-              onClick={() => setActiveViewTab("team-tracker")}
-              className={`flex-1 py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${activeViewTab === "team-tracker"
-                ? "bg-white text-slate-900 shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
+              onClick={(e) => {
+                setActiveViewTab("team-tracker");
+                e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+              }}
+              className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${activeViewTab === "team-tracker"
+                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
                 }`}
             >
-              <UsersIcon className="w-4 h-4" />
+              <UsersIcon className="w-4 h-4 shrink-0" />
               <span>Team Attendance Tracker</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setActiveViewTab("monthly-summary")}
-              className={`flex-1 py-2.5 px-4 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${activeViewTab === "monthly-summary"
-                ? "bg-white text-slate-900 shadow-2xs"
-                : "text-slate-600 hover:text-slate-900"
-                }`}
-            >
-              <BarChartIcon className="w-4 h-4" />
-              <span>Monthly Summaries</span>
-            </button>
-          </div>
+            {canViewMonthlySummary && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  setActiveViewTab("monthly-summary");
+                  e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+                }}
+                className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${activeViewTab === "monthly-summary"
+                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                  }`}
+              >
+                <BarChartIcon className="w-4 h-4 shrink-0" />
+                <span>Monthly Summaries</span>
+              </button>
+            )}
+          </nav>
         )}
 
-        {/* TAB 1: PUNCH CLOCK & SHIFT LOGS */}
-        {(!isHR || activeViewTab === "punch-clock") && (
+        {/* TAB 1: PUNCH CLOCK & SHIFT LOGS (FOR EMPLOYEES & HR ONLY) */}
+        {!isAdmin && (!isHR || activeViewTab === "punch-clock") && (
           <div className="space-y-6 animate-fadeIn">
             {/* Shift & Break Console Inner Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -1209,7 +1230,7 @@ export default function AttendancePage({ userRole }) {
         )}
 
         {/* TAB 3: EMPLOYEE MONTHLY SUMMARY */}
-        {isHR && activeViewTab === "monthly-summary" && (
+        {canViewMonthlySummary && activeViewTab === "monthly-summary" && (
           <div className="animate-fadeIn">
             <EmployeeMonthlySummaryTable embedded={true} />
           </div>

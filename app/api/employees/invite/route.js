@@ -104,6 +104,7 @@ export async function POST(req) {
     const token = crypto.randomBytes(32).toString("hex");
 
     let invitationRecord = null;
+    const resolvedDepartment = department?.trim() || (isHrRoleTarget ? "Human Resources" : "General");
 
     if (existingInvite) {
       // Refresh token & details for existing pending invitation
@@ -113,7 +114,7 @@ export async function POST(req) {
           token: token,
           full_name: fullName.trim(),
           phone: phone?.trim() || null,
-          department: department?.trim() || null,
+          department: resolvedDepartment,
           designation: designation?.trim() || null,
           role: role,
           invited_by: user.id,
@@ -138,7 +139,7 @@ export async function POST(req) {
             email: cleanEmail,
             full_name: fullName.trim(),
             phone: phone?.trim() || null,
-            department: department?.trim() || null,
+            department: resolvedDepartment,
             designation: designation?.trim() || null,
             role: role,
             token: token,
