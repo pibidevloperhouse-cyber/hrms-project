@@ -32,7 +32,7 @@ export default function AttendanceOverviewCard({ totalStaffCount = 1 }) {
     }
     fetchSummary();
 
-    const interval = setInterval(fetchSummary, 5000);
+    const interval = setInterval(fetchSummary, 45000);
     const handleUpdate = () => fetchSummary();
     if (typeof window !== "undefined") {
       window.addEventListener("attendance-updated", handleUpdate);

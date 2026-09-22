@@ -13,16 +13,22 @@ import CompanyCalendar from "./components/CompanyCalendar";
 import MonthlyWorkingHoursWidget from "./components/MonthlyWorkingHoursWidget";
 import EmployeeDocumentManager from "./components/EmployeeDocumentManager";
 import MyDocumentsCard from "./components/MyDocumentsCard";
+import ProjectManagement from "./components/ProjectManagement";
+import RolePromotionModal from "./components/RolePromotionModal";
+import CompanySettings from "./components/CompanySettings";
+import { checkTaskSprintOverdue } from "@/lib/projectUtils";
 
 // ─── NAV CONFIG ──────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
   { key: "overview", label: "Overview" },
+  { key: "projects", label: "Projects" },
   { key: "attendance", label: "Attendance" },
   { key: "calendar", label: "Work Calendar" },
   { key: "leave-requests", label: "Leave Requests" },
   { key: "documents", label: "Documents & Payslips" },
   { key: "employees", label: "Team Directory" },
   { key: "departments", label: "Departments" },
+  { key: "company-settings", label: "Company Settings" },
   { key: "settings", label: "My Profile" },
 ];
 
@@ -35,6 +41,12 @@ function getNavIcon(key, className = "w-4 h-4 shrink-0") {
           <rect x="14" y="3" width="7" height="7" rx="1.5" />
           <rect x="14" y="14" width="7" height="7" rx="1.5" />
           <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+      );
+    case "projects":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         </svg>
       );
     case "attendance":
@@ -75,6 +87,12 @@ function getNavIcon(key, className = "w-4 h-4 shrink-0") {
       return (
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      );
+    case "company-settings":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
         </svg>
       );
     case "settings":
@@ -187,12 +205,53 @@ function resolveDepartmentForRole(role, availableDepartments = [], currentDepart
 function DashboardContent() {
   const router = useRouter();
 
-  const [company, setCompany] = useState(null);
-  const [userRole, setUserRole] = useState("ADMIN");
-  const [employeeProfile, setEmployeeProfile] = useState(null);
-  const [userSession, setUserSession] = useState(null);
+  // Instant bootstrap from session storage if returning from login
+  const [company, setCompany] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const b = sessionStorage.getItem("workspace_bootstrap");
+        if (b) return JSON.parse(b).company || null;
+      } catch (_) {}
+    }
+    return null;
+  });
+  const [userRole, setUserRole] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const b = sessionStorage.getItem("workspace_bootstrap");
+        if (b) return JSON.parse(b).role || "ADMIN";
+      } catch (_) {}
+    }
+    return "ADMIN";
+  });
+  const [employeeProfile, setEmployeeProfile] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const b = sessionStorage.getItem("workspace_bootstrap");
+        if (b) return JSON.parse(b).employee || null;
+      } catch (_) {}
+    }
+    return null;
+  });
+  const [userSession, setUserSession] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const b = sessionStorage.getItem("workspace_bootstrap");
+        if (b) return JSON.parse(b).user || null;
+      } catch (_) {}
+    }
+    return null;
+  });
   const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const b = sessionStorage.getItem("workspace_bootstrap");
+        if (b && JSON.parse(b).company) return false;
+      } catch (_) {}
+    }
+    return true;
+  });
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [authError, setAuthError] = useState("");
   const [realtimeStatus, setRealtimeStatus] = useState("connecting");
@@ -202,6 +261,8 @@ function DashboardContent() {
   const [activeTab, setActiveTab] = useState("overview");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [selectedEmpForRoleModal, setSelectedEmpForRoleModal] = useState(null);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -298,25 +359,36 @@ function DashboardContent() {
     setTimeout(() => setRealtimeToast((c) => (c?.id === id ? null : c)), 4500);
   };
 
-  // Fetch company + role with resilient session hydration
+  // Fetch company + role with resilient session hydration and seamless fallback
   useEffect(() => {
     let isMounted = true;
     (async () => {
-      setLoading(true);
       try {
         const supabase = createClient();
         let { data: { session } } = await supabase.auth.getSession();
 
-        // If session is still hydrating in browser storage, retry up to twice with increasing delays
-        if (!session) {
-          await new Promise((r) => setTimeout(r, 400));
-          const retry1 = await supabase.auth.getSession();
-          session = retry1.data?.session || null;
+        // If session is still hydrating, retry up to 3 times
+        for (let attempt = 0; !session && attempt < 3; attempt++) {
+          await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+          const retry = await supabase.auth.getSession();
+          session = retry.data?.session || null;
         }
+
         if (!session) {
-          await new Promise((r) => setTimeout(r, 600));
-          const retry2 = await supabase.auth.getSession();
-          session = retry2.data?.session || null;
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) {
+            let hasExistingBootstrap = false;
+            if (typeof window !== "undefined") {
+              try {
+                if (sessionStorage.getItem("workspace_bootstrap")) hasExistingBootstrap = true;
+              } catch (_) {}
+            }
+            if (!hasExistingBootstrap && isMounted) {
+              router.push("/login");
+            }
+            if (isMounted) setLoading(false);
+            return;
+          }
         }
 
         const getHeaders = (token) => {
@@ -327,93 +399,199 @@ function DashboardContent() {
           return h;
         };
 
-        let res = await fetch("/api/company/me", { headers: getHeaders(session?.access_token) });
-        let ct = res.headers.get("content-type") || "";
+        let res = null;
+        let ct = "";
+        let retries = 0;
+        const maxRetries = 4;
 
-        // If route returned non-JSON (e.g. initial dev compilation), retry once
-        if (!ct.includes("application/json")) {
-          await new Promise((r) => setTimeout(r, 500));
-          res = await fetch("/api/company/me", { headers: getHeaders(session?.access_token) });
-          ct = res.headers.get("content-type") || "";
-        }
-
-        // If 401 received, double check with Supabase auth before kicking to login
-        if (res.status === 401) {
-          const { data: { user: verifiedUser } } = await supabase.auth.getUser();
-          if (verifiedUser) {
-            const { data: { session: refreshedSession } } = await supabase.auth.getSession();
-            if (refreshedSession?.access_token) {
-              res = await fetch("/api/company/me", { headers: getHeaders(refreshedSession.access_token) });
-              ct = res.headers.get("content-type") || "";
+        while (retries < maxRetries) {
+          try {
+            res = await fetch("/api/company/me", { headers: getHeaders(session?.access_token) });
+            ct = res?.headers?.get("content-type") || "";
+            if (res && ct.includes("application/json")) {
+              break;
             }
+          } catch (fetchErr) {
+            console.warn("fetch /api/company/me retry notice:", fetchErr);
           }
+          retries++;
+          if (retries < maxRetries) {
+            await new Promise((r) => setTimeout(r, 400 * retries));
+          }
+        }
 
+        let resolvedData = null;
+
+        if (res && ct.includes("application/json")) {
           if (res.status === 401) {
-            if (isMounted) router.push("/login");
+            const { data: { user: verifiedUser } } = await supabase.auth.getUser();
+            if (!verifiedUser) {
+              if (isMounted) router.push("/login");
+              return;
+            }
+          } else if (res.status === 403) {
+            if (isMounted) {
+              setAuthError("Access denied. You are not authorized to view this workspace.");
+              setLoading(false);
+            }
             return;
+          } else {
+            resolvedData = await res.json();
           }
         }
 
-        if (res.status === 403) {
-          if (isMounted) {
-            setAuthError("Access denied. You are not authorized to view this workspace.");
-            setLoading(false);
+        // Direct Supabase Client fallback if API route was unresponsive or returned non-JSON
+        if (!resolvedData || !resolvedData.company) {
+          try {
+            const { data: { user: currentUser } } = await supabase.auth.getUser();
+            if (currentUser) {
+              const uEmail = currentUser.email ? currentUser.email.toLowerCase() : "";
+              
+              // 1. Try employees table
+              const { data: empList } = await supabase
+                .from("employees")
+                .select("*, companies:company_id(*)")
+                .or(`auth_user_id.eq.${currentUser.id},email.eq."${uEmail.replace(/"/g, '""')}"`)
+                .order("created_at", { ascending: false })
+                .limit(1);
+
+              const emp = empList?.[0];
+              if (emp) {
+                let comp = emp.companies;
+                if (!comp && emp.company_id) {
+                  const { data: c } = await supabase.from("companies").select("*").eq("id", emp.company_id).maybeSingle();
+                  comp = c;
+                }
+                if (comp) {
+                  resolvedData = {
+                    company: comp,
+                    role: emp.role || "employee",
+                    employee: {
+                      id: emp.id,
+                      full_name: emp.full_name,
+                      email: emp.email,
+                      role: emp.role,
+                      department: emp.department,
+                      designation: emp.designation,
+                      username: emp.username,
+                      status: emp.status,
+                      avatar_url: emp.avatar_url || null,
+                      first_name: emp.first_name || (emp.full_name ? emp.full_name.split(" ")[0] : ""),
+                      last_name: emp.last_name || (emp.full_name ? emp.full_name.split(" ").slice(1).join(" ") : ""),
+                      employee_id: emp.employee_id || `EMP-${emp.id.slice(0, 5).toUpperCase()}`,
+                      personal_email: emp.personal_email || "",
+                      phone: emp.phone || "",
+                      address: emp.address || "",
+                      joining_date: emp.joining_date || null,
+                    },
+                    user: { id: currentUser.id, email: currentUser.email },
+                  };
+                }
+              }
+
+              // 2. If not employee, try company admin
+              if (!resolvedData || !resolvedData.company) {
+                const { data: compList } = await supabase
+                  .from("companies")
+                  .select("*")
+                  .or(`admin_id.eq.${currentUser.id},email.eq."${uEmail.replace(/"/g, '""')}"`)
+                  .limit(1);
+
+                const comp = compList?.[0];
+                if (comp) {
+                  resolvedData = {
+                    company: comp,
+                    role: "ADMIN",
+                    employee: {
+                      id: `admin-${currentUser.id.slice(0, 8)}`,
+                      full_name: comp.name || "Company Owner",
+                      email: uEmail,
+                      role: "ADMIN",
+                      department: "Executive Management",
+                      designation: "Company Administrator",
+                      username: uEmail.split("@")[0],
+                      status: "active",
+                      avatar_url: comp.logo_url || null,
+                      first_name: (comp.name || "Owner").split(" ")[0],
+                      last_name: (comp.name || "").split(" ").slice(1).join(" "),
+                      employee_id: "EMP-ADMIN-001",
+                      personal_email: uEmail,
+                      phone: comp.phone || "",
+                      address: comp.country ? `${comp.country}, ${comp.state || ""}` : "",
+                      joining_date: comp.created_at || null,
+                    },
+                    user: { id: currentUser.id, email: currentUser.email },
+                  };
+                }
+              }
+            }
+          } catch (dbFallbackErr) {
+            console.warn("Direct Supabase fallback query error:", dbFallbackErr);
           }
-          return;
         }
 
-        if (!ct.includes("application/json")) {
-          if (!session) {
-            if (isMounted) router.push("/login");
-            return;
-          }
-          if (isMounted) {
-            setAuthError("Workspace service is initializing. Please refresh the page in a moment.");
-            setLoading(false);
-          }
-          return;
-        }
-
-        const data = await res.json();
-
-        if (data.requiresSetup) {
+        if (resolvedData?.requiresSetup) {
           if (isMounted) router.push("/company-wizard");
           return;
         }
 
-        if (!res.ok) {
+        if (resolvedData?.company) {
           if (isMounted) {
-            setAuthError(data.message || "Failed to load workspace.");
-            setLoading(false);
-          }
-          return;
-        }
+            setCompany(resolvedData.company);
+            if (resolvedData.role) setUserRole(resolvedData.role);
+            if (resolvedData.employee) setEmployeeProfile(resolvedData.employee);
+            if (resolvedData.user) setUserSession(resolvedData.user);
+            setAuthError("");
 
-        if (isMounted) {
-          if (data.company) setCompany(data.company);
-          if (data.role) setUserRole(data.role);
-          if (data.employee) setEmployeeProfile(data.employee);
-          if (data.user) setUserSession(data.user);
-
-          if (typeof window !== "undefined") {
-            const welcomeDataStr = sessionStorage.getItem("login_welcome");
-            if (welcomeDataStr) {
-              sessionStorage.removeItem("login_welcome");
+            if (typeof window !== "undefined") {
               try {
-                const w = JSON.parse(welcomeDataStr);
-                const dName = data.employee?.full_name || w.name || "User";
-                const cName = data.company?.name || w.company || "Workspace";
-                showToast(
-                  `Welcome to ${cName}`,
-                  `Signed in as ${dName}. Your workspace session is active.`,
-                  "success"
-                );
+                sessionStorage.setItem("workspace_bootstrap", JSON.stringify({
+                  company: resolvedData.company,
+                  role: resolvedData.role,
+                  employee: resolvedData.employee,
+                  user: resolvedData.user,
+                }));
               } catch (_) {}
+
+              const welcomeDataStr = sessionStorage.getItem("login_welcome");
+              if (welcomeDataStr) {
+                sessionStorage.removeItem("login_welcome");
+                try {
+                  const w = JSON.parse(welcomeDataStr);
+                  const dName = resolvedData.employee?.full_name || w.name || "User";
+                  const cName = resolvedData.company?.name || w.company || "Workspace";
+                  showToast(
+                    `Welcome to ${cName}`,
+                    `Signed in as ${dName}. Your workspace session is active.`,
+                    "success"
+                  );
+                } catch (_) {}
+              }
             }
           }
+        } else {
+          let hasExistingBootstrap = false;
+          if (typeof window !== "undefined") {
+            try {
+              if (sessionStorage.getItem("workspace_bootstrap")) hasExistingBootstrap = true;
+            } catch (_) {}
+          }
+
+          if (!hasExistingBootstrap && isMounted) {
+            setAuthError("Could not resolve workspace details. Please try again or check your account.");
+          }
         }
-      } catch {
-        if (isMounted) setAuthError("Network error. Could not load dashboard.");
+      } catch (err) {
+        console.error("Dashboard session initialization error:", err);
+        let hasExistingBootstrap = false;
+        if (typeof window !== "undefined") {
+          try {
+            if (sessionStorage.getItem("workspace_bootstrap")) hasExistingBootstrap = true;
+          } catch (_) {}
+        }
+        if (!hasExistingBootstrap && isMounted) {
+          setAuthError("Network error. Could not load dashboard.");
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -508,16 +686,32 @@ function DashboardContent() {
       .on("postgres_changes",
         { event: "*", schema: "public", table: "employees", filter: `company_id=eq.${company.id}` },
         (p) => {
+          const isDeptScoped = ["manager", "team_lead"].includes(userRole);
+          const myDept = employeeProfile?.department?.trim().toLowerCase();
+
           if (p.eventType === "INSERT") {
-            setEmployees((prev) => {
-              if (prev.some((e) => e.id === p.new?.id)) return prev;
-              return [p.new, ...prev];
-            });
-            showToast("New Member", `${p.new?.full_name || "Employee"} joined the team.`, "success");
+            const newDept = p.new?.department?.trim().toLowerCase();
+            const isDeptRole = ["employee", "team_lead", "manager"].includes(p.new?.role);
+            if (!isDeptScoped || (myDept && newDept === myDept && isDeptRole)) {
+              setEmployees((prev) => {
+                if (prev.some((e) => e.id === p.new?.id)) return prev;
+                return [p.new, ...prev];
+              });
+              showToast("New Member", `${p.new?.full_name || "Employee"} joined the team.`, "success");
+            }
             fetchEmployees();
           } else if (p.eventType === "UPDATE") {
-            setEmployees((prev) => prev.map((e) => e.id === p.new.id ? { ...e, ...p.new } : e));
-            showToast("Member Updated", `${p.new?.full_name || "Employee"} profile updated.`);
+            const updatedDept = p.new?.department?.trim().toLowerCase();
+            const isDeptRole = ["employee", "team_lead", "manager"].includes(p.new?.role);
+            if (!isDeptScoped) {
+              setEmployees((prev) => prev.map((e) => e.id === p.new.id ? { ...e, ...p.new } : e));
+              showToast("Member Updated", `${p.new?.full_name || "Employee"} profile updated.`);
+            } else if (myDept && updatedDept === myDept && isDeptRole) {
+              setEmployees((prev) => prev.map((e) => e.id === p.new.id ? { ...e, ...p.new } : e));
+              showToast("Member Updated", `${p.new?.full_name || "Employee"} profile updated.`);
+            } else {
+              setEmployees((prev) => prev.filter((e) => e.id !== p.new?.id));
+            }
             fetchEmployees();
           } else if (p.eventType === "DELETE") {
             setEmployees((prev) => prev.filter((e) => e.id !== p.old.id));
@@ -579,6 +773,105 @@ function DashboardContent() {
       )
       .subscribe();
 
+    const projectChannel = supabase
+      .channel(`projects-rt-${company.id}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "projects", filter: `company_id=eq.${company.id}` },
+        (p) => {
+          if (p.eventType === "INSERT") {
+            if (userRole === "team_lead" && p.new?.team_lead_id === employeeProfile?.id) {
+              showToast("🚀 New Project Assigned", `Manager assigned you to project: "${p.new?.name}".`, "info");
+            }
+          } else if (p.eventType === "UPDATE") {
+            if (userRole === "manager" && p.new?.created_by === employeeProfile?.id) {
+              showToast("📋 Project Status Updated", `Project "${p.new?.name}" status updated to ${p.new?.status}.`, "info");
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    const projectTaskChannel = supabase
+      .channel(`project-tasks-rt-${company.id}`)
+      .on("postgres_changes",
+        { event: "*", schema: "public", table: "project_tasks" },
+        (p) => {
+          const taskCompanyId = p.new?.company_id || p.old?.company_id;
+          if (taskCompanyId && taskCompanyId !== company.id) return;
+
+          const hasActiveAssignment = Boolean(p.new?.assigned_to && p.new.assigned_to === employeeProfile?.id);
+          const cleanRole = (userRole || "").toLowerCase().replace(/[\s_-]+/g, "");
+          const isLeadOrManager = cleanRole.includes("lead") || cleanRole.includes("manager") || cleanRole.includes("admin") || cleanRole.includes("supervisor");
+
+          if (p.eventType === "INSERT") {
+            // Only notify if task is actively assigned (i.e. sprint is already started)
+            if (hasActiveAssignment) {
+              showToast("🎯 New Task Assigned", `You have been assigned a new task: "${p.new?.title}".`, "info");
+            }
+          } else if (p.eventType === "UPDATE") {
+            // When a sprint is started, tasks transition to being assigned to the employee
+            const wasAssigned = p.old?.assigned_to ? p.old.assigned_to === employeeProfile?.id : false;
+            const newlyAssigned = p.old?.assigned_to !== undefined && !wasAssigned && hasActiveAssignment;
+
+            if (newlyAssigned) {
+              showToast("🚀 Sprint Started - Task Assigned", `Task "${p.new?.title}" is now active and assigned to you.`, "info");
+            }
+
+            const statusChanged = Boolean(p.new?.status && (!p.old?.status || p.new.status !== p.old.status));
+
+            if (isLeadOrManager && statusChanged) {
+              // Team Lead / Manager monitoring notifications
+              if (p.new.status === "IN_PROGRESS") {
+                showToast("⚡ Task In Progress", `Employee started working on "${p.new.title}".`, "info");
+              } else if (p.new.status === "REVIEW") {
+                showToast("🔍 Task in Review", `Task "${p.new.title}" was submitted for review.`, "info");
+              } else if (p.new.status === "COMPLETED") {
+                showToast("✅ Task Completed", `Task "${p.new.title}" was completed!`, "success");
+              } else if (p.new.status === "BLOCKED") {
+                showToast("🛑 Task Blocked", `Task "${p.new.title}" was flagged as blocked!`, "warning");
+              } else {
+                showToast("📋 Task Status Updated", `Task "${p.new.title}" status changed to ${p.new.status}.`, "info");
+              }
+            } else if (hasActiveAssignment && statusChanged && !isLeadOrManager) {
+              // Notification for employee if Team Lead updates task
+              if (p.new.status === "COMPLETED") {
+                showToast("🎉 Task Approved!", `Task "${p.new.title}" was reviewed and approved!`, "success");
+              } else {
+                showToast("📋 Task Updated", `Task "${p.new.title}" status is now ${p.new.status}.`, "info");
+              }
+            }
+          }
+
+          // Real-time sprint overdue warning when a task is assigned to a sprint or due date changes
+          const sprintChanged = p.eventType === "INSERT" || (p.new?.sprint_id && p.new?.sprint_id !== p.old?.sprint_id) || (p.new?.due_date && p.new?.due_date !== p.old?.due_date);
+          if (sprintChanged && p.new?.sprint_id && p.new?.due_date && isLeadOrManager) {
+            supabase
+              .from("project_sprints")
+              .select("id, name, end_date")
+              .eq("id", p.new.sprint_id)
+              .maybeSingle()
+              .then(({ data: spr }) => {
+                if (spr) {
+                  const overdue = checkTaskSprintOverdue(p.new.due_date, spr);
+                  if (overdue) {
+                    showToast(
+                      "⚠️ Sprint Schedule Conflict",
+                      `Task "${p.new.title}" due date (${overdue.taskDueDate}) exceeds Sprint "${overdue.sprintName}" by ${overdue.diffDays} day${overdue.diffDays > 1 ? "s" : ""}.`,
+                      "warning"
+                    );
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("project-task-updated", { detail: p }));
+          }
+        }
+      )
+      .subscribe();
+
     const presenceChannel = supabase.channel(`presence-${company.id}`);
     presenceChannel
       .on("presence", { event: "sync" }, () => {
@@ -598,11 +891,19 @@ function DashboardContent() {
       supabase.removeChannel(empChannel);
       supabase.removeChannel(leaveChannel);
       supabase.removeChannel(attendanceChannel);
+      supabase.removeChannel(projectChannel);
+      supabase.removeChannel(projectTaskChannel);
       supabase.removeChannel(presenceChannel);
     };
-  }, [company?.id, isHR, userSession?.user?.id]);
+  }, [company?.id, isHR, userRole, employeeProfile?.id, employeeProfile?.department, userSession?.user?.id]);
 
   const handleLogout = async () => {
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem("workspace_bootstrap");
+        sessionStorage.removeItem("login_welcome");
+      } catch (_) {}
+    }
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/login");
@@ -620,6 +921,8 @@ function DashboardContent() {
       return;
     }
 
+    const targetName = inviteForm.fullName.trim();
+    const targetEmail = inviteForm.email.trim();
     setIsSubmittingInvite(true);
     try {
       const res = await fetch("/api/employees/invite", {
@@ -630,9 +933,13 @@ function DashboardContent() {
       if (!res.ok) {
         setInviteError(data.message || "Failed to send invitation.");
       } else {
-        setInviteSuccessData(data);
-        const defaultDept = resolveDepartmentForRole("employee", dbDepartments);
-        setInviteForm({ fullName: "", email: "", phone: "", department: defaultDept, designation: "", role: "employee" });
+        closeInviteModal();
+        showToast(
+          "Invitation Dispatched",
+          `Official workspace invitation sent to ${targetEmail} (${targetName}). Candidate status is now Pending Activation.`,
+          "success"
+        );
+        fetchEmployees();
       }
     } catch { setInviteError("Network error. Please try again."); }
     finally { setIsSubmittingInvite(false); }
@@ -675,6 +982,8 @@ function DashboardContent() {
 
   const activeCount = employees.filter((e) => e.status === "active").length;
   const pendingCount = employees.filter((e) => e.status === "pending_offer").length;
+  const onlineCount = employees.filter((e) => e.auth_user_id && onlineUserIds.has(e.auth_user_id)).length;
+  const activePercent = employees.length > 0 ? Math.round((activeCount / employees.length) * 100) : 0;
 
   const filtered = employees.filter((e) => {
     const q = searchQuery.toLowerCase();
@@ -704,10 +1013,24 @@ function DashboardContent() {
           <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 text-2xl flex items-center justify-center mx-auto">⚠</div>
           <h2 className="text-lg font-bold text-white">Access Error</h2>
           <p className="text-sm text-slate-400">{authError}</p>
-          <button onClick={() => router.push("/login")}
-            className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition">
-            Back to Login
-          </button>
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={() => {
+                setAuthError("");
+                setLoading(true);
+                if (typeof window !== "undefined") window.location.reload();
+              }}
+              className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold transition cursor-pointer shadow-xs"
+            >
+              Retry Connection
+            </button>
+            <button
+              onClick={() => router.push("/login")}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition cursor-pointer"
+            >
+              Back to Login
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -763,7 +1086,11 @@ function DashboardContent() {
 
         {/* Navigation Items with Enhanced Hover & Smooth Scroll */}
         <nav className="flex-1 overflow-y-auto px-3.5 py-3.5 space-y-1.5 custom-scroll scroll-smooth">
-          {NAV_ITEMS.filter((item) => !(item.key === "leave-requests" && userRole === "ADMIN")).map((item) => {
+          {NAV_ITEMS
+            .filter((item) => !(item.key === "leave-requests" && userRole === "ADMIN"))
+            .filter((item) => !(item.key === "projects" && !["ADMIN", "manager", "team_lead", "employee"].includes(userRole)))
+            .filter((item) => !(item.key === "company-settings" && !["ADMIN", "hr_manager", "hr_executive"].includes(userRole)))
+            .map((item) => {
             const active = activeTab === item.key;
             return (
               <button
@@ -786,7 +1113,9 @@ function DashboardContent() {
                   item.key,
                   `w-5 h-5 shrink-0 transition-transform duration-200 ${active ? "text-white" : "text-slate-500 group-hover:text-slate-800 group-hover:scale-110"}`
                 )}
-                <span className="truncate">{item.label}</span>
+                <span className="truncate">
+                  {item.key === "projects" && userRole === "employee" ? "My Deliverables" : item.label}
+                </span>
                 {item.key === "employees" && (
                   <span className={`ml-auto text-xs font-extrabold px-2 py-0.5 rounded-lg ${active ? "bg-white/25 text-white" : "bg-slate-100 text-slate-700"}`}>
                     {employees.length}
@@ -882,7 +1211,9 @@ function DashboardContent() {
             </button>
             <div>
               <p className="text-base sm:text-lg font-bold text-slate-900 font-sans tracking-tight">
-                {NAV_ITEMS.find((n) => n.key === activeTab)?.label || "Dashboard"}
+                {activeTab === "projects" && userRole === "employee"
+                  ? "My Deliverables"
+                  : NAV_ITEMS.find((n) => n.key === activeTab)?.label || "Dashboard"}
               </p>
               <p className="text-xs sm:text-[13px] text-slate-500 hidden sm:block font-sans font-medium">
                 {company?.name} · Enterprise Workspace
@@ -916,6 +1247,7 @@ function DashboardContent() {
                 userSession={userSession}
                 employeeProfile={employeeProfile}
                 onOpenInviteModal={() => openInviteModal("hr_manager")}
+                onEmployeeUpdated={fetchEmployees}
                 renderRoleBadge={(r) => <RoleBadge role={r} />}
                 renderStatusBadge={(s) => <StatusBadge status={s} />}
               />
@@ -974,7 +1306,11 @@ function DashboardContent() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
                   <StatCard label="Monthly Leave Quota" value="3.0 Days" sub="Resets 1st of month" />
                   <StatCard label="Available Leave Balance" value="3.0 Days" sub="Active monthly quota" />
-                  <StatCard label="Registered Staff" value={employees.length} sub="Active personnel" />
+                  <StatCard
+                    label={["manager", "team_lead"].includes(userRole) ? "Department Staff" : "Registered Staff"}
+                    value={employees.length}
+                    sub={["manager", "team_lead"].includes(userRole) ? "Assigned personnel" : "Active personnel"}
+                  />
                   <StatCard label={isHR ? "Pending Offers" : "Access Tier"} value={isHR ? pendingCount : (ROLE_MAP[userRole]?.label || userRole)} sub={isHR ? "Awaiting acceptance" : "Workspace role"} />
                 </div>
 
@@ -1046,6 +1382,16 @@ function DashboardContent() {
               )
           )}
 
+          {/* --- TAB: PROJECTS --- */}
+          {activeTab === "projects" && (
+            <ProjectManagement
+              userRole={userRole}
+              employeeProfile={employeeProfile}
+              company={company}
+              onlineUserIds={onlineUserIds}
+            />
+          )}
+
           {/* --- TAB: ATTENDANCE --- */}
           {activeTab === "attendance" && (
             <AttendancePage userRole={userRole} />
@@ -1088,7 +1434,7 @@ function DashboardContent() {
                       </svg>
                     </div>
                     <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                      {userRole === "manager"
+                      {["manager", "team_lead"].includes(userRole)
                         ? `${employeeProfile?.department ? `${employeeProfile.department} ` : ""}Team Directory`
                         : "Team & Staff Directory"}
                     </h2>
@@ -1121,25 +1467,59 @@ function DashboardContent() {
                   </div>
                 </div>
 
+                {/* Real-time Department Progress & Live Status Tracker */}
+                <div className="p-4 rounded-xl bg-gradient-to-r from-sky-50/70 via-slate-50/70 to-indigo-50/70 border border-sky-100/80 space-y-2.5">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-xs font-bold text-slate-800 tracking-tight">
+                        {["manager", "team_lead"].includes(userRole)
+                          ? "Real-Time Department Activity & Progress"
+                          : "Real-Time Team Activity & Progress"}
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-bold border border-sky-200">
+                        {activeCount} of {employees.length} Active ({activePercent}%)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600">
+                      <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        {onlineCount} Online Now
+                      </span>
+                      <span className="text-slate-300">|</span>
+                      <span className="text-slate-500">
+                        {pendingCount} Pending Onboarding
+                      </span>
+                    </div>
+                  </div>
+                  {/* Clean Animated Progress Bar */}
+                  <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden shadow-inner">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all duration-700 ease-out"
+                      style={{ width: `${Math.max(activePercent, employees.length > 0 ? 5 : 0)}%` }}
+                    />
+                  </div>
+                </div>
+
                 {/* 3 Clean Summary Stat Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                   <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      {userRole === "manager" ? "Department Staff" : "Registered Staff"}
+                      {["manager", "team_lead"].includes(userRole) ? "Department Staff" : "Registered Staff"}
                     </span>
                     <div className="text-xl font-bold text-slate-900 font-mono">{employees.length}</div>
                   </div>
 
                   <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      {userRole === "manager" ? "Active In Dept" : "Active Members"}
+                      {["manager", "team_lead"].includes(userRole) ? "Active In Dept" : "Active Members"}
                     </span>
                     <div className="text-xl font-bold text-slate-900 font-mono">{activeCount}</div>
                   </div>
 
                   <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
                     <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
-                      {userRole === "manager" ? "Pending Offers" : "Pending Invites"}
+                      {["manager", "team_lead"].includes(userRole) ? "Pending Offers" : "Pending Invites"}
                     </span>
                     <div className="text-xl font-bold text-slate-900 font-mono">{pendingCount}</div>
                   </div>
@@ -1203,15 +1583,15 @@ function DashboardContent() {
                     </div>
                     <p className="text-xs font-bold text-slate-800">
                       {employees.length === 0
-                        ? userRole === "manager"
+                        ? ["manager", "team_lead"].includes(userRole)
                           ? "No Department Members Found"
                           : "No Staff Members Added Yet"
                         : "No Matching Staff Members Found"}
                     </p>
                     <p className="text-xs text-slate-400">
                       {employees.length === 0
-                        ? userRole === "manager"
-                          ? `No members or team leads currently assigned to the ${employeeProfile?.department || "your"} department.`
+                        ? ["manager", "team_lead"].includes(userRole)
+                          ? `No members, managers, or team leads currently assigned to the ${employeeProfile?.department || "your"} department.`
                           : "Invite your first team member or employee to begin building your organization."
                         : `No members match "${searchQuery}". Try adjusting your search query or filter.`}
                     </p>
@@ -1257,7 +1637,25 @@ function DashboardContent() {
                                 </td>
 
                                 <td className="py-3.5 px-5">
-                                  <RoleBadge role={emp.role} />
+                                  <div className="flex items-center gap-2">
+                                    <RoleBadge role={emp.role} />
+                                    {canInvite && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedEmpForRoleModal(emp);
+                                          setIsRoleModalOpen(true);
+                                        }}
+                                        className="px-2 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                        title="Promote or Change Role"
+                                      >
+                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                        </svg>
+                                        <span>Edit</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
 
                                 <td className="py-3.5 px-5">
@@ -1348,6 +1746,11 @@ function DashboardContent() {
                 )}
               </div>
             </div>
+          )}
+
+          {/* --- TAB: COMPANY SETTINGS --- */}
+          {activeTab === "company-settings" && (
+            <CompanySettings userRole={userRole} company={company} />
           )}
 
           {/* --- TAB: SETTINGS (MY PROFILE) --- */}
@@ -1663,82 +2066,20 @@ function DashboardContent() {
 
             {inviteSuccessData ? (
               <div className="p-6 space-y-4 text-xs">
-                {inviteSuccessData.emailSent ? (
-                  <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-center space-y-1.5 shadow-2xs">
-                    <div className="w-9 h-9 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-base font-bold">
-                      ✓
-                    </div>
-                    <h4 className="text-sm font-bold text-emerald-900">Invitation Dispatched Successfully!</h4>
-                    <p className="text-xs text-slate-600">
-                      Onboarding instructions sent to <strong className="text-slate-900 font-mono">{inviteSuccessData.employee?.email}</strong>
-                    </p>
+                <div className="p-5 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-center space-y-2 shadow-2xs">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto text-lg font-bold">
+                    ✓
                   </div>
-                ) : (
-                  <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs text-amber-800 space-y-1">
-                    <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                      <span>⚠️</span> Email delivery note — share direct link with candidate
-                    </div>
-                    <p className="text-slate-600">{inviteSuccessData.emailErrorMessage}</p>
-                  </div>
-                )}
-
-                <div className="bg-slate-50/80 rounded-2xl border border-slate-200/80 p-4 space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      Direct Candidate Links
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">
-                      Valid 7 days
-                    </span>
-                  </div>
-
-                  {/* Accept Offer URL */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-emerald-700">✓ Accept Offer URL</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(inviteSuccessData.inviteUrls?.acceptUrl || "");
-                          setCopiedLinkKey("accept");
-                          setTimeout(() => setCopiedLinkKey(null), 2000);
-                        }}
-                        className="text-[10px] font-bold text-sky-700 hover:text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded-lg border border-sky-200 transition cursor-pointer"
-                      >
-                        {copiedLinkKey === "accept" ? "Copied! ✓" : "Copy Link"}
-                      </button>
-                    </div>
-                    <div className="bg-white rounded-xl p-2.5 border border-slate-200 font-mono text-slate-800 text-[10px] break-all select-all shadow-2xs">
-                      {inviteSuccessData.inviteUrls?.acceptUrl}
-                    </div>
-                  </div>
-
-                  {/* Decline Offer URL */}
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-rose-700">✕ Decline Offer URL</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(inviteSuccessData.inviteUrls?.declineUrl || "");
-                          setCopiedLinkKey("decline");
-                          setTimeout(() => setCopiedLinkKey(null), 2000);
-                        }}
-                        className="text-[10px] font-bold text-slate-600 hover:text-slate-800 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 transition cursor-pointer"
-                      >
-                        {copiedLinkKey === "decline" ? "Copied! ✓" : "Copy Link"}
-                      </button>
-                    </div>
-                    <div className="bg-white rounded-xl p-2.5 border border-slate-200 font-mono text-slate-800 text-[10px] break-all select-all shadow-2xs">
-                      {inviteSuccessData.inviteUrls?.declineUrl}
-                    </div>
-                  </div>
+                  <h4 className="text-sm font-bold text-emerald-950">Invitation Dispatched Successfully!</h4>
+                  <p className="text-xs text-slate-600">
+                    Official workspace invitation sent to <strong className="text-slate-900 font-mono">{inviteSuccessData.employee?.email}</strong>.
+                  </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={closeInviteModal}
-                  className="w-full py-3 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-md shadow-sky-500/20 cursor-pointer"
+                  className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                 >
                   Done &amp; Close
                 </button>
@@ -1888,25 +2229,26 @@ function DashboardContent() {
         onRefreshData={fetchDepts}
       />
 
-      {/* --- REALTIME TOAST --- */}
-      {realtimeToast && (
-        <div className="fixed bottom-5 right-5 z-[100] max-w-xs animate-toastIn">
-          <div className={`flex items-start gap-3 p-4 rounded-xl border backdrop-blur-md shadow-2xl ${realtimeToast.type === "success" ? "bg-emerald-950/95 border-emerald-500/30 text-emerald-100"
-            : realtimeToast.type === "error" ? "bg-rose-950/95 border-rose-500/30 text-rose-100"
-              : "bg-[#1a1e2a]/95 border-indigo-500/30 text-slate-100"
-            }`}>
-            <span className="text-lg shrink-0">
-              {realtimeToast.type === "success" ? "✓" : realtimeToast.type === "error" ? "⚠" : "◈"}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-white">{realtimeToast.title}</p>
-              <p className="text-xs mt-0.5 leading-relaxed opacity-80">{realtimeToast.message}</p>
-            </div>
-            <button onClick={() => setRealtimeToast(null)}
-              className="text-xs opacity-50 hover:opacity-100 shrink-0 transition">✕</button>
-          </div>
-        </div>
-      )}
+      {/* --- ROLE PROMOTION & MANAGEMENT MODAL --- */}
+      <RolePromotionModal
+        isOpen={isRoleModalOpen}
+        onClose={() => {
+          setIsRoleModalOpen(false);
+          setSelectedEmpForRoleModal(null);
+        }}
+        employee={selectedEmpForRoleModal}
+        currentUserRole={userRole}
+        onRoleUpdated={(updated) => {
+          fetchEmployees();
+          showToast(
+            "Role Updated",
+            `${updated.full_name || "Employee"} is now assigned as ${updated.role?.replace(/_/g, " ")}.`,
+            "success"
+          );
+        }}
+      />
+
+      {/* Right side toast removed as requested */}
     </div>
   );
 }

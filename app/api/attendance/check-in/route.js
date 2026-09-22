@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser, resolveEmployeeFast } from "@/lib/supabase/authHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildLateCheckInEmailHTML } from "@/lib/mail/lateCheckInEmail";
+import { validateCompanyNetwork } from "@/lib/security/networkValidator";
 
 /**
  * Parses "09:00", "09:00:00", "09:30 AM", or "2:15 PM" into total minutes from midnight.
@@ -322,6 +323,18 @@ export async function POST(req) {
       );
     }
 
+    // Strict Network Security Validation: Validate IP against active company networks
+    const networkCheck = await validateCompanyNetwork(req, empRecord.company_id, adminSupabase);
+    if (!networkCheck.isAuthorized) {
+      return NextResponse.json(
+        {
+          message: "Unauthorized Network: Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi or authorized company network to proceed.",
+          unauthorizedNetwork: true,
+        },
+        { status: 403 }
+      );
+    }
+
     // 6. Insert new Attendance Check-In Record
     let newAttendance = null;
     let insertErr = null;
@@ -335,6 +348,8 @@ export async function POST(req) {
         work_date: workDate,
         status: "CHECKED_IN",
         working_hours: 0,
+        check_in_ip: networkCheck.clientIp,
+        network_name: networkCheck.matchedNetwork?.network_name || null,
       })
       .select()
       .single();
@@ -347,6 +362,7 @@ export async function POST(req) {
             company_id: empRecord.company_id,
             employee_id: empRecord.id,
             check_in: serverNowIso,
+            work_date: workDate,
             status: "CHECKED_IN",
             working_hours: 0,
           })

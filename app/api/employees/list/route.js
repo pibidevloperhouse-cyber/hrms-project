@@ -37,15 +37,15 @@ export async function GET(req) {
       .eq("company_id", company.id)
       .order("full_name", { ascending: true });
 
-    // Scoping for Manager role: Manager can ONLY view their department members and team leads
-    if (role === "manager") {
-      const managerDept = employeeProfile?.department?.trim();
-      if (!managerDept) {
+    // Scoping for Manager and Team Lead roles: Can ONLY view their department members (manager, team leads, employees)
+    if (role === "manager" || role === "team_lead") {
+      const dept = employeeProfile?.department?.trim();
+      if (!dept) {
         return NextResponse.json({
           success: true,
           companyId: company.id,
           companyName: company.name,
-          role: "manager",
+          role,
           department: null,
           employees: [],
           count: 0,
@@ -53,7 +53,7 @@ export async function GET(req) {
       }
 
       query = query
-        .ilike("department", managerDept)
+        .ilike("department", dept)
         .in("role", ["employee", "team_lead", "manager"]);
     }
 

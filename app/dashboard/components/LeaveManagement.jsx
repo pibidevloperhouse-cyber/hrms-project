@@ -113,6 +113,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
 
     // Validation checks for non-working days & holidays
     if (effectiveWorkingDays <= 0) {
+      const workDaysStr = workDays.join(", ");
       if (companyHolidayCount > 0 && offDayCount === 0) {
         return {
           days: 0,
@@ -129,7 +130,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
           offDayCount,
           companyHolidayCount,
           isValid: false,
-          error: `🏝️ Leave application disabled: ${firstOffDayDate} (${firstOffDayName}) is a company off-day / non-working day. Leave applications are not required or allowed on weekly off-days!`,
+          error: `🏝️ Leave application disabled: ${firstOffDayDate} (${firstOffDayName}) is a weekly off-day according to your company's Work Calendar (${workDaysStr}). Leave applications are only required for company working days!`,
         };
       } else {
         return {
@@ -138,13 +139,14 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
           offDayCount,
           companyHolidayCount,
           isValid: false,
-          error: `🏝️ Leave application disabled: Selected date(s) fall entirely on company holidays or weekly off-days. No leave application needed!`,
+          error: `🏝️ Leave application disabled: Selected date(s) fall entirely on company holidays or weekly off-days (${workDaysStr}). No leave application needed!`,
         };
       }
     }
 
     // Single date check
     if (leaveForm.start_date === leaveForm.end_date) {
+      const workDaysStr = workDays.join(", ");
       if (companyHolidayCount > 0) {
         return {
           days: 0,
@@ -162,7 +164,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
           offDayCount,
           companyHolidayCount,
           isValid: false,
-          error: `🏝️ Leave application disabled: ${leaveForm.start_date} (${firstOffDayName}) is a company off-day. Leave applications are not allowed on weekly off-days!`,
+          error: `🏝️ Leave application disabled: ${leaveForm.start_date} (${firstOffDayName}) is a weekly off-day according to your company's Work Calendar (${workDaysStr}). Leave applications are not required on weekly off-days!`,
         };
       }
     }
@@ -224,6 +226,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
         }
         setLeaves(data.leaves || []);
         if (data.companyHolidays) setCompanyHolidays(data.companyHolidays || []);
+        if (data.workDays) setWorkDays(data.workDays || ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]);
         if (data.balance) setBalance(data.balance);
         setIsHR(Boolean(data.isHR));
         if (data.warning) setWarningNotice(data.warning);
@@ -241,10 +244,14 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
     };
 
     window.addEventListener("leave-request-updated", handleLeaveEvent);
+    window.addEventListener("company-calendar-updated", handleLeaveEvent);
+    window.addEventListener("company-schedule-updated", handleLeaveEvent);
 
     return () => {
       isSubscribed = false;
       window.removeEventListener("leave-request-updated", handleLeaveEvent);
+      window.removeEventListener("company-calendar-updated", handleLeaveEvent);
+      window.removeEventListener("company-schedule-updated", handleLeaveEvent);
     };
   }, [selectedMonth, selectedYear]);
 
@@ -765,6 +772,24 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
             </div>
 
             <form onSubmit={handleSubmitLeaveRequest} className="p-5 space-y-4">
+              {/* Company Work Calendar Notice */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs text-slate-700">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <span className="text-base shrink-0">🏢</span>
+                  <div className="min-w-0">
+                    <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider">
+                      Company Work Schedule
+                    </span>
+                    <span className="text-slate-600 text-[11px] truncate block">
+                      Working Days: <strong className="text-sky-700 font-semibold">{workDays.join(", ")}</strong> ({workDays.length} days / week)
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
+                  Calendar Synced
+                </span>
+              </div>
+
               {isHRUser && (
                 <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />

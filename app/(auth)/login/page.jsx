@@ -21,7 +21,7 @@ function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [loginSuccessModal, setLoginSuccessModal] = useState(null);
 
-  const triggerLoginSuccessModal = (info) => {
+  const triggerLoginSuccessModal = (info, rawData = null) => {
     setIsSubmitting(false);
     setErrorMessage("");
     setSuccessMessage("");
@@ -33,6 +33,14 @@ function LoginContent() {
           company: info.companyName,
           role: info.role,
         }));
+        if (rawData?.company || info.companyName) {
+          sessionStorage.setItem("workspace_bootstrap", JSON.stringify({
+            company: rawData?.company || { name: info.companyName },
+            role: rawData?.role || info.role || "employee",
+            employee: rawData?.employee || null,
+            user: rawData?.user || { email: info.userEmail },
+          }));
+        }
       } catch (_) {}
     }
   };
@@ -117,7 +125,7 @@ function LoginContent() {
         role: resolvedRole,
         department: data?.employee?.department || null,
         targetUrl,
-      });
+      }, data);
     } catch (_) {
       // Profile fetch failed or timed out — session is still valid, just go to dashboard
       triggerLoginSuccessModal({
@@ -203,7 +211,7 @@ function LoginContent() {
                 role: resolvedRole,
                 department: data?.employee?.department || null,
                 targetUrl,
-              });
+              }, data);
               return;
             }
             // Server returned a proper auth error (wrong credentials) — show it and stop

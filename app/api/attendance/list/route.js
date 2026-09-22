@@ -90,10 +90,10 @@ export async function GET(req) {
       .eq("company_id", companyId)
       .order("full_name", { ascending: true });
 
-    if (userRole === "manager") {
-      const managerDept = currentEmp?.department?.trim();
-      if (managerDept) {
-        empQuery = empQuery.ilike("department", managerDept);
+    if (["manager", "team_lead"].includes(userRole)) {
+      const dept = currentEmp?.department?.trim();
+      if (dept) {
+        empQuery = empQuery.ilike("department", dept);
       }
       empQuery = empQuery.in("role", ["employee", "team_lead", "manager"]);
     } else if (deptFilter && deptFilter !== "all") {

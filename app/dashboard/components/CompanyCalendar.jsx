@@ -1,6 +1,7 @@
+/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization */
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const ALL_DAYS_OF_WEEK = [
@@ -79,7 +80,7 @@ export default function CompanyCalendar() {
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   // Fetch Calendar Data
-  const fetchCalendarData = async (isSilent = false) => {
+  const fetchCalendarData = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
       const supabase = createClient();
@@ -106,11 +107,19 @@ export default function CompanyCalendar() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchCalendarData(true);
-  }, []);
+    let isSubscribed = true;
+    (async () => {
+      if (isSubscribed) {
+        await fetchCalendarData(true);
+      }
+    })();
+    return () => {
+      isSubscribed = false;
+    };
+  }, [fetchCalendarData]);
 
   // Save Working Schedule (HR Only)
   const handleSaveSchedule = async (e) => {
@@ -135,6 +144,8 @@ export default function CompanyCalendar() {
         setShowScheduleModal(false);
         if (typeof window !== "undefined") {
           window.dispatchEvent(new Event("attendance-updated"));
+          window.dispatchEvent(new Event("company-calendar-updated"));
+          window.dispatchEvent(new Event("company-schedule-updated"));
         }
       }
     } catch {
@@ -176,6 +187,9 @@ export default function CompanyCalendar() {
           description: "",
         });
         fetchCalendarData(true);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("company-calendar-updated"));
+        }
       }
     } catch {
       setNotice({ error: "Network error adding holiday.", success: "" });
@@ -202,6 +216,9 @@ export default function CompanyCalendar() {
       } else {
         setNotice({ error: "", success: data.message || "Holiday deleted." });
         setHolidays((prev) => prev.filter((h) => h.id !== holidayId));
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("company-calendar-updated"));
+        }
       }
     } catch {
       setNotice({ error: "Network error deleting holiday.", success: "" });

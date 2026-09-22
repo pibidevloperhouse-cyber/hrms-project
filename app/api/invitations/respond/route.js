@@ -112,14 +112,22 @@ export async function GET(req) {
       const username = generateUsername(invite.full_name);
       const tempPassword = generateTempPassword();
 
-      // 3. Create or activate employee record
-      const { data: empRecord, error: empErr } = await adminSupabase
+      // 3. Create or activate employee record (preserving existing UUID if present)
+      const { data: existingEmp } = await adminSupabase
         .from("employees")
-        .insert([
-          {
-            company_id: invite.company_id,
+        .select("id")
+        .eq("company_id", invite.company_id)
+        .ilike("email", invite.email.trim())
+        .maybeSingle();
+
+      let empRecord = null;
+      let empErr = null;
+
+      if (existingEmp?.id) {
+        const updateRes = await adminSupabase
+          .from("employees")
+          .update({
             full_name: invite.full_name,
-            email: invite.email,
             phone: invite.phone,
             department: invite.department,
             designation: invite.designation,
@@ -128,13 +136,38 @@ export async function GET(req) {
             status: "active",
             invited_by: invite.invited_by,
             must_change_password: true,
-          },
-        ])
-        .select()
-        .single();
+          })
+          .eq("id", existingEmp.id)
+          .select()
+          .single();
+        empRecord = updateRes.data;
+        empErr = updateRes.error;
+      } else {
+        const insertRes = await adminSupabase
+          .from("employees")
+          .insert([
+            {
+              company_id: invite.company_id,
+              full_name: invite.full_name,
+              email: invite.email.trim().toLowerCase(),
+              phone: invite.phone,
+              department: invite.department,
+              designation: invite.designation,
+              role: invite.role,
+              username: username,
+              status: "active",
+              invited_by: invite.invited_by,
+              must_change_password: true,
+            },
+          ])
+          .select()
+          .single();
+        empRecord = insertRes.data;
+        empErr = insertRes.error;
+      }
 
       if (empErr) {
-        console.error("Failed to create active employee upon invitation accept:", empErr);
+        console.error("Failed to activate employee upon invitation accept:", empErr);
       }
 
       // 4. Send Credentials Email to the HR user

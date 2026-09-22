@@ -183,7 +183,7 @@ export async function POST(req) {
       await transporter.sendMail({
         from: `"${cleanCompanyName} HRMS" <${process.env.EMAIL_USER}>`,
         to: cleanEmail,
-        subject: `🤝 Team Invitation & Offer from ${cleanCompanyName}`,
+        subject: `Official Invitation to Join ${cleanCompanyName} - Workspace Access`,
         html: emailHTML,
       });
       console.log("⚡ Invitation email sent to:", cleanEmail, "Token:", finalToken);

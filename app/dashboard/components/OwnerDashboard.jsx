@@ -6,6 +6,8 @@ import DepartmentSummary from "./DepartmentSummary";
 import HRUsersCard from "./HRUsersCard";
 import HRAttendanceTracker from "./HRAttendanceTracker";
 import DepartmentManagementModal from "./DepartmentManagementModal";
+import RolePromotionModal from "./RolePromotionModal";
+import CompanySettings from "./CompanySettings";
 
 /**
  * OwnerDashboard Component
@@ -17,12 +19,15 @@ export default function OwnerDashboard({
   userSession,
   employeeProfile,
   onOpenInviteModal,
+  onEmployeeUpdated,
   renderRoleBadge,
   renderStatusBadge,
 }) {
   const [viewTab, setViewTab] = useState("directory"); // "directory" | "departments" | "hr_team" | "live_attendance" | "company"
   const [searchTerm, setSearchTerm] = useState("");
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [selectedEmpForRoleModal, setSelectedEmpForRoleModal] = useState(null);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const totalStaff = employees.length + 1; // 1 Owner + employees
 
   // HR users count
@@ -178,6 +183,21 @@ export default function OwnerDashboard({
             </svg>
             <span>Company Profile</span>
           </button>
+
+          <button
+            type="button"
+            onClick={(e) => handleTabClick("company_settings", e)}
+            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+              viewTab === "company_settings"
+                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+            }`}
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+            </svg>
+            <span>Company Networks</span>
+          </button>
         </nav>
 
         {/* 4 Summary Stat Cards */}
@@ -303,7 +323,23 @@ export default function OwnerDashboard({
 
                           {/* Role Assigned */}
                           <td className="py-4 px-5 whitespace-nowrap">
-                            {renderRoleBadge(emp.role)}
+                            <div className="flex items-center gap-2">
+                              {renderRoleBadge(emp.role)}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedEmpForRoleModal(emp);
+                                  setIsRoleModalOpen(true);
+                                }}
+                                className="px-2 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                title="Promote or Change Role"
+                              >
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                                </svg>
+                                <span>Edit</span>
+                              </button>
+                            </div>
                           </td>
 
                           {/* Generated Username */}
@@ -408,10 +444,29 @@ export default function OwnerDashboard({
         </div>
       )}
 
+      {/* --- SUB-VIEW 6: COMPANY NETWORKS & SETTINGS --- */}
+      {viewTab === "company_settings" && (
+        <CompanySettings userRole="ADMIN" company={company} />
+      )}
+
       {/* Department CRUD Management Modal */}
       <DepartmentManagementModal
         isOpen={isDeptModalOpen}
         onClose={() => setIsDeptModalOpen(false)}
+      />
+
+      {/* Role Promotion & Management Modal */}
+      <RolePromotionModal
+        isOpen={isRoleModalOpen}
+        onClose={() => {
+          setIsRoleModalOpen(false);
+          setSelectedEmpForRoleModal(null);
+        }}
+        employee={selectedEmpForRoleModal}
+        currentUserRole="ADMIN"
+        onRoleUpdated={(updated) => {
+          if (onEmployeeUpdated) onEmployeeUpdated(updated);
+        }}
       />
     </div>
   );

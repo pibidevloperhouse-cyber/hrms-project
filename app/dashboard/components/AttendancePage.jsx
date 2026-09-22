@@ -102,9 +102,47 @@ export default function AttendancePage({ userRole }) {
   const [leaveTypeToday, setLeaveTypeToday] = useState("");
   const [leaveReasonToday, setLeaveReasonToday] = useState("");
 
+  // Company Network Authorization status
+  const [networkStatus, setNetworkStatus] = useState({
+    loading: true,
+    isAuthorized: true,
+    networkName: "",
+    reason: "",
+  });
+  const [networkAlertModal, setNetworkAlertModal] = useState({
+    open: false,
+    message: "",
+  });
+
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState({ error: "", success: "" });
+
+  const fetchNetworkStatus = async () => {
+    try {
+      const res = await fetch("/api/attendance/network-status");
+      if (res.ok) {
+        const data = await res.json();
+        const isAuth = Boolean(data.isAuthorized);
+        setNetworkStatus({
+          loading: false,
+          isAuthorized: isAuth,
+          networkName: data.networkName || "",
+          reason: data.message || "",
+        });
+
+        // Automatically clear unauthorized error notice and close warning modal when reconnected to authorized network!
+        if (isAuth) {
+          setNotice((prev) =>
+            prev.error && prev.error.toLowerCase().includes("unauthorized network")
+              ? { ...prev, error: "" }
+              : prev
+          );
+          setNetworkAlertModal({ open: false, message: "" });
+        }
+      }
+    } catch (_) {}
+  };
 
   // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
   const checkInTimeRef = useRef(null);
@@ -212,8 +250,14 @@ export default function AttendancePage({ userRole }) {
   useEffect(() => {
     const initStatus = async () => {
       await fetchAttendanceStatus(false);
+      await fetchNetworkStatus();
     };
     initStatus();
+
+    // Responsive network checking (every 5 seconds) to automatically detect Wi-Fi reconnection in real-time
+    const networkPollInterval = setInterval(() => {
+      fetchNetworkStatus();
+    }, 5000);
 
     const interval = setInterval(() => {
       const currentDateStr = new Date().toDateString();
@@ -225,15 +269,28 @@ export default function AttendancePage({ userRole }) {
       }
     }, 15000);
 
-    const handleUpdate = () => fetchAttendanceStatus(true);
+    const handleUpdate = () => {
+      fetchAttendanceStatus(true);
+      fetchNetworkStatus();
+    };
+
+    const handleFocusOrOnline = () => {
+      fetchNetworkStatus();
+    };
+
     if (typeof window !== "undefined") {
       window.addEventListener("attendance-updated", handleUpdate);
+      window.addEventListener("focus", handleFocusOrOnline);
+      window.addEventListener("online", handleFocusOrOnline);
     }
 
     return () => {
       clearInterval(interval);
+      clearInterval(networkPollInterval);
       if (typeof window !== "undefined") {
         window.removeEventListener("attendance-updated", handleUpdate);
+        window.removeEventListener("focus", handleFocusOrOnline);
+        window.removeEventListener("online", handleFocusOrOnline);
       }
     };
   }, []);
@@ -315,6 +372,16 @@ export default function AttendancePage({ userRole }) {
         return;
       }
       const data = await res.json();
+
+      if (res.status === 403 || data.unauthorizedNetwork) {
+        setNotice({ error: data.message || "Unauthorized Network Connection", success: "" });
+        setNetworkAlertModal({
+          open: true,
+          message: data.message || "Your current connection is not recognized as an authorized company network.",
+        });
+        fetchNetworkStatus();
+        return;
+      }
 
       if (!res.ok) {
         setNotice({ error: data.message || "Failed to check in.", success: "" });
@@ -512,6 +579,17 @@ export default function AttendancePage({ userRole }) {
         return;
       }
       const data = await res.json();
+
+      if (res.status === 403 || data.unauthorizedNetwork) {
+        setShowReasonModal(false);
+        setNotice({ error: data.message || "Unauthorized Network Connection", success: "" });
+        setNetworkAlertModal({
+          open: true,
+          message: data.message || "Your current connection is not recognized as an authorized company network.",
+        });
+        fetchNetworkStatus();
+        return;
+      }
 
       if (!res.ok) {
         if (data.requiresReason) {
@@ -760,6 +838,7 @@ export default function AttendancePage({ userRole }) {
             )}
           </span>
         </div>
+
 
         {loading ? (
           <div className="py-16 flex flex-col items-center justify-center gap-3 text-slate-500">
@@ -1237,75 +1316,161 @@ export default function AttendancePage({ userRole }) {
         )}
       </div>
 
-      {/* --- EARLY CHECKOUT REASON POP-UP MODAL --- */}
+      {/* --- EARLY CHECKOUT REASON POP-UP MODAL (MATCHING CREATE SPRINT THEME) --- */}
       {showReasonModal && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-white border border-amber-200 rounded-2xl p-6 space-y-4 shadow-2xl animate-scaleUp">
-            <div className="flex items-center justify-between border-b border-sky-100 pb-3">
-              <div className="flex items-center gap-2 text-amber-700 font-bold text-sm">
-                <AlertTriangleIcon className="w-5 h-5 text-amber-600" />
-                <span>Early Check-Out Reason Required</span>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !actionLoading) setShowReasonModal(false);
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-lg bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header matching exact Create Sprint format */}
+            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+              <div className="flex items-center gap-3 text-base">
+                <span className="font-bold text-slate-900">Request:</span>
+                <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
+                  Early Check-Out
+                </span>
               </div>
+
+              {/* Red square close button */}
               <button
                 type="button"
+                disabled={actionLoading}
                 onClick={() => setShowReasonModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-sm"
+                className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
-            <div className="text-xs text-slate-700 space-y-2">
-              <p className="leading-relaxed">
-                Company standard overall working time is <strong className="text-amber-700">{dailyTargetHours} Hours</strong>. Your net shift duration (deducting lunch break) is <strong className="text-slate-900 font-mono">{runtimeDecimal} hrs</strong>.
-              </p>
-              <p className="text-slate-500 text-[11px]">
-                Please enter a reason for checking out before {dailyTargetHours} hours. This message will be delivered to HR for approval or rejection (Loss of Pay).
-              </p>
-            </div>
+            {/* Form Body */}
+            <form onSubmit={handleReasonSubmit} className="px-6 py-4 space-y-4 max-h-[80vh] overflow-y-auto">
+              {modalError && (
+                <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                  {modalError}
+                </div>
+              )}
 
-            {modalError && (
-              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
-                {modalError}
+              {/* Shift info box */}
+              <div className="p-3 rounded bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+                <p>
+                  Standard overall working time is <strong className="text-blue-700 font-semibold">{dailyTargetHours} Hours</strong>. Current net shift duration is <strong className="text-slate-900 font-mono font-bold">{runtimeDecimal} hrs</strong>.
+                </p>
+                <p className="text-slate-500 text-[11px]">
+                  Please enter a reason for checking out before {dailyTargetHours} hours. This message will be delivered to HR for approval.
+                </p>
               </div>
-            )}
 
-            <form onSubmit={handleReasonSubmit} className="space-y-4">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">
-                  Reason for Early Check-Out *
+              {/* Row: Reason with red underline required indicator */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
+                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
+                  <span className="border-b-2 border-rose-500 pb-0.5">
+                    Reason
+                  </span>
                 </label>
-                <textarea
-                  rows={3}
-                  value={reasonInput}
-                  onChange={(e) => setReasonInput(e.target.value)}
-                  placeholder="e.g. Medical emergency / Personal work / Prior approval from manager..."
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-xs text-slate-800 placeholder-sky-400 focus:outline-none focus:border-amber-500 transition"
-                  required
-                />
+                <div className="flex-1">
+                  <textarea
+                    rows={3}
+                    required
+                    autoFocus
+                    value={reasonInput}
+                    onChange={(e) => setReasonInput(e.target.value)}
+                    placeholder="e.g. Medical emergency / Personal work / Prior manager approval..."
+                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400"
+                  />
+                </div>
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
+              {/* Footer Buttons matching Create Sprint exact theme */}
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="submit"
+                  disabled={actionLoading || !reasonInput.trim()}
+                  className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-50 shadow-xs flex items-center gap-1.5"
+                >
+                  {actionLoading ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Submitting…</span>
+                    </>
+                  ) : (
+                    "Submit to HR"
+                  )}
+                </button>
                 <button
                   type="button"
+                  disabled={actionLoading}
                   onClick={() => setShowReasonModal(false)}
-                  className="flex-1 py-2.5 rounded-xl border border-sky-200 text-slate-600 hover:text-slate-900 text-xs font-semibold transition cursor-pointer"
+                  className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-xs font-bold transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-md shadow-cyan-500/20 active:scale-[0.98]"
-                >
-                  {actionLoading ? (
-                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <span>Submit to HR</span>
-                  )}
-                </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Network Access Security Warning Modal matching Create Sprint popup theme */}
+      {networkAlertModal.open && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setNetworkAlertModal({ open: false, message: "" });
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-md bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header matching exact Create Sprint format */}
+            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
+              <div className="flex items-center gap-3 text-base">
+                <span className="font-bold text-slate-900">Notice:</span>
+                <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
+                  Network Access
+                </span>
+              </div>
+
+              {/* Red square close button */}
+              <button
+                type="button"
+                onClick={() => setNetworkAlertModal({ open: false, message: "" })}
+                className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer"
+                title="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-4 space-y-4">
+              <div className="p-3 rounded bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium flex items-center gap-2">
+                <span>⚠️</span>
+                <span>{networkAlertModal.message || "Invalid Network Access. Please connect to your authorized company Wi-Fi network to proceed."}</span>
+              </div>
+
+              {/* Footer Buttons matching Create Sprint exact theme */}
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNetworkAlertModal({ open: false, message: "" });
+                    fetchNetworkStatus();
+                  }}
+                  className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer shadow-xs"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNetworkAlertModal({ open: false, message: "" })}
+                  className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

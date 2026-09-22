@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser } from "@/lib/supabase/authHelper";
+import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildLeaveRequestNoticeHTML } from "@/lib/mail/leaveEmail";
 
@@ -10,7 +12,8 @@ const MONTHLY_ALLOWANCE = 3.0;
  * Helper to determine if a role has HR privileges.
  */
 function isHRRole(role) {
-  return role === "hr_manager" || role === "hr_executive";
+  const clean = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+  return clean.includes("hr") || clean.includes("admin") || clean.includes("owner");
 }
 
 /**
@@ -36,81 +39,32 @@ function calculateLeaveDays(startDateStr, endDateStr) {
 export async function GET(req) {
   try {
     const supabaseServer = await createClient();
-    const { data: { user }, error: authErr } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (authErr || !user) {
+    if (!user) {
       return NextResponse.json({ message: "Unauthorized. Please log in." }, { status: 401 });
     }
 
     const adminSupabase = createAdminClient();
-    const userEmail = user.email ? user.email.toLowerCase() : "";
+    const { company, role: userRole, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
 
-    // 1. Resolve employee record and company
-    const { data: empRecords } = await adminSupabase
-      .from("employees")
-      .select("*, companies:company_id(*)")
-      .or(`auth_user_id.eq.${user.id},email.eq.${userEmail}`)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    let empRecord = empRecords && empRecords.length > 0 ? empRecords[0] : null;
-    let companyId = null;
-    let userRole = "employee";
-
-    if (empRecord) {
-      companyId = empRecord.company_id;
-      userRole = empRecord.role || "employee";
-    } else {
-      // Check if user is Company Owner / Admin
-      const { data: adminCompanies } = await adminSupabase
-        .from("companies")
-        .select("*")
-        .or(`admin_id.eq.${user.id},email.eq.${userEmail}`);
-
-      if (adminCompanies && adminCompanies.length > 0) {
-        companyId = adminCompanies[0].id;
-        userRole = "ADMIN";
-
-        // Auto-create or fetch employee record for Admin so leave management applies to all accounts
-        const { data: adminEmp } = await adminSupabase
-          .from("employees")
-          .upsert(
-            {
-              company_id: companyId,
-              full_name: adminCompanies[0].name || "Company Administrator",
-              email: userEmail,
-              role: "ADMIN",
-              status: "active",
-              auth_user_id: user.id,
-            },
-            { onConflict: "company_id,email" }
-          )
-          .select()
-          .maybeSingle();
-
-        empRecord = adminEmp || empRecord;
-      }
-    }
-
-    if (!companyId) {
+    if (!company) {
       return NextResponse.json(
-        { message: "No registered company found for this user." },
+        { message: "No registered company workspace found for this user." },
         { status: 404 }
       );
     }
+
+    const companyId = company.id;
+    let empRecord = employeeProfile;
 
     const { searchParams } = new URL(req.url);
     const now = new Date();
     const targetMonth = parseInt(searchParams.get("month") || (now.getMonth() + 1).toString(), 10);
     const targetYear = parseInt(searchParams.get("year") || now.getFullYear().toString(), 10);
 
-    const isAdmin = userRole === "ADMIN";
+    const isAdmin = userRole === "ADMIN" || userRole === "owner";
     const isHR = isHRRole(userRole) || isAdmin;
-
-    // Format start and end date for filtering the month
-    const startOfMonth = `${targetYear}-${String(targetMonth).padStart(2, "0")}-01`;
-    const lastDayOfMonth = new Date(targetYear, targetMonth, 0).getDate();
-    const endOfMonth = `${targetYear}-${String(targetMonth).padStart(2, "0")}-${String(lastDayOfMonth).padStart(2, "0")}`;
 
     // 2. Fetch Leave Requests
     let query = adminSupabase
@@ -184,7 +138,7 @@ export async function GET(req) {
     let workDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
     const { data: schedData } = await adminSupabase
       .from("company_work_schedules")
-      .select("work_days")
+      .select("*")
       .eq("company_id", companyId)
       .maybeSingle();
 
@@ -196,13 +150,23 @@ export async function GET(req) {
     const { data: companyHolidaysData } = await adminSupabase
       .from("company_holidays")
       .select("*")
-      .eq("company_id", companyId);
+      .eq("company_id", companyId)
+      .order("date", { ascending: true });
 
     return NextResponse.json({
       success: true,
       leaves: leaves || [],
       companyHolidays: companyHolidaysData || [],
       workDays,
+      workSchedule: schedData
+        ? {
+            id: schedData.id,
+            dailyWorkingHours: Number(schedData.daily_working_hours) || 8.0,
+            startTime: schedData.start_time || "09:00",
+            endTime: schedData.end_time || "17:00",
+            workDays: schedData.work_days || workDays,
+          }
+        : null,
       isHR,
       isAdmin,
       role: userRole,
@@ -232,9 +196,9 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const supabaseServer = await createClient();
-    const { data: { user }, error: authErr } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (authErr || !user) {
+    if (!user) {
       return NextResponse.json({ message: "Unauthorized. Please log in." }, { status: 401 });
     }
 
@@ -264,45 +228,16 @@ export async function POST(req) {
     }
 
     const adminSupabase = createAdminClient();
-    const userEmail = user.email ? user.email.toLowerCase() : "";
+    const { company, role: userRole, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
 
-    // 2. Resolve employee and company
-    const { data: empRecords } = await adminSupabase
-      .from("employees")
-      .select("*, companies:company_id(*)")
-      .or(`auth_user_id.eq.${user.id},email.eq.${userEmail}`)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    let empRecord = empRecords && empRecords.length > 0 ? empRecords[0] : null;
-
-    if (!empRecord) {
-      const { data: adminCompanies } = await adminSupabase
-        .from("companies")
-        .select("*")
-        .or(`admin_id.eq.${user.id},email.eq.${userEmail}`);
-
-      if (adminCompanies && adminCompanies.length > 0) {
-        const { data: adminEmp } = await adminSupabase
-          .from("employees")
-          .upsert(
-            {
-              company_id: adminCompanies[0].id,
-              full_name: adminCompanies[0].name || "Company Administrator",
-              email: userEmail,
-              role: "ADMIN",
-              status: "active",
-              auth_user_id: user.id,
-            },
-            { onConflict: "company_id,email" }
-          )
-          .select()
-          .maybeSingle();
-
-        empRecord = adminEmp;
-      }
+    if (!company) {
+      return NextResponse.json(
+        { message: "No registered company workspace found for this user." },
+        { status: 404 }
+      );
     }
 
+    let empRecord = employeeProfile;
     if (!empRecord) {
       return NextResponse.json(
         { message: "Employee profile not found. Please contact HR to complete your profile." },
@@ -310,7 +245,7 @@ export async function POST(req) {
       );
     }
 
-    const companyId = empRecord.company_id;
+    const companyId = company.id;
     const leaveStartDate = new Date(start_date);
     const targetMonth = leaveStartDate.getMonth() + 1;
     const targetYear = leaveStartDate.getFullYear();
@@ -337,7 +272,6 @@ export async function POST(req) {
         );
       }
     }
-
 
     // Fetch company work schedule and holidays for checking working days vs off-days/holidays
     let workDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];

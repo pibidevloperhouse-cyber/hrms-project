@@ -5,6 +5,7 @@ import { getAuthUser, resolveEmployeeFast } from "@/lib/supabase/authHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildEarlyCheckOutEmailHTML } from "@/lib/mail/earlyCheckOutEmail";
 import { checkAndSendDailySummary } from "@/lib/mail/dailySummaryHelper";
+import { validateCompanyNetwork } from "@/lib/security/networkValidator";
 
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return null;
@@ -143,6 +144,18 @@ export async function POST(req) {
       );
     }
 
+    // Strict Network Security Validation: Validate IP against active company networks
+    const networkCheck = await validateCompanyNetwork(req, empRecord.company_id, adminSupabase);
+    if (!networkCheck.isAuthorized) {
+      return NextResponse.json(
+        {
+          message: "Unauthorized Network: Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi or authorized company network to proceed.",
+          unauthorizedNetwork: true,
+        },
+        { status: 403 }
+      );
+    }
+
     const activeSession = activeSessions[0];
     const checkOutTimeIso = new Date().toISOString();
     const checkInMs = new Date(activeSession.check_in).getTime();
@@ -205,6 +218,7 @@ export async function POST(req) {
       early_checkout: isEarly || Boolean(earlyReasonText),
       early_reason: earlyReasonText,
       approval_status: approvalStatus,
+      check_out_ip: networkCheck.clientIp,
       updated_at: checkOutTimeIso,
     };
 
