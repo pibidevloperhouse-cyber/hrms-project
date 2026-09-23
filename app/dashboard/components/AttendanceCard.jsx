@@ -89,6 +89,9 @@ export default function AttendanceCard() {
   const [leaveTypeToday, setLeaveTypeToday] = useState("");
 
   // Company Network Authorization status
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [notice, setNotice] = useState({ error: "", success: "" });
   const [networkStatus, setNetworkStatus] = useState({
     loading: true,
     isAuthorized: true,

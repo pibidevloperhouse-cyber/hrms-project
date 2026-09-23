@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse } from "next/server";
 
-export async function middleware(request) {
+export async function proxy(request) {
   let supabaseResponse = NextResponse.next({
     request,
   });
@@ -30,25 +30,22 @@ export async function middleware(request) {
       }
     );
 
-    // Refresh the user's session if expired
+    // Refresh the user's session if expired on page navigation
     await supabase.auth.getUser();
-  } catch (error) {
-    // Non-fatal error during middleware execution
-    console.warn("Middleware auth sync warning:", error);
+  } catch (_) {
+    // Non-fatal
   }
 
   return supabaseResponse;
 }
 
+export const middleware = proxy;
+
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public asset extensions (svg, png, jpg, etc.)
+     * Match page routes only; exclude API routes and static assets
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
