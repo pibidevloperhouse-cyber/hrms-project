@@ -150,16 +150,31 @@ export default function AttendancePage({ userRole }) {
     } catch (_) {}
   };
 
-  const handleAuthorizeNetwork = async (ipToAuthorize) => {
-    const targetIp = ipToAuthorize || networkAlertModal.clientIp || networkStatus.clientIp;
-    if (!targetIp) return;
+  const handleAuthorizeNetwork = async (ipToAuthorize, useSubnet = true) => {
+    const rawIp = ipToAuthorize || networkAlertModal.clientIp || networkStatus.clientIp;
+    if (!rawIp) return;
+
+    let targetIp = rawIp;
+    let netName = `Office Network (${rawIp})`;
+
+    if (rawIp === "*") {
+      targetIp = "*";
+      netName = "Allow All Networks (Remote Work)";
+    } else if (useSubnet && rawIp.includes(":")) {
+      const parts = rawIp.split(":").filter(Boolean);
+      if (parts.length >= 4) {
+        targetIp = `${parts.slice(0, 4).join(":")}::/64`;
+        netName = `Office Wi-Fi Subnet (${parts.slice(0, 4).join(":")}::/64)`;
+      }
+    }
+
     setIsAuthorizingNetwork(true);
     try {
       const res = await authFetch("/api/company/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          network_name: `Office Network (${targetIp})`,
+          network_name: netName,
           network_ip: targetIp,
           status: "active",
           description: "Authorized from Attendance Console",
@@ -169,7 +184,7 @@ export default function AttendancePage({ userRole }) {
       if (res.ok) {
         setNotice({
           error: "",
-          success: `Network IP "${targetIp}" authorized successfully! You can now check in.`,
+          success: `Network "${targetIp}" authorized successfully! Both mobile and laptop devices on this network can now check in.`,
         });
         setNetworkAlertModal({ open: false, message: "", clientIp: "" });
         await fetchNetworkStatus();
@@ -186,6 +201,7 @@ export default function AttendancePage({ userRole }) {
       setIsAuthorizingNetwork(false);
     }
   };
+
 
   // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
   const checkInTimeRef = useRef(null);
@@ -1488,24 +1504,55 @@ export default function AttendancePage({ userRole }) {
                 )}
               </div>
 
-              {/* Quick Authorize IP button for Owner & HR */}
-              {(networkAlertModal.clientIp || networkStatus.clientIp) &&
-                ["ADMIN", "hr_manager", "hr_executive"].includes(networkStatus.userRole || userRole) && (
-                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+              {/* Quick Authorize Actions for Owner & HR vs Employee */}
+              {(networkAlertModal.clientIp || networkStatus.clientIp) && (
+                ["ADMIN", "hr_manager", "hr_executive"].includes(networkStatus.userRole || userRole) ? (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
                     <div className="text-[11px] text-emerald-800">
-                      <span className="font-bold block">Owner / HR Action:</span>
-                      Authorize this IP for the entire company in 1 click.
+                      <span className="font-bold block">Owner / HR Quick Authorization:</span>
+                      Authorize this connection so mobile phones and laptops can check in immediately.
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        disabled={isAuthorizingNetwork}
+                        onClick={() => handleAuthorizeNetwork(networkAlertModal.clientIp || networkStatus.clientIp, true)}
+                        className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                      >
+                        {isAuthorizingNetwork ? "Authorizing…" : "＋ Authorize This Wi-Fi / IP"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={isAuthorizingNetwork}
+                        onClick={() => handleAuthorizeNetwork("*", false)}
+                        className="px-2.5 py-1.5 rounded bg-white hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition cursor-pointer disabled:opacity-50"
+                      >
+                        🌐 Allow All Networks (Remote)
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-600">
+                      Please ask your HR or Admin to authorize this network.
+                    </span>
                     <button
                       type="button"
-                      disabled={isAuthorizingNetwork}
-                      onClick={() => handleAuthorizeNetwork(networkAlertModal.clientIp || networkStatus.clientIp)}
-                      className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-2xs"
+                      onClick={() => {
+                        const targetIp = networkAlertModal.clientIp || networkStatus.clientIp;
+                        if (targetIp && typeof navigator !== "undefined" && navigator.clipboard) {
+                          navigator.clipboard.writeText(targetIp);
+                          alert(`IP copied to clipboard: ${targetIp}`);
+                        }
+                      }}
+                      className="px-2.5 py-1 rounded bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-medium text-xs transition cursor-pointer shrink-0"
                     >
-                      {isAuthorizingNetwork ? "Authorizing…" : "＋ Authorize This IP"}
+                      📋 Copy My IP
                     </button>
                   </div>
-                )}
+                )
+              )}
+
 
               {/* Footer Buttons matching Create Sprint exact theme */}
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">

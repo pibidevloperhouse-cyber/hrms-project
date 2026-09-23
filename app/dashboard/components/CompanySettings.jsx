@@ -42,13 +42,38 @@ export default function CompanySettings({ userRole, company }) {
     }
   };
 
+  const [detectedMeta, setDetectedMeta] = useState(null);
+
   const detectClientIp = async () => {
     try {
-      const res = await fetch("/api/company/networks/detect");
+      const res = await authFetch("/api/company/networks/detect");
       if (res.ok) {
         const data = await res.json();
-        if (data.ip) setCurrentIp(data.ip);
+        if (data.ip) {
+          setCurrentIp(data.ip);
+          setDetectedMeta(data);
+          return;
+        }
       }
+      // Public IP fallback
+      try {
+        const ipifyRes = await fetch("https://api64.ipify.org?format=json");
+        if (ipifyRes.ok) {
+          const ipData = await ipifyRes.json();
+          if (ipData?.ip) {
+            setCurrentIp(ipData.ip);
+            const isIpv6 = ipData.ip.includes(":");
+            let subnetCidr = null;
+            if (isIpv6) {
+              const parts = ipData.ip.split(":").filter(Boolean);
+              if (parts.length >= 4) {
+                subnetCidr = `${parts.slice(0, 4).join(":")}::/64`;
+              }
+            }
+            setDetectedMeta({ ip: ipData.ip, isIpv6, ipv6SubnetCidr: subnetCidr });
+          }
+        }
+      } catch (_) {}
     } catch (_) {}
   };
 
@@ -140,29 +165,58 @@ export default function CompanySettings({ userRole, company }) {
     }
   };
 
-  // Metrics
+  // Metrics & Coverage Check
   const totalCount = networks.length;
   const activeCount = networks.filter((n) => n.status === "active").length;
   const inactiveCount = networks.filter((n) => n.status === "inactive").length;
+  const hasAllowAllRule = networks.some(
+    (n) =>
+      n.status === "active" &&
+      (n.network_ip === "*" || n.network_ip === "all" || n.network_ip === "0.0.0.0/0" || n.network_ip === "::/0")
+  );
+
   const isCurrentIpCovered = networks.some((n) => {
     if (n.status !== "active" || !currentIp) return false;
-    if (n.network_ip === "*" || n.network_ip === "all" || n.network_ip === "0.0.0.0/0") return true;
-    if (n.network_ip === currentIp) return true;
-    if (n.network_ip.endsWith("*") && currentIp.startsWith(n.network_ip.slice(0, -1))) return true;
-    if (currentIp.startsWith(n.network_ip)) return true;
+    const rule = String(n.network_ip || "").trim().toLowerCase();
+    const client = String(currentIp).trim().toLowerCase();
+    if (rule === "*" || rule === "all" || rule === "any" || rule === "0.0.0.0/0" || rule === "::/0") return true;
+    if (rule === client) return true;
+    if (rule.endsWith("*") && client.startsWith(rule.slice(0, -1))) return true;
+    if (client.includes(":") && rule.includes(":")) {
+      const clientPfx = client.split(":").slice(0, 4).join(":");
+      const rulePfx = rule.split(":").slice(0, 4).join(":");
+      if (clientPfx && rulePfx && clientPfx === rulePfx) return true;
+    }
     return false;
   });
 
-  const handleAuthorizeCurrentIp = async () => {
-    if (!currentIp) return;
+  const handleAuthorizeCurrentIp = async (forceWildcard = false) => {
+    if (!currentIp && !forceWildcard) return;
     setIsQuickAuthorizing(true);
     try {
+      let targetIp = currentIp;
+      let netName = `Office Network (${currentIp})`;
+
+      if (forceWildcard) {
+        targetIp = "*";
+        netName = "Allow All Networks (Remote Work)";
+      } else if (detectedMeta?.ipv6SubnetCidr) {
+        targetIp = detectedMeta.ipv6SubnetCidr;
+        netName = `Office Wi-Fi Subnet (${detectedMeta.ipv6SubnetCidr})`;
+      } else if (currentIp.includes(":")) {
+        const parts = currentIp.split(":").filter(Boolean);
+        if (parts.length >= 4) {
+          targetIp = `${parts.slice(0, 4).join(":")}::/64`;
+          netName = `Office Wi-Fi Subnet (${targetIp})`;
+        }
+      }
+
       const res = await authFetch("/api/company/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          network_name: `Office Network (${currentIp})`,
-          network_ip: currentIp,
+          network_name: netName,
+          network_ip: targetIp,
           status: "active",
           description: "Authorized from Company Settings",
         }),
@@ -171,7 +225,7 @@ export default function CompanySettings({ userRole, company }) {
       if (res.ok) {
         setNotice({
           error: "",
-          success: `Network IP "${currentIp}" authorized successfully.`,
+          success: `Network "${targetIp}" authorized successfully. All devices on this connection can now check in.`,
         });
         await fetchNetworks(true);
       } else {
@@ -184,6 +238,7 @@ export default function CompanySettings({ userRole, company }) {
       setIsQuickAuthorizing(false);
     }
   };
+
 
   // Filtered networks
   const filteredNetworks = networks.filter((net) => {
@@ -244,18 +299,32 @@ export default function CompanySettings({ userRole, company }) {
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             {isOwnerOrHR && (
-              <button
-                type="button"
-                onClick={handleOpenAddModal}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-blue-600/20 cursor-pointer"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                <span>Add Company Network</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleOpenAddModal}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-blue-600/20 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Add Company Network</span>
+                </button>
+
+                {!hasAllowAllRule && (
+                  <button
+                    type="button"
+                    disabled={isQuickAuthorizing}
+                    onClick={() => handleAuthorizeCurrentIp(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                    title="Allow employees to check in from any internet connection"
+                  >
+                    <span>🌐 Allow All Networks (*)</span>
+                  </button>
+                )}
+              </>
             )}
 
             <button
@@ -310,9 +379,9 @@ export default function CompanySettings({ userRole, company }) {
                 <button
                   type="button"
                   disabled={isQuickAuthorizing}
-                  onClick={handleAuthorizeCurrentIp}
+                  onClick={() => handleAuthorizeCurrentIp(false)}
                   className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
-                  title="Authorize your current IP for attendance check-in"
+                  title="Authorize your current Wi-Fi/IP for attendance check-in"
                 >
                   {isQuickAuthorizing ? "…" : "＋ Authorize"}
                 </button>
@@ -320,6 +389,7 @@ export default function CompanySettings({ userRole, company }) {
             </div>
           </div>
         </div>
+
       </div>
 
       {/* --- COMPANY NETWORKS TABLE CARD --- */}

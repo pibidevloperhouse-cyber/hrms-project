@@ -23,6 +23,8 @@ export default function AddCompanyNetworkModal({
 
   const isEditing = Boolean(networkToEdit?.id);
 
+  const [detectedData, setDetectedData] = useState(null);
+
   // Initialize or reset form data when opened / changed
   useEffect(() => {
     if (isOpen) {
@@ -38,35 +40,67 @@ export default function AddCompanyNetworkModal({
         setDescription("");
       }
       setFormError("");
+      setDetectedData(null);
     }
   }, [isOpen, networkToEdit]);
 
   if (!isOpen) return null;
 
-  // Auto-detect client IP helper
+  // Auto-detect client IP helper with dual-stack support and IPv6 /64 subnet calculation
   const handleDetectCurrentIp = async () => {
     setIsDetectingIp(true);
+    setFormError("");
     try {
+      let detectedIp = "";
+      let isIpv6 = false;
+      let subnetCidr = null;
+
       const res = await authFetch("/api/company/networks/detect");
       if (res.ok) {
         const data = await res.json();
-        if (data.ip && data.ip !== "127.0.0.1") {
-          setNetworkIp(data.ip);
-          return;
+        if (data.ip) {
+          detectedIp = data.ip;
+          isIpv6 = Boolean(data.isIpv6);
+          subnetCidr = data.ipv6SubnetCidr || null;
         }
       }
-      // Public IP fallback for client browser
-      try {
-        const ipifyRes = await fetch("https://api64.ipify.org?format=json");
-        if (ipifyRes.ok) {
-          const ipData = await ipifyRes.json();
-          if (ipData?.ip) {
-            setNetworkIp(ipData.ip);
-            return;
+
+      // Public IP fallback check for client browser if localhost or empty
+      if (!detectedIp || detectedIp === "127.0.0.1") {
+        try {
+          const ipifyRes = await fetch("https://api64.ipify.org?format=json");
+          if (ipifyRes.ok) {
+            const ipData = await ipifyRes.json();
+            if (ipData?.ip) {
+              detectedIp = ipData.ip;
+              isIpv6 = detectedIp.includes(":");
+              if (isIpv6) {
+                const parts = detectedIp.split(":").filter(Boolean);
+                if (parts.length >= 4) {
+                  subnetCidr = `${parts.slice(0, 4).join(":")}::/64`;
+                }
+              }
+            }
           }
-        }
-      } catch (_) {}
-      setNetworkIp("127.0.0.1");
+        } catch (_) {}
+      }
+
+      if (!detectedIp) detectedIp = "127.0.0.1";
+
+      setDetectedData({
+        ip: detectedIp,
+        isIpv6,
+        subnetCidr,
+      });
+
+      // Default to subnet CIDR if IPv6 for maximum compatibility across laptop and mobile, otherwise exact IP
+      if (isIpv6 && subnetCidr) {
+        setNetworkIp(subnetCidr);
+        if (!networkName) setNetworkName("Office Wi-Fi (IPv6 Subnet)");
+      } else {
+        setNetworkIp(detectedIp);
+        if (!networkName) setNetworkName(`Office Network (${detectedIp})`);
+      }
     } catch (_) {
       setNetworkIp("127.0.0.1");
     } finally {
@@ -129,6 +163,7 @@ export default function AddCompanyNetworkModal({
     }
   };
 
+
   return (
     <div
       onClick={(e) => {
@@ -189,32 +224,98 @@ export default function AddCompanyNetworkModal({
           </div>
 
           {/* Row: Network IP with red underline indicator and Detect button */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-2">
+            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
               <span className="border-b-2 border-rose-500 pb-0.5">
                 Network IP
               </span>
             </label>
-            <div className="flex-1 flex items-center gap-2">
-              <input
-                type="text"
-                required
-                placeholder="e.g., 49.204.120.15, 192.168.1.0/24, 2401:4900:.../64, or * for all"
-                value={networkIp}
-                onChange={(e) => setNetworkIp(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 font-mono transition-colors placeholder:text-slate-400"
-              />
-              <button
-                type="button"
-                onClick={handleDetectCurrentIp}
-                disabled={isDetectingIp}
-                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
-                title="Detect My Current IP"
-              >
-                {isDetectingIp ? "Detecting…" : "Detect My IP"}
-              </button>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g., 49.204.120.15, 192.168.1.0/24, 2401:4900:.../64, or * for all"
+                  value={networkIp}
+                  onChange={(e) => setNetworkIp(e.target.value)}
+                  className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 font-mono transition-colors placeholder:text-slate-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleDetectCurrentIp}
+                  disabled={isDetectingIp}
+                  className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium transition cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                  title="Detect My Current IP"
+                >
+                  {isDetectingIp ? "Detecting…" : "Auto-Detect IP"}
+                </button>
+              </div>
+
+              {/* Detected IP suggestions and quick presets */}
+              {detectedData && (
+                <div className="p-2.5 rounded bg-blue-50/70 border border-blue-200 text-xs space-y-1.5 animate-fadeIn">
+                  <div className="text-blue-900 font-semibold flex items-center gap-1.5">
+                    <span>📡 Detected Connection:</span>
+                    <span className="font-mono text-blue-700">{detectedData.ip}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    {detectedData.subnetCidr && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNetworkIp(detectedData.subnetCidr);
+                          if (!networkName || networkName.includes("Office")) {
+                            setNetworkName("Office Wi-Fi (Subnet /64)");
+                          }
+                        }}
+                        className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium transition cursor-pointer text-[11px] shadow-2xs"
+                      >
+                        ⚡ Use Subnet: {detectedData.subnetCidr} (Recommended for all Wi-Fi devices)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNetworkIp(detectedData.ip);
+                        if (!networkName || networkName.includes("Office")) {
+                          setNetworkName(`Office IP (${detectedData.ip})`);
+                        }
+                      }}
+                      className="px-2 py-1 rounded bg-white hover:bg-slate-100 border border-blue-300 text-blue-700 font-medium transition cursor-pointer text-[11px]"
+                    >
+                      Exact IP: {detectedData.ip}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-xs text-slate-600 font-medium">Presets:</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNetworkIp("*");
+                    if (!networkName) setNetworkName("Allow All Networks (Remote Work)");
+                  }}
+                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-slate-200 text-slate-700 text-[11px] transition cursor-pointer"
+                >
+                  🌐 Allow All Networks (*)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNetworkIp("127.0.0.1");
+                    if (!networkName) setNetworkName("Localhost Dev");
+                  }}
+                  className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-[11px] transition cursor-pointer font-mono"
+                >
+                  127.0.0.1
+                </button>
+              </div>
             </div>
           </div>
+
 
           {/* Section Divider: Network Configuration */}
           <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-3">
