@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { getAuthUser } from "@/lib/supabase/authHelper";
 
 /**
  * POST /api/company/calendar/holidays
@@ -11,12 +12,9 @@ import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 export async function POST(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -59,32 +57,37 @@ export async function POST(req) {
     }
 
     const cleanTitle = title.trim();
-    const cleanType = holidayType?.trim() || "Paid Holiday";
+    const cleanType = holidayType?.trim() || "National / Regional";
     const cleanDesc = description?.trim() || null;
 
+    // Insert holiday into company_holidays
     const { data: insertedHoliday, error: insertErr } = await adminSupabase
       .from("company_holidays")
-      .insert([
-        {
-          company_id: company.id,
-          title: cleanTitle,
-          date,
-          holiday_type: cleanType,
-          description: cleanDesc,
-          created_by: user.id,
-        },
-      ])
+      .insert({
+        company_id: company.id,
+        title: cleanTitle,
+        date: date,
+        holiday_type: cleanType,
+        description: cleanDesc,
+        created_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .select()
       .single();
 
     if (insertErr) {
-      if (insertErr.code === "42P01") {
+      console.error("Insert holiday error:", insertErr);
+      if (insertErr.code === "23505") {
         return NextResponse.json(
-          { message: "Table 'company_holidays' does not exist yet. Please run migration 20260811_create_company_calendar_tables.sql in Supabase SQL Editor." },
+          { message: `A holiday has already been registered on ${date}.` },
           { status: 400 }
         );
       }
-      throw insertErr;
+      return NextResponse.json(
+        { message: insertErr.message || "Failed to save holiday." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
@@ -115,12 +118,9 @@ export async function POST(req) {
 export async function DELETE(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -150,19 +150,23 @@ export async function DELETE(req) {
 
     if (!holidayId) {
       return NextResponse.json(
-        { message: "Holiday ID is required." },
+        { message: "Holiday ID parameter is required." },
         { status: 400 }
       );
     }
 
-    const { error: delErr } = await adminSupabase
+    const { error: deleteErr } = await adminSupabase
       .from("company_holidays")
       .delete()
       .eq("id", holidayId)
       .eq("company_id", company.id);
 
-    if (delErr) {
-      throw delErr;
+    if (deleteErr) {
+      console.error("Delete holiday error:", deleteErr);
+      return NextResponse.json(
+        { message: deleteErr.message || "Failed to delete holiday." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
@@ -172,7 +176,7 @@ export async function DELETE(req) {
   } catch (error) {
     console.error("DELETE /api/company/calendar/holidays error:", error);
     return NextResponse.json(
-      { message: error.message || "Failed to delete holiday." },
+      { message: error.message || "Failed to delete company holiday." },
       { status: 500 }
     );
   }

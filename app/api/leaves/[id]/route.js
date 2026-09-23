@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { transporter } from "@/lib/mail/transporter";
 import { buildLeaveDecisionNoticeHTML } from "@/lib/mail/leaveEmail";
 
+import { getAuthUser } from "@/lib/supabase/authHelper";
+
 function isHRRole(role) {
   return role === "hr_manager" || role === "hr_executive";
 }
@@ -22,9 +24,9 @@ export async function PATCH(req, { params }) {
     }
 
     const supabaseServer = await createClient();
-    const { data: { user }, error: authErr } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (authErr || !user) {
+    if (!user) {
       return NextResponse.json({ message: "Unauthorized. Please log in." }, { status: 401 });
     }
 
@@ -32,10 +34,13 @@ export async function PATCH(req, { params }) {
     const userEmail = user.email ? user.email.toLowerCase() : "";
 
     // 1. Resolve logged in user role & company
+    let empOr = `auth_user_id.eq.${user.id}`;
+    if (userEmail) empOr += `,email.ilike."${userEmail.replace(/"/g, '""')}"`;
+
     const { data: empRecords } = await adminSupabase
       .from("employees")
       .select("*")
-      .or(`auth_user_id.eq.${user.id},email.eq.${userEmail}`)
+      .or(empOr)
       .limit(1);
 
     const empRecord = empRecords && empRecords.length > 0 ? empRecords[0] : null;
@@ -43,10 +48,13 @@ export async function PATCH(req, { params }) {
     let companyId = empRecord ? empRecord.company_id : null;
 
     if (!userRole) {
+      let compOr = `admin_id.eq.${user.id}`;
+      if (userEmail) compOr += `,email.ilike."${userEmail.replace(/"/g, '""')}"`;
+
       const { data: adminCompanies } = await adminSupabase
         .from("companies")
         .select("*")
-        .or(`admin_id.eq.${user.id},email.eq.${userEmail}`);
+        .or(compOr);
 
       if (adminCompanies && adminCompanies.length > 0) {
         userRole = "ADMIN";
@@ -194,9 +202,9 @@ export async function DELETE(req, { params }) {
     }
 
     const supabaseServer = await createClient();
-    const { data: { user }, error: authErr } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (authErr || !user) {
+    if (!user) {
       return NextResponse.json({ message: "Unauthorized. Please log in." }, { status: 401 });
     }
 

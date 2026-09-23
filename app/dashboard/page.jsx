@@ -367,9 +367,9 @@ function DashboardContent() {
         const supabase = createClient();
         let { data: { session } } = await supabase.auth.getSession();
 
-        // If session is still hydrating, retry up to 3 times
-        for (let attempt = 0; !session && attempt < 3; attempt++) {
-          await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
+        // If session is still hydrating, retry up to 4 times
+        for (let attempt = 0; !session && attempt < 4; attempt++) {
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
           const retry = await supabase.auth.getSession();
           session = retry.data?.session || null;
         }
@@ -406,7 +406,8 @@ function DashboardContent() {
 
         while (retries < maxRetries) {
           try {
-            res = await fetch("/api/company/me", { headers: getHeaders(session?.access_token) });
+            const tokenToUse = session?.access_token || (await supabase.auth.getSession()).data?.session?.access_token;
+            res = await fetch("/api/company/me", { headers: getHeaders(tokenToUse) });
             ct = res?.headers?.get("content-type") || "";
             if (res && ct.includes("application/json")) {
               break;
@@ -416,7 +417,7 @@ function DashboardContent() {
           }
           retries++;
           if (retries < maxRetries) {
-            await new Promise((r) => setTimeout(r, 400 * retries));
+            await new Promise((r) => setTimeout(r, 300 * retries));
           }
         }
 
@@ -424,10 +425,24 @@ function DashboardContent() {
 
         if (res && ct.includes("application/json")) {
           if (res.status === 401) {
-            const { data: { user: verifiedUser } } = await supabase.auth.getUser();
-            if (!verifiedUser) {
-              if (isMounted) router.push("/login");
-              return;
+            // Attempt token refresh on 401
+            try {
+              const { data: refreshed } = await supabase.auth.refreshSession();
+              if (refreshed?.session?.access_token) {
+                session = refreshed.session;
+                const retryRes = await fetch("/api/company/me", { headers: getHeaders(session.access_token) });
+                if (retryRes.ok) {
+                  resolvedData = await retryRes.json();
+                }
+              }
+            } catch (_) {}
+
+            if (!resolvedData) {
+              const { data: { user: verifiedUser } } = await supabase.auth.getUser();
+              if (!verifiedUser) {
+                if (isMounted) router.push("/login");
+                return;
+              }
             }
           } else if (res.status === 403) {
             if (isMounted) {
@@ -445,13 +460,14 @@ function DashboardContent() {
           try {
             const { data: { user: currentUser } } = await supabase.auth.getUser();
             if (currentUser) {
-              const uEmail = currentUser.email ? currentUser.email.toLowerCase() : "";
-              
+              const uEmail = currentUser.email ? currentUser.email.toLowerCase().trim() : "";
+              const sanitizedEmail = uEmail.replace(/"/g, '""');
+
               // 1. Try employees table
               const { data: empList } = await supabase
                 .from("employees")
                 .select("*, companies:company_id(*)")
-                .or(`auth_user_id.eq.${currentUser.id},email.eq."${uEmail.replace(/"/g, '""')}"`)
+                .or(`auth_user_id.eq.${currentUser.id},email.ilike."${sanitizedEmail}"`)
                 .order("created_at", { ascending: false })
                 .limit(1);
 
@@ -494,7 +510,7 @@ function DashboardContent() {
                 const { data: compList } = await supabase
                   .from("companies")
                   .select("*")
-                  .or(`admin_id.eq.${currentUser.id},email.eq."${uEmail.replace(/"/g, '""')}"`)
+                  .or(`admin_id.eq.${currentUser.id},email.ilike."${sanitizedEmail}"`)
                   .limit(1);
 
                 const comp = compList?.[0];

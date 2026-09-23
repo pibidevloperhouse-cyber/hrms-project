@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { getAuthUser } from "@/lib/supabase/authHelper";
 
 /**
  * POST /api/company/calendar/schedule
@@ -11,12 +12,9 @@ import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 export async function POST(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -61,46 +59,46 @@ export async function POST(req) {
       ? workDays
       : ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
-    const payload = {
-      company_id: company.id,
-      daily_working_hours: hoursNum,
-      start_time: cleanStartTime,
-      end_time: cleanEndTime,
-      work_days: cleanWorkDays,
-      updated_at: new Date().toISOString(),
-    };
-
-    const { data: updatedData, error: upsertErr } = await adminSupabase
+    // Upsert into company_work_schedules
+    const { data: savedSchedule, error: upsertErr } = await adminSupabase
       .from("company_work_schedules")
-      .upsert(payload, { onConflict: "company_id" })
+      .upsert(
+        {
+          company_id: company.id,
+          daily_working_hours: hoursNum,
+          start_time: cleanStartTime,
+          end_time: cleanEndTime,
+          work_days: cleanWorkDays,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "company_id" }
+      )
       .select()
       .single();
 
     if (upsertErr) {
-      if (upsertErr.code === "42P01") {
-        return NextResponse.json(
-          { message: "Table 'company_work_schedules' does not exist yet. Please run migration 20260811_create_company_calendar_tables.sql in Supabase SQL Editor." },
-          { status: 400 }
-        );
-      }
-      throw upsertErr;
+      console.error("Upsert company schedule error:", upsertErr);
+      return NextResponse.json(
+        { message: upsertErr.message || "Failed to update work schedule." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: "Company working hours schedule updated successfully!",
+      message: "Company working hours and schedule updated successfully!",
       schedule: {
-        id: updatedData.id,
-        dailyWorkingHours: Number(updatedData.daily_working_hours),
-        startTime: updatedData.start_time,
-        endTime: updatedData.end_time,
-        workDays: updatedData.work_days,
+        id: savedSchedule.id,
+        dailyWorkingHours: Number(savedSchedule.daily_working_hours),
+        startTime: savedSchedule.start_time,
+        endTime: savedSchedule.end_time,
+        workDays: savedSchedule.work_days,
       },
     });
   } catch (error) {
     console.error("POST /api/company/calendar/schedule error:", error);
     return NextResponse.json(
-      { message: error.message || "Failed to update company working schedule." },
+      { message: error.message || "Failed to update schedule." },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser } from "@/lib/supabase/authHelper";
 
 /**
  * POST /api/company/setup
@@ -9,12 +10,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export async function POST(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in to complete company setup." },
         { status: 401 }
@@ -161,15 +159,12 @@ export async function POST(req) {
  * GET /api/company/setup
  * Fetches setup state for authenticated company owner using session auth.
  */
-export async function GET() {
+export async function GET(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }

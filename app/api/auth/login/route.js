@@ -179,8 +179,9 @@ export async function POST(req) {
         try {
           const parts = body.access_token.split(".");
           if (parts.length === 3) {
-            const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
-            if (payload.sub && (!payload.exp || payload.exp * 1000 > Date.now())) {
+            const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+            const payload = JSON.parse(Buffer.from(base64, "base64").toString("utf8"));
+            if (payload.sub && (!payload.exp || (payload.exp + 60) * 1000 > Date.now())) {
               user = {
                 id: payload.sub,
                 email: payload.email || "",

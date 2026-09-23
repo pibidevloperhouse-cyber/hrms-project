@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { getAuthUser } from "@/lib/supabase/authHelper";
 
 /**
  * Validates whether caller is authorized (Owner ADMIN, hr_manager, hr_executive)
@@ -17,12 +18,9 @@ function isAuthorizedRole(role) {
 export async function GET(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -89,12 +87,9 @@ export async function GET(req) {
 export async function POST(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -190,12 +185,9 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -293,12 +285,9 @@ export async function PUT(req) {
 export async function DELETE(req) {
   try {
     const supabaseServer = await createClient();
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabaseServer.auth.getUser();
+    const user = await getAuthUser(req, supabaseServer);
 
-    if (userErr || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }

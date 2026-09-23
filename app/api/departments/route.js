@@ -1,20 +1,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getAuthUser } from "@/lib/supabase/authHelper";
 
 /**
  * GET /api/departments
  * List departments for the authenticated user's company
  */
-export async function GET() {
+export async function GET(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -93,12 +91,9 @@ export async function GET() {
 export async function POST(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized." },
         { status: 401 }
@@ -178,12 +173,9 @@ export async function POST(req) {
 export async function PUT(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized." },
         { status: 401 }
@@ -257,12 +249,9 @@ export async function PUT(req) {
 export async function DELETE(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized." },
         { status: 401 }

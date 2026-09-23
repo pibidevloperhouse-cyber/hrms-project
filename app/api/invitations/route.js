@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getCompanyAndRoleForUser, validateInvitationTargetEmail } from "@/lib/supabase/companyHelper";
+import { getAuthUser } from "@/lib/supabase/authHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildOfferEmailHTML } from "@/lib/mail/offerEmail";
 
@@ -12,15 +13,12 @@ import { getAppUrl } from "@/lib/urlHelper";
  * GET /api/invitations
  * Returns pending & historical invitations for the caller's company.
  */
-export async function GET() {
+export async function GET(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
@@ -81,12 +79,9 @@ export async function GET() {
 export async function POST(req) {
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    const user = await getAuthUser(req, supabase);
 
-    if (userError || !user) {
+    if (!user) {
       return NextResponse.json(
         { message: "Unauthorized. Please log in." },
         { status: 401 }
