@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser, resolveEmployeeFast } from "@/lib/supabase/authHelper";
+import { validateCompanyNetwork } from "@/lib/security/networkValidator";
 
 function formatDuration(totalSeconds) {
   const h = Math.floor(totalSeconds / 3600);
@@ -39,6 +40,21 @@ export async function POST(req) {
     if (!empRecord) {
       return NextResponse.json({ message: "Employee profile not found." }, { status: 404 });
     }
+
+    // Strict Network Security Validation: Validate IP against active company networks
+    const networkCheck = await validateCompanyNetwork(req, empRecord.company_id, adminSupabase);
+    if (!networkCheck.isAuthorized) {
+      return NextResponse.json(
+        {
+          message: networkCheck.reason || "Unauthorized Network: Your current connection is not recognized as an authorized company network.",
+          clientIp: networkCheck.clientIp,
+          activeNetworksCount: networkCheck.activeNetworksCount || 0,
+          unauthorizedNetwork: true,
+        },
+        { status: 403 }
+      );
+    }
+
 
     const serverNowIso = new Date().toISOString();
     const serverNowMs = new Date(serverNowIso).getTime();
