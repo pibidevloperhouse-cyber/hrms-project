@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { authFetch } from "@/lib/api/authFetch";
 
 /**
  * AddCompanyNetworkModal Component
@@ -46,7 +47,7 @@ export default function AddCompanyNetworkModal({
   const handleDetectCurrentIp = async () => {
     setIsDetectingIp(true);
     try {
-      const res = await fetch("/api/company/networks/detect");
+      const res = await authFetch("/api/company/networks/detect");
       if (res.ok) {
         const data = await res.json();
         if (data.ip && data.ip !== "127.0.0.1") {
@@ -58,15 +59,16 @@ export default function AddCompanyNetworkModal({
       try {
         const ipifyRes = await fetch("https://api64.ipify.org?format=json");
         if (ipifyRes.ok) {
-          const ipifyData = await ipifyRes.json();
-          if (ipifyData.ip) {
-            setNetworkIp(ipifyData.ip);
+          const ipData = await ipifyRes.json();
+          if (ipData?.ip) {
+            setNetworkIp(ipData.ip);
             return;
           }
         }
       } catch (_) {}
-    } catch (err) {
-      console.warn("Could not auto-detect IP:", err);
+      setNetworkIp("127.0.0.1");
+    } catch (_) {
+      setNetworkIp("127.0.0.1");
     } finally {
       setIsDetectingIp(false);
     }
@@ -103,7 +105,7 @@ export default function AddCompanyNetworkModal({
         payload.id = networkToEdit.id;
       }
 
-      const res = await fetch("/api/company/networks", {
+      const res = await authFetch("/api/company/networks", {
         method: isEditing ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

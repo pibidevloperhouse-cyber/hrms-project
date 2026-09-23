@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { BarChartIcon, CalendarIcon, ShieldIcon } from "./AttendanceIcons";
+import { authFetch } from "@/lib/api/authFetch";
 
 export default function MonthlyWorkingHoursWidget() {
   const [targetMonth, setTargetMonth] = useState(
@@ -13,7 +14,7 @@ export default function MonthlyWorkingHoursWidget() {
   const fetchSummary = async (monthStr, isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      const res = await fetch(`/api/attendance/monthly-summary?month=${monthStr}`);
+      const res = await authFetch(`/api/attendance/monthly-summary?month=${monthStr}`);
       if (res.ok) {
         const json = await res.json();
         setData(json);

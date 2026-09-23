@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { authFetch } from "@/lib/api/authFetch";
 
 export default function LeaveManagement({ userRole, employeeProfile, company }) {
   const [leaves, setLeaves] = useState([]);
@@ -195,7 +196,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
   // Helper for manual re-fetching after actions
   const fetchLeaves = useCallback(async (month = selectedMonth, year = selectedYear) => {
     try {
-      const res = await fetch(`/api/leaves?month=${month}&year=${year}`);
+      const res = await authFetch(`/api/leaves?month=${month}&year=${year}`);
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || "Failed to fetch leave records.");
@@ -218,7 +219,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
 
     async function loadData() {
       try {
-        const res = await fetch(`/api/leaves?month=${selectedMonth}&year=${selectedYear}`);
+        const res = await authFetch(`/api/leaves?month=${selectedMonth}&year=${selectedYear}`);
         const data = await res.json();
         if (!isSubscribed) return;
         if (!res.ok) {
@@ -265,7 +266,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
     setSuccessMsg("");
 
     try {
-      const res = await fetch("/api/leaves", {
+      const res = await authFetch("/api/leaves", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(leaveForm),
@@ -301,7 +302,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
     setSuccessMsg("");
 
     try {
-      const res = await fetch(`/api/leaves/${selectedLeaveForAction.id}`, {
+      const res = await authFetch(`/api/leaves/${selectedLeaveForAction.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -330,7 +331,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
   const handleCancelLeave = async (leaveId) => {
     if (!confirm("Are you sure you want to cancel this pending leave request?")) return;
     try {
-      const res = await fetch(`/api/leaves/${leaveId}`, { method: "DELETE" });
+      const res = await authFetch(`/api/leaves/${leaveId}`, { method: "DELETE" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to cancel leave request.");
       setSuccessMsg("Leave request cancelled.");

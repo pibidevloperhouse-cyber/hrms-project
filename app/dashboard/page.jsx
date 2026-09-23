@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import OwnerDashboard from "./components/OwnerDashboard";
 import DepartmentSummary from "./components/DepartmentSummary";
 import DepartmentManagementModal from "./components/DepartmentManagementModal";
@@ -333,7 +334,7 @@ function DashboardContent() {
     setProfileMsg({ error: "", success: "" });
     setIsSavingProfile(true);
     try {
-      const res = await fetch("/api/employees/profile", {
+      const res = await authFetch("/api/employees/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(profileForm),
@@ -402,12 +403,11 @@ function DashboardContent() {
         let res = null;
         let ct = "";
         let retries = 0;
-        const maxRetries = 4;
+        const maxRetries = 3;
 
         while (retries < maxRetries) {
           try {
-            const tokenToUse = session?.access_token || (await supabase.auth.getSession()).data?.session?.access_token;
-            res = await fetch("/api/company/me", { headers: getHeaders(tokenToUse) });
+            res = await authFetch("/api/company/me");
             ct = res?.headers?.get("content-type") || "";
             if (res && ct.includes("application/json")) {
               break;
@@ -425,24 +425,10 @@ function DashboardContent() {
 
         if (res && ct.includes("application/json")) {
           if (res.status === 401) {
-            // Attempt token refresh on 401
-            try {
-              const { data: refreshed } = await supabase.auth.refreshSession();
-              if (refreshed?.session?.access_token) {
-                session = refreshed.session;
-                const retryRes = await fetch("/api/company/me", { headers: getHeaders(session.access_token) });
-                if (retryRes.ok) {
-                  resolvedData = await retryRes.json();
-                }
-              }
-            } catch (_) {}
-
-            if (!resolvedData) {
-              const { data: { user: verifiedUser } } = await supabase.auth.getUser();
-              if (!verifiedUser) {
-                if (isMounted) router.push("/login");
-                return;
-              }
+            const { data: { user: verifiedUser } } = await supabase.auth.getUser();
+            if (!verifiedUser) {
+              if (isMounted) router.push("/login");
+              return;
             }
           } else if (res.status === 403) {
             if (isMounted) {
@@ -621,15 +607,7 @@ function DashboardContent() {
   const fetchEmployees = async () => {
     setLoadingEmployees(true);
     try {
-      const supabase = createClient();
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        await new Promise((r) => setTimeout(r, 300));
-        const retry = await supabase.auth.getSession();
-        session = retry.data?.session || null;
-      }
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-      const res = await fetch("/api/employees/list", { headers });
+      const res = await authFetch("/api/employees/list");
       const ct = res.headers.get("content-type") || "";
       if (res.ok && ct.includes("application/json")) {
         const d = await res.json();
@@ -641,15 +619,7 @@ function DashboardContent() {
 
   const fetchDepts = async () => {
     try {
-      const supabase = createClient();
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        await new Promise((r) => setTimeout(r, 300));
-        const retry = await supabase.auth.getSession();
-        session = retry.data?.session || null;
-      }
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-      const res = await fetch("/api/departments", { headers });
+      const res = await authFetch("/api/departments");
       const ct = res.headers.get("content-type") || "";
       if (res.ok && ct.includes("application/json")) {
         const d = await res.json();
@@ -941,8 +911,9 @@ function DashboardContent() {
     const targetEmail = inviteForm.email.trim();
     setIsSubmittingInvite(true);
     try {
-      const res = await fetch("/api/employees/invite", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+      const res = await authFetch("/api/employees/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(inviteForm),
       });
       const data = await res.json();

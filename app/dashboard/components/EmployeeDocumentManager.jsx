@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return "0 B";
@@ -212,11 +213,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
   const handleDownloadDocument = async (doc) => {
     setDownloadingId(doc.id);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      const res = await fetch(`/api/documents/download?id=${doc.id}`, { headers });
+      const res = await authFetch(`/api/documents/download?id=${doc.id}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         alert(err.message || "Failed to download file.");
@@ -261,11 +258,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
   const fetchEmployees = async () => {
     try {
       setLoadingEmployees(true);
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      const res = await fetch("/api/employees/list", { headers });
+      const res = await authFetch("/api/employees/list");
       if (res.ok) {
         const data = await res.json();
         const loadedEmps = data.employees || [];
@@ -299,11 +292,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
         url += `documentType=${selectedDocType}&`;
       }
 
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      const res = await fetch(url, { headers });
+      const res = await authFetch(url);
       if (res.status === 401) {
         return;
       }
@@ -487,13 +476,8 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
       formData.append("documentName", resolvedDocName);
       formData.append("notes", uploadForm.notes);
 
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      const res = await fetch("/api/documents/upload", {
+      const res = await authFetch("/api/documents/upload", {
         method: "POST",
-        headers,
         body: formData,
       });
 
@@ -541,13 +525,8 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
     setNotice({ error: "", success: "" });
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      const res = await fetch(`/api/documents/${docId}`, {
+      const res = await authFetch(`/api/documents/${docId}`, {
         method: "DELETE",
-        headers,
       });
 
       const data = await res.json();

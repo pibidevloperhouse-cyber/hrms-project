@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import AddCompanyNetworkModal from "./AddCompanyNetworkModal";
+import { authFetch } from "@/lib/api/authFetch";
 
 /**
  * CompanySettings Component
@@ -29,7 +30,7 @@ export default function CompanySettings({ userRole, company }) {
   const fetchNetworks = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch("/api/company/networks");
+      const res = await authFetch("/api/company/networks");
       const data = await res.json();
       if (res.ok && Array.isArray(data.networks)) {
         setNetworks(data.networks);
@@ -80,7 +81,7 @@ export default function CompanySettings({ userRole, company }) {
   const handleToggleStatus = async (network) => {
     const nextStatus = network.status === "active" ? "inactive" : "active";
     try {
-      const res = await fetch("/api/company/networks", {
+      const res = await authFetch("/api/company/networks", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +110,7 @@ export default function CompanySettings({ userRole, company }) {
     }
     setIsDeletingId(network.id);
     try {
-      const res = await fetch(`/api/company/networks?id=${network.id}`, {
+      const res = await authFetch(`/api/company/networks?id=${network.id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -156,7 +157,7 @@ export default function CompanySettings({ userRole, company }) {
     if (!currentIp) return;
     setIsQuickAuthorizing(true);
     try {
-      const res = await fetch("/api/company/networks", {
+      const res = await authFetch("/api/company/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

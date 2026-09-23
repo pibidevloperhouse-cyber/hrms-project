@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import HRAttendanceTracker from "./HRAttendanceTracker";
 import EmployeeMonthlySummaryTable from "./EmployeeMonthlySummaryTable";
 import {
@@ -120,7 +121,7 @@ export default function AttendancePage({ userRole }) {
 
   const fetchNetworkStatus = async () => {
     try {
-      const res = await fetch("/api/attendance/network-status");
+      const res = await authFetch("/api/attendance/network-status");
       if (res.ok) {
         const data = await res.json();
         const isAuth = Boolean(data.isAuthorized);
@@ -151,7 +152,7 @@ export default function AttendancePage({ userRole }) {
     if (!targetIp) return;
     setIsAuthorizingNetwork(true);
     try {
-      const res = await fetch("/api/company/networks", {
+      const res = await authFetch("/api/company/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -197,10 +198,7 @@ export default function AttendancePage({ userRole }) {
   const fetchAttendanceStatus = async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-      const res = await fetch("/api/attendance/status", { headers });
+      const res = await authFetch("/api/attendance/status");
       if (res.status === 401) {
         return;
       }
@@ -396,14 +394,9 @@ export default function AttendancePage({ userRole }) {
       const clientTimeZone =
         Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
 
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { "Content-Type": "application/json" };
-      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-
-      const res = await fetch("/api/attendance/check-in", {
+      const res = await authFetch("/api/attendance/check-in", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ timeZone: clientTimeZone }),
       });
       if (res.status === 401) {
@@ -513,14 +506,9 @@ export default function AttendancePage({ userRole }) {
     }
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { "Content-Type": "application/json" };
-      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-
-      const res = await fetch("/api/attendance/break", {
+      const res = await authFetch("/api/attendance/break", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: actionType }),
       });
 
@@ -601,17 +589,12 @@ export default function AttendancePage({ userRole }) {
     setActionLoading(true);
     setNotice({ error: "", success: "" });
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { "Content-Type": "application/json" };
-      if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
-
       const clientTimeZone =
         Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
 
-      const res = await fetch("/api/attendance/check-out", {
+      const res = await authFetch("/api/attendance/check-out", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ reason: reasonText, timeZone: clientTimeZone }),
       });
       if (res.status === 401) {
