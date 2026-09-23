@@ -160,11 +160,19 @@ export default function AttendancePage({ userRole }) {
     if (rawIp === "*") {
       targetIp = "*";
       netName = "Allow All Networks (Remote Work)";
-    } else if (useSubnet && rawIp.includes(":")) {
-      const parts = rawIp.split(":").filter(Boolean);
-      if (parts.length >= 4) {
-        targetIp = `${parts.slice(0, 4).join(":")}::/64`;
-        netName = `Office Wi-Fi Subnet (${parts.slice(0, 4).join(":")}::/64)`;
+    } else if (useSubnet) {
+      if (rawIp.includes(":")) {
+        const parts = rawIp.split(":").filter(Boolean);
+        if (parts.length >= 4) {
+          targetIp = `${parts.slice(0, 4).join(":")}::/64`;
+          netName = `Office Wi-Fi Subnet (${parts.slice(0, 4).join(":")}::/64)`;
+        }
+      } else {
+        const octets = rawIp.split(".");
+        if (octets.length === 4 && octets[0] !== "127") {
+          targetIp = `${octets[0]}.${octets[1]}.${octets[2]}.*`;
+          netName = `Office Network (${octets[0]}.${octets[1]}.${octets[2]}.*)`;
+        }
       }
     }
 
@@ -173,6 +181,7 @@ export default function AttendancePage({ userRole }) {
       const res = await authFetch("/api/company/networks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+
         body: JSON.stringify({
           network_name: netName,
           network_ip: targetIp,
