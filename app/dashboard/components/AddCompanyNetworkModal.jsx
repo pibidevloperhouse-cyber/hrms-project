@@ -49,10 +49,22 @@ export default function AddCompanyNetworkModal({
       const res = await fetch("/api/company/networks/detect");
       if (res.ok) {
         const data = await res.json();
-        if (data.ip) {
+        if (data.ip && data.ip !== "127.0.0.1") {
           setNetworkIp(data.ip);
+          return;
         }
       }
+      // Public IP fallback for client browser
+      try {
+        const ipifyRes = await fetch("https://api64.ipify.org?format=json");
+        if (ipifyRes.ok) {
+          const ipifyData = await ipifyRes.json();
+          if (ipifyData.ip) {
+            setNetworkIp(ipifyData.ip);
+            return;
+          }
+        }
+      } catch (_) {}
     } catch (err) {
       console.warn("Could not auto-detect IP:", err);
     } finally {
@@ -185,7 +197,7 @@ export default function AddCompanyNetworkModal({
               <input
                 type="text"
                 required
-                placeholder="e.g., 192.168.1.1 or 49.204.120.15"
+                placeholder="e.g., 49.204.120.15, 192.168.1.0/24, 2401:4900:.../64, or * for all"
                 value={networkIp}
                 onChange={(e) => setNetworkIp(e.target.value)}
                 className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 font-mono transition-colors placeholder:text-slate-400"

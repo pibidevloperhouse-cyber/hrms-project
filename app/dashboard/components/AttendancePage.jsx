@@ -106,17 +106,17 @@ export default function AttendancePage({ userRole }) {
   const [networkStatus, setNetworkStatus] = useState({
     loading: true,
     isAuthorized: true,
+    clientIp: "",
+    userRole: "",
     networkName: "",
     reason: "",
   });
   const [networkAlertModal, setNetworkAlertModal] = useState({
     open: false,
     message: "",
+    clientIp: "",
   });
-
-  const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
-  const [notice, setNotice] = useState({ error: "", success: "" });
+  const [isAuthorizingNetwork, setIsAuthorizingNetwork] = useState(false);
 
   const fetchNetworkStatus = async () => {
     try {
@@ -127,6 +127,8 @@ export default function AttendancePage({ userRole }) {
         setNetworkStatus({
           loading: false,
           isAuthorized: isAuth,
+          clientIp: data.clientIp || "",
+          userRole: data.userRole || "",
           networkName: data.networkName || "",
           reason: data.message || "",
         });
@@ -138,10 +140,47 @@ export default function AttendancePage({ userRole }) {
               ? { ...prev, error: "" }
               : prev
           );
-          setNetworkAlertModal({ open: false, message: "" });
+          setNetworkAlertModal({ open: false, message: "", clientIp: "" });
         }
       }
     } catch (_) {}
+  };
+
+  const handleAuthorizeNetwork = async (ipToAuthorize) => {
+    const targetIp = ipToAuthorize || networkAlertModal.clientIp || networkStatus.clientIp;
+    if (!targetIp) return;
+    setIsAuthorizingNetwork(true);
+    try {
+      const res = await fetch("/api/company/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          network_name: `Office Network (${targetIp})`,
+          network_ip: targetIp,
+          status: "active",
+          description: "Authorized from Attendance Console",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNotice({
+          error: "",
+          success: `Network IP "${targetIp}" authorized successfully! You can now check in.`,
+        });
+        setNetworkAlertModal({ open: false, message: "", clientIp: "" });
+        await fetchNetworkStatus();
+      } else {
+        setNotice({
+          error: data.message || "Failed to authorize network.",
+          success: "",
+        });
+      }
+    } catch (err) {
+      console.error("Authorize network error:", err);
+      setNotice({ error: "Network error authorizing IP. Please try again.", success: "" });
+    } finally {
+      setIsAuthorizingNetwork(false);
+    }
   };
 
   // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
@@ -378,6 +417,7 @@ export default function AttendancePage({ userRole }) {
         setNetworkAlertModal({
           open: true,
           message: data.message || "Your current connection is not recognized as an authorized company network.",
+          clientIp: data.clientIp || networkStatus.clientIp || "",
         });
         fetchNetworkStatus();
         return;
@@ -586,6 +626,7 @@ export default function AttendancePage({ userRole }) {
         setNetworkAlertModal({
           open: true,
           message: data.message || "Your current connection is not recognized as an authorized company network.",
+          clientIp: data.clientIp || networkStatus.clientIp || "",
         });
         fetchNetworkStatus();
         return;
@@ -1418,7 +1459,7 @@ export default function AttendancePage({ userRole }) {
       {networkAlertModal.open && (
         <div
           onClick={(e) => {
-            if (e.target === e.currentTarget) setNetworkAlertModal({ open: false, message: "" });
+            if (e.target === e.currentTarget) setNetworkAlertModal({ open: false, message: "", clientIp: "" });
           }}
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
         >
@@ -1435,7 +1476,7 @@ export default function AttendancePage({ userRole }) {
               {/* Red square close button */}
               <button
                 type="button"
-                onClick={() => setNetworkAlertModal({ open: false, message: "" })}
+                onClick={() => setNetworkAlertModal({ open: false, message: "", clientIp: "" })}
                 className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer"
                 title="Close"
               >
@@ -1445,17 +1486,47 @@ export default function AttendancePage({ userRole }) {
 
             {/* Modal Body */}
             <div className="px-6 py-4 space-y-4">
-              <div className="p-3 rounded bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium flex items-center gap-2">
-                <span>⚠️</span>
-                <span>{networkAlertModal.message || "Invalid Network Access. Please connect to your authorized company Wi-Fi network to proceed."}</span>
+              <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium space-y-2">
+                <div className="flex items-center gap-2 font-bold text-rose-800 text-sm">
+                  <span>⚠️</span>
+                  <span>Unauthorized Company Network</span>
+                </div>
+                <p className="leading-relaxed">
+                  {networkAlertModal.message || "Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi to proceed."}
+                </p>
+                {(networkAlertModal.clientIp || networkStatus.clientIp) && (
+                  <div className="pt-1 flex items-center gap-1.5 text-[11px] font-mono text-slate-700 bg-white/80 p-1.5 rounded border border-rose-200">
+                    <span className="font-bold text-slate-900 font-sans">Detected Client IP:</span>
+                    <span className="font-semibold text-rose-600">{networkAlertModal.clientIp || networkStatus.clientIp}</span>
+                  </div>
+                )}
               </div>
 
+              {/* Quick Authorize IP button for Owner & HR */}
+              {(networkAlertModal.clientIp || networkStatus.clientIp) &&
+                ["ADMIN", "hr_manager", "hr_executive"].includes(networkStatus.userRole || userRole) && (
+                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
+                    <div className="text-[11px] text-emerald-800">
+                      <span className="font-bold block">Owner / HR Action:</span>
+                      Authorize this IP for the entire company in 1 click.
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isAuthorizingNetwork}
+                      onClick={() => handleAuthorizeNetwork(networkAlertModal.clientIp || networkStatus.clientIp)}
+                      className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 whitespace-nowrap shadow-2xs"
+                    >
+                      {isAuthorizingNetwork ? "Authorizing…" : "＋ Authorize This IP"}
+                    </button>
+                  </div>
+                )}
+
               {/* Footer Buttons matching Create Sprint exact theme */}
-              <div className="pt-2 flex items-center justify-end gap-2">
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => {
-                    setNetworkAlertModal({ open: false, message: "" });
+                    setNetworkAlertModal({ open: false, message: "", clientIp: "" });
                     fetchNetworkStatus();
                   }}
                   className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer shadow-xs"
@@ -1464,7 +1535,7 @@ export default function AttendancePage({ userRole }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setNetworkAlertModal({ open: false, message: "" })}
+                  onClick={() => setNetworkAlertModal({ open: false, message: "", clientIp: "" })}
                   className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer"
                 >
                   Close

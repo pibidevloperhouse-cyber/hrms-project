@@ -22,6 +22,7 @@ export default function CompanySettings({ userRole, company }) {
   const [currentIp, setCurrentIp] = useState("");
   const [isDeletingId, setIsDeletingId] = useState(null);
   const [copiedIp, setCopiedIp] = useState(null);
+  const [isQuickAuthorizing, setIsQuickAuthorizing] = useState(false);
 
   const isOwnerOrHR = ["ADMIN", "hr_manager", "hr_executive"].includes(userRole);
 
@@ -142,9 +143,46 @@ export default function CompanySettings({ userRole, company }) {
   const totalCount = networks.length;
   const activeCount = networks.filter((n) => n.status === "active").length;
   const inactiveCount = networks.filter((n) => n.status === "inactive").length;
-  const isCurrentIpCovered = networks.some(
-    (n) => n.status === "active" && (n.network_ip === currentIp || currentIp.startsWith(n.network_ip))
-  );
+  const isCurrentIpCovered = networks.some((n) => {
+    if (n.status !== "active" || !currentIp) return false;
+    if (n.network_ip === "*" || n.network_ip === "all" || n.network_ip === "0.0.0.0/0") return true;
+    if (n.network_ip === currentIp) return true;
+    if (n.network_ip.endsWith("*") && currentIp.startsWith(n.network_ip.slice(0, -1))) return true;
+    if (currentIp.startsWith(n.network_ip)) return true;
+    return false;
+  });
+
+  const handleAuthorizeCurrentIp = async () => {
+    if (!currentIp) return;
+    setIsQuickAuthorizing(true);
+    try {
+      const res = await fetch("/api/company/networks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          network_name: `Office Network (${currentIp})`,
+          network_ip: currentIp,
+          status: "active",
+          description: "Authorized from Company Settings",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNotice({
+          error: "",
+          success: `Network IP "${currentIp}" authorized successfully.`,
+        });
+        await fetchNetworks(true);
+      } else {
+        setNotice({ error: data.message || "Failed to authorize IP.", success: "" });
+      }
+    } catch (err) {
+      console.error("Authorize IP error:", err);
+      setNotice({ error: "Network error. Please try again.", success: "" });
+    } finally {
+      setIsQuickAuthorizing(false);
+    }
+  };
 
   // Filtered networks
   const filteredNetworks = networks.filter((net) => {
@@ -263,9 +301,22 @@ export default function CompanySettings({ userRole, company }) {
                 {isCurrentIpCovered ? "On-Premises Authorized" : "Remote / External IP"}
               </span>
             </div>
-            <span className="text-[10px] font-mono text-slate-500 truncate block">
-              IP: {currentIp || "Detecting…"}
-            </span>
+            <div className="flex items-center justify-between gap-1 pt-0.5">
+              <span className="text-[10px] font-mono text-slate-500 truncate block">
+                IP: {currentIp || "Detecting…"}
+              </span>
+              {!isCurrentIpCovered && currentIp && isOwnerOrHR && (
+                <button
+                  type="button"
+                  disabled={isQuickAuthorizing}
+                  onClick={handleAuthorizeCurrentIp}
+                  className="px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
+                  title="Authorize your current IP for attendance check-in"
+                >
+                  {isQuickAuthorizing ? "…" : "＋ Authorize"}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

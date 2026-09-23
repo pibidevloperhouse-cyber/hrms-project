@@ -36,10 +36,14 @@ export async function GET(req) {
     return NextResponse.json({
       success: true,
       isAuthorized,
+      clientIp: networkCheck.clientIp,
+      matchedNetwork: networkCheck.matchedNetwork,
+      activeNetworksCount: networkCheck.activeNetworksCount,
       networkName: isAuthorized ? (networkCheck.matchedNetwork?.network_name || "Authorized Company Network") : null,
       message: isAuthorized
-        ? "Connected to Authorized Company Network"
-        : "Unauthorized Network: Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi to proceed.",
+        ? `Connected to Authorized Network (${networkCheck.matchedNetwork?.network_name || "Company Network"})`
+        : networkCheck.reason || `Unauthorized Network: Current IP (${networkCheck.clientIp}) is not authorized.`,
+      userRole: empRecord.role || "EMPLOYEE",
     });
   } catch (error) {
     console.error("GET Network Status Error:", error);

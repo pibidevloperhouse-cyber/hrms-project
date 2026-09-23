@@ -149,7 +149,9 @@ export async function POST(req) {
     if (!networkCheck.isAuthorized) {
       return NextResponse.json(
         {
-          message: "Unauthorized Network: Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi or authorized company network to proceed.",
+          message: networkCheck.reason || "Unauthorized Network: Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi or authorized company network to proceed.",
+          clientIp: networkCheck.clientIp,
+          activeNetworksCount: networkCheck.activeNetworksCount || 0,
           unauthorizedNetwork: true,
         },
         { status: 403 }
