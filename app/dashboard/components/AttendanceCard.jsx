@@ -759,6 +759,26 @@ export default function AttendanceCard() {
         </span>
       </div>
 
+      {/* Connected Network IP & Authorization Status Bar */}
+      <div className={`flex items-center justify-between text-[11px] rounded-xl px-3 py-2 border transition-all ${
+        networkStatus.isAuthorized
+          ? "bg-emerald-50/60 border-emerald-200/80 text-emerald-900"
+          : "bg-rose-50/70 border-rose-200 text-rose-900"
+      }`}>
+        <div className="flex items-center gap-2 font-mono truncate">
+          <span className={`w-2 h-2 rounded-full shrink-0 ${networkStatus.isAuthorized ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+          <span className="font-sans text-slate-500 text-[10px] font-bold uppercase tracking-wider">Your IP:</span>
+          <span className="font-bold text-slate-800">{networkStatus.clientIp || "Detecting…"}</span>
+        </div>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0 border ${
+          networkStatus.isAuthorized
+            ? "bg-emerald-100 text-emerald-800 border-emerald-300 font-extrabold"
+            : "bg-rose-100 text-rose-800 border-rose-300 font-extrabold"
+        }`}>
+          {networkStatus.isAuthorized ? "Authorized Network" : "Unauthorized Network"}
+        </span>
+      </div>
+
       {isHoliday && (
         <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-semibold flex items-center justify-between gap-2 shadow-2xs">
           <div className="flex items-center gap-2">
