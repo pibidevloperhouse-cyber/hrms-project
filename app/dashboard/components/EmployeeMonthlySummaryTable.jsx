@@ -14,6 +14,7 @@ import {
   FileTextIcon,
   UsersIcon,
 } from "./AttendanceIcons";
+import HRMonthlyEvaluationModal from "./HRMonthlyEvaluationModal";
 
 function formatDurationHMS(totalSeconds) {
   if (!totalSeconds || isNaN(totalSeconds) || totalSeconds <= 0) return "00h 00m 00s";
@@ -44,6 +45,7 @@ export default function EmployeeMonthlySummaryTable({ embedded = false }) {
   const [activeModalEmp, setActiveModalEmp] = useState(null);
   const [empDailyBreakdown, setEmpDailyBreakdown] = useState([]);
   const [modalLoading, setModalLoading] = useState(false);
+  const [showMonthlyEvalModal, setShowMonthlyEvalModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -104,20 +106,29 @@ export default function EmployeeMonthlySummaryTable({ embedded = false }) {
     };
     initMonthly();
 
-    // Real-time 2-second polling ticker & postgres update event listener
+    // Periodic fallback sync (every 2 minutes) with background pause
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchMonthlySummary(selectedMonth, true);
-    }, 2000);
+    }, 120000);
 
     const handleUpdate = () => fetchMonthlySummary(selectedMonth, true);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchMonthlySummary(selectedMonth, true);
+      }
+    };
+
     if (typeof window !== "undefined") {
       window.addEventListener("attendance-updated", handleUpdate);
+      document.addEventListener("visibilitychange", handleVisibility);
     }
 
     return () => {
       clearInterval(interval);
       if (typeof window !== "undefined") {
         window.removeEventListener("attendance-updated", handleUpdate);
+        document.removeEventListener("visibilitychange", handleVisibility);
       }
     };
   }, [selectedMonth]);
@@ -269,6 +280,17 @@ export default function EmployeeMonthlySummaryTable({ embedded = false }) {
             >
               <FileTextIcon className="w-3.5 h-3.5" />
               <span>Export CSV</span>
+            </button>
+
+            {/* ⭐ Monthly Performance Evaluation Dialog Button */}
+            <button
+              type="button"
+              onClick={() => setShowMonthlyEvalModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-indigo-500/20 cursor-pointer active:scale-[0.98]"
+              title="Open Monthly Performance & Feedback Evaluation Dialog"
+            >
+              <span className="text-amber-300">⭐</span>
+              <span>Monthly Evaluation</span>
             </button>
           </div>
         </div>
@@ -681,6 +703,18 @@ export default function EmployeeMonthlySummaryTable({ embedded = false }) {
           </div>
         </div>,
         document.body
+      )}
+
+      {/* ⭐ Monthly Performance Evaluation Popup Modal */}
+      {showMonthlyEvalModal && (
+        <HRMonthlyEvaluationModal
+          isOpen={showMonthlyEvalModal}
+          onClose={() => setShowMonthlyEvalModal(false)}
+          onSaved={() => {
+            setShowMonthlyEvalModal(false);
+            fetchMonthlyData();
+          }}
+        />
       )}
     </div>
   );

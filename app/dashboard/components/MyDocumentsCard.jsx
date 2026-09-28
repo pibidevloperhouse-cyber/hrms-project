@@ -199,14 +199,31 @@ export default function MyDocumentsCard() {
     }
   };
 
-  // Initial fetch + background polling (every 10 seconds)
+  // Initial fetch + background fallback sync (every 3 minutes)
   useEffect(() => {
     fetchMyDocuments(false);
-    const interval = setInterval(() => {
-      fetchMyDocuments(true);
-    }, 10000);
 
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchMyDocuments(true);
+    }, 180000);
+
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchMyDocuments(true);
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
   }, []);
 
   const handleDownloadDocument = async (doc) => {

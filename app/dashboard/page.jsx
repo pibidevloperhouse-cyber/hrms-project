@@ -16,12 +16,13 @@ import EmployeeDocumentManager from "./components/EmployeeDocumentManager";
 import MyDocumentsCard from "./components/MyDocumentsCard";
 import ProjectManagement from "./components/ProjectManagement";
 import RolePromotionModal from "./components/RolePromotionModal";
-import CompanySettings from "./components/CompanySettings";
+import ExecutivePerformanceMatrix from "./components/ExecutivePerformanceMatrix";
 import { checkTaskSprintOverdue } from "@/lib/projectUtils";
 
 // ─── NAV CONFIG ──────────────────────────────────────────────────────────────
 const NAV_ITEMS = [
   { key: "overview", label: "Overview" },
+  { key: "evaluations", label: "Executive Appraisals", ownerOnly: true },
   { key: "projects", label: "Projects" },
   { key: "attendance", label: "Attendance" },
   { key: "calendar", label: "Work Calendar" },
@@ -29,7 +30,6 @@ const NAV_ITEMS = [
   { key: "documents", label: "Documents & Payslips" },
   { key: "employees", label: "Team Directory" },
   { key: "departments", label: "Departments" },
-  { key: "company-settings", label: "Company Settings" },
   { key: "settings", label: "My Profile" },
 ];
 
@@ -42,6 +42,12 @@ function getNavIcon(key, className = "w-4 h-4 shrink-0") {
           <rect x="14" y="3" width="7" height="7" rx="1.5" />
           <rect x="14" y="14" width="7" height="7" rx="1.5" />
           <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        </svg>
+      );
+    case "evaluations":
+      return (
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
         </svg>
       );
     case "projects":
@@ -88,12 +94,6 @@ function getNavIcon(key, className = "w-4 h-4 shrink-0") {
       return (
         <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
           <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-      );
-    case "company-settings":
-      return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
         </svg>
       );
     case "settings":
@@ -1074,9 +1074,9 @@ function DashboardContent() {
         {/* Navigation Items with Enhanced Hover & Smooth Scroll */}
         <nav className="flex-1 overflow-y-auto px-3.5 py-3.5 space-y-1.5 custom-scroll scroll-smooth">
           {NAV_ITEMS
+            .filter((item) => !(item.ownerOnly && !isAdmin))
             .filter((item) => !(item.key === "leave-requests" && userRole === "ADMIN"))
             .filter((item) => !(item.key === "projects" && !["ADMIN", "manager", "team_lead", "employee"].includes(userRole)))
-            .filter((item) => !(item.key === "company-settings" && !["ADMIN", "hr_manager", "hr_executive"].includes(userRole)))
             .map((item) => {
             const active = activeTab === item.key;
             return (
@@ -1367,6 +1367,11 @@ function DashboardContent() {
                   </div>
                 </>
               )
+          )}
+
+          {/* --- TAB: EXECUTIVE APPRAISALS & EVALUATIONS (OWNER ONLY) --- */}
+          {activeTab === "evaluations" && isAdmin && (
+            <ExecutivePerformanceMatrix />
           )}
 
           {/* --- TAB: PROJECTS --- */}
@@ -1733,11 +1738,6 @@ function DashboardContent() {
                 )}
               </div>
             </div>
-          )}
-
-          {/* --- TAB: COMPANY SETTINGS --- */}
-          {activeTab === "company-settings" && (
-            <CompanySettings userRole={userRole} company={company} />
           )}
 
           {/* --- TAB: SETTINGS (MY PROFILE) --- */}

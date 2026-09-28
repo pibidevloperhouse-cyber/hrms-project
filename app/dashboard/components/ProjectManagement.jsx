@@ -11,6 +11,7 @@ import TaskDetailModal from "./project/TaskDetailModal";
 import TaskExtensionModal from "./project/TaskExtensionModal";
 import TaskExtensionReviewModal from "./project/TaskExtensionReviewModal";
 import SprintPerformanceModal from "./project/SprintPerformanceModal";
+import TLMonthlyEvaluationModal from "./TLMonthlyEvaluationModal";
 import { calculateFinalPerformanceScore } from "@/lib/performanceUtils";
 
 const PRIORITY_CONFIG = {
@@ -154,6 +155,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const [selectedTaskForExtension, setSelectedTaskForExtension] = useState(null);
   const [selectedTaskForExtensionReview, setSelectedTaskForExtensionReview] = useState(null);
   const [selectedSprintForPerfEval, setSelectedSprintForPerfEval] = useState(null);
+  const [isTLMonthlyEvalModalOpen, setIsTLMonthlyEvalModalOpen] = useState(false);
   const [perfViewMode, setPerfViewMode] = useState("overview"); // "overview" | "monthly"
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [monthlyData, setMonthlyData] = useState(null);
@@ -564,6 +566,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
 
     // Periodic auto-sync fallback (every 60s) to keep tab fresh without rate limit pressure
     const syncInterval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchProjects();
       fetchBatchTasks();
       fetchEmployeesAndLeads();
@@ -2723,6 +2726,16 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       )}
                     </select>
                   </div>
+
+                  {(isTeamLead || isManager || isAdmin || isOwner) && (
+                    <button
+                      type="button"
+                      onClick={() => setIsTLMonthlyEvalModalOpen(true)}
+                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition cursor-pointer shadow-2xs flex items-center gap-1.5 shrink-0"
+                    >
+                      <span>Monthly Evaluation</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -4421,6 +4434,21 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
           />
         );
       })()}
+
+      {/* Monthly Performance Evaluation Modal */}
+      <TLMonthlyEvaluationModal
+        isOpen={isTLMonthlyEvalModalOpen}
+        onClose={() => {
+          setIsTLMonthlyEvalModalOpen(false);
+          if (perfViewMode === "monthly") fetchMonthlyPerformance(selectedMonth);
+        }}
+        onSaved={(empName) => {
+          setIsTLMonthlyEvalModalOpen(false);
+          if (perfViewMode === "monthly") fetchMonthlyPerformance(selectedMonth);
+          fetchAnalytics();
+          showNotificationToast(`Monthly evaluation saved successfully for ${empName || "employee"}.`, "success");
+        }}
+      />
     </div>
   );
 }

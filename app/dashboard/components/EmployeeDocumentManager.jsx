@@ -364,14 +364,30 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
     };
   }, []);
 
-  // Background Sync Interval (Every 10 seconds)
+  // Background Fallback Sync (every 3 minutes) with background pause
   useEffect(() => {
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchDocuments(true);
       fetchEmployees();
-    }, 10000);
+    }, 180000);
 
-    return () => clearInterval(interval);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchDocuments(true);
+      }
+    };
+
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", handleVisibility);
+    }
+
+    return () => {
+      clearInterval(interval);
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", handleVisibility);
+      }
+    };
   }, [selectedEmployeeId, selectedDocType]);
 
   const openUploadForEmployee = (empId, docType = "") => {

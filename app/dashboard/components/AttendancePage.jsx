@@ -103,113 +103,9 @@ export default function AttendancePage({ userRole }) {
   const [leaveTypeToday, setLeaveTypeToday] = useState("");
   const [leaveReasonToday, setLeaveReasonToday] = useState("");
 
-  // Company Network Authorization status
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState({ error: "", success: "" });
-  const [networkStatus, setNetworkStatus] = useState({
-    loading: true,
-    isAuthorized: true,
-    clientIp: "",
-    userRole: "",
-    networkName: "",
-    reason: "",
-  });
-  const [networkAlertModal, setNetworkAlertModal] = useState({
-    open: false,
-    message: "",
-    clientIp: "",
-  });
-  const [isAuthorizingNetwork, setIsAuthorizingNetwork] = useState(false);
-
-  const fetchNetworkStatus = async () => {
-    try {
-      const res = await authFetch("/api/attendance/network-status");
-      if (res.ok) {
-        const data = await res.json();
-        const isAuth = Boolean(data.isAuthorized);
-        setNetworkStatus({
-          loading: false,
-          isAuthorized: isAuth,
-          clientIp: data.clientIp || "",
-          userRole: data.userRole || "",
-          networkName: data.networkName || "",
-          reason: data.message || "",
-        });
-
-        // Automatically clear unauthorized error notice and close warning modal when reconnected to authorized network!
-        if (isAuth) {
-          setNotice((prev) =>
-            prev.error && prev.error.toLowerCase().includes("unauthorized network")
-              ? { ...prev, error: "" }
-              : prev
-          );
-          setNetworkAlertModal({ open: false, message: "", clientIp: "" });
-        }
-      }
-    } catch (_) {}
-  };
-
-  const handleAuthorizeNetwork = async (ipToAuthorize, useSubnet = true) => {
-    const rawIp = ipToAuthorize || networkAlertModal.clientIp || networkStatus.clientIp;
-    if (!rawIp) return;
-
-    let targetIp = rawIp;
-    let netName = `Office Network (${rawIp})`;
-
-    if (rawIp === "*") {
-      targetIp = "*";
-      netName = "Allow All Networks (Remote Work)";
-    } else if (useSubnet) {
-      if (rawIp.includes(":")) {
-        const parts = rawIp.split(":").filter(Boolean);
-        if (parts.length >= 4) {
-          targetIp = `${parts.slice(0, 4).join(":")}::/64`;
-          netName = `Office Wi-Fi Subnet (${parts.slice(0, 4).join(":")}::/64)`;
-        }
-      } else {
-        const octets = rawIp.split(".");
-        if (octets.length === 4 && octets[0] !== "127") {
-          targetIp = `${octets[0]}.${octets[1]}.${octets[2]}.*`;
-          netName = `Office Network (${octets[0]}.${octets[1]}.${octets[2]}.*)`;
-        }
-      }
-    }
-
-    setIsAuthorizingNetwork(true);
-    try {
-      const res = await authFetch("/api/company/networks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-
-        body: JSON.stringify({
-          network_name: netName,
-          network_ip: targetIp,
-          status: "active",
-          description: "Authorized from Attendance Console",
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setNotice({
-          error: "",
-          success: `Network "${targetIp}" authorized successfully! Both mobile and laptop devices on this network can now check in.`,
-        });
-        setNetworkAlertModal({ open: false, message: "", clientIp: "" });
-        await fetchNetworkStatus();
-      } else {
-        setNotice({
-          error: data.message || "Failed to authorize network.",
-          success: "",
-        });
-      }
-    } catch (err) {
-      console.error("Authorize network error:", err);
-      setNotice({ error: "Network error authorizing IP. Please try again.", success: "" });
-    } finally {
-      setIsAuthorizingNetwork(false);
-    }
-  };
 
 
   // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
@@ -315,16 +211,12 @@ export default function AttendancePage({ userRole }) {
   useEffect(() => {
     const initStatus = async () => {
       await fetchAttendanceStatus(false);
-      await fetchNetworkStatus();
     };
     initStatus();
 
-    // Responsive network checking (every 5 seconds) to automatically detect Wi-Fi reconnection in real-time
-    const networkPollInterval = setInterval(() => {
-      fetchNetworkStatus();
-    }, 5000);
-
+    // Periodic attendance sync (every 60s) with background pause
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       const currentDateStr = new Date().toDateString();
       if (currentDateStr !== lastCheckedDateRef.current) {
         lastCheckedDateRef.current = currentDateStr;
@@ -332,30 +224,32 @@ export default function AttendancePage({ userRole }) {
       } else {
         fetchAttendanceStatus(true); // Background polling
       }
-    }, 15000);
+    }, 60000);
 
     const handleUpdate = () => {
       fetchAttendanceStatus(true);
-      fetchNetworkStatus();
     };
 
     const handleFocusOrOnline = () => {
-      fetchNetworkStatus();
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchAttendanceStatus(true);
+      }
     };
 
     if (typeof window !== "undefined") {
       window.addEventListener("attendance-updated", handleUpdate);
       window.addEventListener("focus", handleFocusOrOnline);
       window.addEventListener("online", handleFocusOrOnline);
+      document.addEventListener("visibilitychange", handleFocusOrOnline);
     }
 
     return () => {
       clearInterval(interval);
-      clearInterval(networkPollInterval);
       if (typeof window !== "undefined") {
         window.removeEventListener("attendance-updated", handleUpdate);
         window.removeEventListener("focus", handleFocusOrOnline);
         window.removeEventListener("online", handleFocusOrOnline);
+        document.removeEventListener("visibilitychange", handleFocusOrOnline);
       }
     };
   }, []);
@@ -432,17 +326,6 @@ export default function AttendancePage({ userRole }) {
         return;
       }
       const data = await res.json();
-
-      if (res.status === 403 || data.unauthorizedNetwork) {
-        setNotice({ error: data.message || "Unauthorized Network Connection", success: "" });
-        setNetworkAlertModal({
-          open: true,
-          message: data.message || "Your current connection is not recognized as an authorized company network.",
-          clientIp: data.clientIp || networkStatus.clientIp || "",
-        });
-        fetchNetworkStatus();
-        return;
-      }
 
       if (!res.ok) {
         setNotice({ error: data.message || "Failed to check in.", success: "" });
@@ -630,18 +513,6 @@ export default function AttendancePage({ userRole }) {
         return;
       }
       const data = await res.json();
-
-      if (res.status === 403 || data.unauthorizedNetwork) {
-        setShowReasonModal(false);
-        setNotice({ error: data.message || "Unauthorized Network Connection", success: "" });
-        setNetworkAlertModal({
-          open: true,
-          message: data.message || "Your current connection is not recognized as an authorized company network.",
-          clientIp: data.clientIp || networkStatus.clientIp || "",
-        });
-        fetchNetworkStatus();
-        return;
-      }
 
       if (!res.ok) {
         if (data.requiresReason) {
@@ -1462,128 +1333,6 @@ export default function AttendancePage({ userRole }) {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* Network Access Security Warning Modal matching Create Sprint popup theme */}
-      {networkAlertModal.open && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setNetworkAlertModal({ open: false, message: "", clientIp: "" });
-          }}
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
-        >
-          <div className="relative w-full max-w-md bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
-            {/* Top Header matching exact Create Sprint format */}
-            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
-              <div className="flex items-center gap-3 text-base">
-                <span className="font-bold text-slate-900">Notice:</span>
-                <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
-                  Network Access
-                </span>
-              </div>
-
-              {/* Red square close button */}
-              <button
-                type="button"
-                onClick={() => setNetworkAlertModal({ open: false, message: "", clientIp: "" })}
-                className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer"
-                title="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="px-6 py-4 space-y-4">
-              <div className="p-3.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium space-y-2">
-                <div className="flex items-center gap-2 font-bold text-rose-800 text-sm">
-                  <span>⚠️</span>
-                  <span>Unauthorized Company Network</span>
-                </div>
-                <p className="leading-relaxed">
-                  {networkAlertModal.message || "Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi to proceed."}
-                </p>
-                {(networkAlertModal.clientIp || networkStatus.clientIp) && (
-                  <div className="pt-1 flex items-center gap-1.5 text-[11px] font-mono text-slate-700 bg-white/80 p-1.5 rounded border border-rose-200">
-                    <span className="font-bold text-slate-900 font-sans">Detected Client IP:</span>
-                    <span className="font-semibold text-rose-600">{networkAlertModal.clientIp || networkStatus.clientIp}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Quick Authorize Actions for Owner & HR vs Employee */}
-              {(networkAlertModal.clientIp || networkStatus.clientIp) && (
-                ["ADMIN", "hr_manager", "hr_executive"].includes(networkStatus.userRole || userRole) ? (
-                  <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 space-y-2">
-                    <div className="text-[11px] text-emerald-800">
-                      <span className="font-bold block">Owner / HR Quick Authorization:</span>
-                      Authorize this connection so mobile phones and laptops can check in immediately.
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        disabled={isAuthorizingNetwork}
-                        onClick={() => handleAuthorizeNetwork(networkAlertModal.clientIp || networkStatus.clientIp, true)}
-                        className="px-3 py-1.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
-                      >
-                        {isAuthorizingNetwork ? "Authorizing…" : "＋ Authorize This Wi-Fi / IP"}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isAuthorizingNetwork}
-                        onClick={() => handleAuthorizeNetwork("*", false)}
-                        className="px-2.5 py-1.5 rounded bg-white hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition cursor-pointer disabled:opacity-50"
-                      >
-                        🌐 Allow All Networks (Remote)
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-slate-600">
-                      Please ask your HR or Admin to authorize this network.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const targetIp = networkAlertModal.clientIp || networkStatus.clientIp;
-                        if (targetIp && typeof navigator !== "undefined" && navigator.clipboard) {
-                          navigator.clipboard.writeText(targetIp);
-                          alert(`IP copied to clipboard: ${targetIp}`);
-                        }
-                      }}
-                      className="px-2.5 py-1 rounded bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-medium text-xs transition cursor-pointer shrink-0"
-                    >
-                      📋 Copy My IP
-                    </button>
-                  </div>
-                )
-              )}
-
-
-              {/* Footer Buttons matching Create Sprint exact theme */}
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNetworkAlertModal({ open: false, message: "", clientIp: "" });
-                    fetchNetworkStatus();
-                  }}
-                  className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer shadow-xs"
-                >
-                  Retry
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNetworkAlertModal({ open: false, message: "", clientIp: "" })}
-                  className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}

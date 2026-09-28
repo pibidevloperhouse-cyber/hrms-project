@@ -5,7 +5,6 @@ import { getAuthUser, resolveEmployeeFast } from "@/lib/supabase/authHelper";
 import { transporter } from "@/lib/mail/transporter";
 import { buildEarlyCheckOutEmailHTML } from "@/lib/mail/earlyCheckOutEmail";
 import { checkAndSendDailySummary } from "@/lib/mail/dailySummaryHelper";
-import { validateCompanyNetwork } from "@/lib/security/networkValidator";
 
 function parseTimeToMinutes(timeStr) {
   if (!timeStr || typeof timeStr !== "string") return null;
@@ -141,20 +140,6 @@ export async function POST(req) {
       return NextResponse.json(
         { message: "No active shift session found to check out from." },
         { status: 400 }
-      );
-    }
-
-    // Strict Network Security Validation: Validate IP against active company networks
-    const networkCheck = await validateCompanyNetwork(req, empRecord.company_id, adminSupabase);
-    if (!networkCheck.isAuthorized) {
-      return NextResponse.json(
-        {
-          message: networkCheck.reason || "Unauthorized Network: Your current connection is not recognized as an authorized company network. Please connect to your office Wi-Fi or authorized company network to proceed.",
-          clientIp: networkCheck.clientIp,
-          activeNetworksCount: networkCheck.activeNetworksCount || 0,
-          unauthorizedNetwork: true,
-        },
-        { status: 403 }
       );
     }
 

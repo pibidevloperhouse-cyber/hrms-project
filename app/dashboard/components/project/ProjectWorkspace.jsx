@@ -597,6 +597,7 @@ export default function ProjectWorkspace({
 
     // Auto-refresh interval (every 60s) as fallback
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       refreshWorkspace();
     }, 60000);
 

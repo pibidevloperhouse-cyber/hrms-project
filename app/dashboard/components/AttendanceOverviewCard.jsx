@@ -32,16 +32,28 @@ export default function AttendanceOverviewCard({ totalStaffCount = 1 }) {
     }
     fetchSummary();
 
-    const interval = setInterval(fetchSummary, 45000);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchSummary();
+    }, 90000);
+
     const handleUpdate = () => fetchSummary();
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchSummary();
+      }
+    };
+
     if (typeof window !== "undefined") {
       window.addEventListener("attendance-updated", handleUpdate);
+      document.addEventListener("visibilitychange", handleVisibility);
     }
 
     return () => {
       clearInterval(interval);
       if (typeof window !== "undefined") {
         window.removeEventListener("attendance-updated", handleUpdate);
+        document.removeEventListener("visibilitychange", handleVisibility);
       }
     };
   }, [totalStaffCount]);

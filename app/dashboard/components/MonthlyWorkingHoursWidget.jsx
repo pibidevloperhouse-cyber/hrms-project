@@ -29,19 +29,29 @@ export default function MonthlyWorkingHoursWidget() {
   useEffect(() => {
     fetchSummary(targetMonth, true);
 
+    // Periodic fallback (every 2 minutes) with background pause
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchSummary(targetMonth, true);
-    }, 2000);
+    }, 120000);
 
     const handleUpdate = () => fetchSummary(targetMonth, true);
+    const handleVisibility = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchSummary(targetMonth, true);
+      }
+    };
+
     if (typeof window !== "undefined") {
       window.addEventListener("attendance-updated", handleUpdate);
+      document.addEventListener("visibilitychange", handleVisibility);
     }
 
     return () => {
       clearInterval(interval);
       if (typeof window !== "undefined") {
         window.removeEventListener("attendance-updated", handleUpdate);
+        document.removeEventListener("visibilitychange", handleVisibility);
       }
     };
   }, [targetMonth]);

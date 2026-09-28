@@ -99,7 +99,10 @@ export default function RegisterCompanyPage() {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 2000);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      checkStatus();
+    }, 10000);
 
     return () => {
       supabase.removeChannel(channel);

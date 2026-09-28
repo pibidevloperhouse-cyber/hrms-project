@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import EmployeeMonthlySummaryTable from "./EmployeeMonthlySummaryTable";
+import HRMonthlyEvaluationModal from "./HRMonthlyEvaluationModal";
 import {
   ClockIcon,
   LogInIcon,
@@ -67,6 +68,7 @@ export default function HRAttendanceTracker({ embedded = false }) {
   const [rejectingAttId, setRejectingAttId] = useState(null);
   const [rejectFeedbackInput, setRejectFeedbackInput] = useState("");
   const [actionNotice, setActionNotice] = useState({ error: "", success: "" });
+  const [showMonthlyEvalModal, setShowMonthlyEvalModal] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -217,6 +219,7 @@ export default function HRAttendanceTracker({ embedded = false }) {
     initData();
 
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       const todayIso = new Date().toISOString().split("T")[0];
       if (todayIso !== lastDateRef.current && selectedDate === lastDateRef.current) {
         lastDateRef.current = todayIso;
@@ -225,17 +228,31 @@ export default function HRAttendanceTracker({ embedded = false }) {
         fetchAttendanceList(selectedDate, true);
         fetchNotifications();
       }
-    }, 5000);
+    }, 60000);
 
     const handleUpdateEvent = () => {
       fetchAttendanceList(selectedDate, true);
       fetchNotifications();
     };
-    window.addEventListener("attendance-updated", handleUpdateEvent);
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchAttendanceList(selectedDate, true);
+        fetchNotifications();
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("attendance-updated", handleUpdateEvent);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+    }
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener("attendance-updated", handleUpdateEvent);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("attendance-updated", handleUpdateEvent);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      }
     };
   }, [selectedDate]);
 
@@ -405,6 +422,17 @@ export default function HRAttendanceTracker({ embedded = false }) {
                       <span>Send Report</span>
                     </>
                   )}
+                </button>
+
+                {/* ⭐ Monthly 3-Pillar Performance & Feedback Evaluation Dialog Trigger */}
+                <button
+                  type="button"
+                  onClick={() => setShowMonthlyEvalModal(true)}
+                  className="py-2 px-3.5 rounded-xl font-bold text-xs bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white shadow-md shadow-indigo-500/20 transition flex items-center gap-1.5 cursor-pointer active:scale-[0.98]"
+                  title="Open Monthly Performance Evaluation & Feedback Dialog"
+                >
+                  <span className="text-amber-300">⭐</span>
+                  <span>Monthly Evaluation</span>
                 </button>
               </div>
             </div>
@@ -859,6 +887,14 @@ export default function HRAttendanceTracker({ embedded = false }) {
                 document.body
               );
             })()}
+
+      {/* ⭐ Monthly 3-Pillar Performance & Feedback Evaluation Popup Modal */}
+      {showMonthlyEvalModal && (
+        <HRMonthlyEvaluationModal
+          isOpen={showMonthlyEvalModal}
+          onClose={() => setShowMonthlyEvalModal(false)}
+        />
+      )}
     </div>
   );
 
@@ -923,6 +959,14 @@ export default function HRAttendanceTracker({ embedded = false }) {
           <EmployeeMonthlySummaryTable />
         </div>
       </div>
+
+      {/* Monthly Evaluation Popup Modal */}
+      {showMonthlyEvalModal && (
+        <HRMonthlyEvaluationModal
+          isOpen={showMonthlyEvalModal}
+          onClose={() => setShowMonthlyEvalModal(false)}
+        />
+      )}
     </div>
   );
 }

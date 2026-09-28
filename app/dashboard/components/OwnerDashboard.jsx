@@ -7,7 +7,7 @@ import HRUsersCard from "./HRUsersCard";
 import HRAttendanceTracker from "./HRAttendanceTracker";
 import DepartmentManagementModal from "./DepartmentManagementModal";
 import RolePromotionModal from "./RolePromotionModal";
-import CompanySettings from "./CompanySettings";
+import ExecutivePerformanceMatrix from "./ExecutivePerformanceMatrix";
 
 /**
  * OwnerDashboard Component
@@ -171,6 +171,21 @@ export default function OwnerDashboard({
 
           <button
             type="button"
+            onClick={(e) => handleTabClick("performance_matrix", e)}
+            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+              viewTab === "performance_matrix"
+                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+            }`}
+          >
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+            </svg>
+            <span>Executive Appraisals</span>
+          </button>
+
+          <button
+            type="button"
             onClick={(e) => handleTabClick("company", e)}
             className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
               viewTab === "company"
@@ -182,21 +197,6 @@ export default function OwnerDashboard({
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>Company Profile</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={(e) => handleTabClick("company_settings", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
-              viewTab === "company_settings"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
-            }`}
-          >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
-            </svg>
-            <span>Company Networks</span>
           </button>
         </nav>
 
@@ -386,7 +386,14 @@ export default function OwnerDashboard({
         </div>
       )}
 
-      {/* --- SUB-VIEW 5: COMPANY PROFILE --- */}
+      {/* --- SUB-VIEW 5: PERFORMANCE & APPRAISALS MATRIX --- */}
+      {viewTab === "performance_matrix" && (
+        <div className="space-y-6">
+          <ExecutivePerformanceMatrix />
+        </div>
+      )}
+
+      {/* --- SUB-VIEW 6: COMPANY PROFILE --- */}
       {viewTab === "company" && (
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -442,11 +449,6 @@ export default function OwnerDashboard({
             </div>
           </div>
         </div>
-      )}
-
-      {/* --- SUB-VIEW 6: COMPANY NETWORKS & SETTINGS --- */}
-      {viewTab === "company_settings" && (
-        <CompanySettings userRole="ADMIN" company={company} />
       )}
 
       {/* Department CRUD Management Modal */}
