@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 
 const ALL_DAYS_OF_WEEK = [
   "Monday",
@@ -83,10 +84,7 @@ export default function CompanyCalendar() {
   const fetchCalendarData = useCallback(async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-      const res = await fetch("/api/company/calendar", { headers });
+      const res = await authFetch("/api/company/calendar");
       if (res.status === 401) {
         return;
       }
@@ -128,7 +126,7 @@ export default function CompanyCalendar() {
     setNotice({ error: "", success: "" });
 
     try {
-      const res = await fetch("/api/company/calendar/schedule", {
+      const res = await authFetch("/api/company/calendar/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(scheduleForm),
@@ -167,7 +165,7 @@ export default function CompanyCalendar() {
     setNotice({ error: "", success: "" });
 
     try {
-      const res = await fetch("/api/company/calendar/holidays", {
+      const res = await authFetch("/api/company/calendar/holidays", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(holidayForm),
@@ -205,7 +203,7 @@ export default function CompanyCalendar() {
     setNotice({ error: "", success: "" });
 
     try {
-      const res = await fetch(`/api/company/calendar/holidays?id=${holidayId}`, {
+      const res = await authFetch(`/api/company/calendar/holidays?id=${holidayId}`, {
         method: "DELETE",
       });
 

@@ -4,6 +4,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
+import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -25,21 +27,46 @@ export async function GET(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company } = await getCompanyAndRoleForUser(adminSupabase, user);
-    if (!company) {
-      return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
+
+    // Verify parent project exists
+    const { data: project, error: projErr } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!project) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
     }
 
-    // Query sprints for project
-    const { data: sprints, error: sprintErr } = await adminSupabase
+    // Verify user belongs to the project's company workspace
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    // Auto-sync date-driven sprint lifecycles
+    try {
+      if (project.company_id) {
+        await syncSprintLifecycles(adminSupabase, project.company_id, projectId);
+      }
+    } catch (syncErr) {
+      console.warn("Auto sprint sync error in GET /api/projects/[id]/sprints:", syncErr?.message);
+    }
+
+    // Query sprints for project strictly within company workspace
+    let sprintQuery = adminSupabase
       .from("project_sprints")
       .select("*")
-      .eq("project_id", projectId)
-      .eq("company_id", company.id)
-      .order("created_at", { ascending: true });
+      .eq("project_id", projectId);
+
+    if (project.company_id) {
+      sprintQuery = sprintQuery.eq("company_id", project.company_id);
+    }
+
+    const { data: sprints, error: sprintErr } = await sprintQuery.order("created_at", { ascending: true });
 
     if (sprintErr) {
-      // If table doesn't exist yet, return empty list gracefully
       if (sprintErr.code === "42P01" || sprintErr.message?.includes("does not exist")) {
         return NextResponse.json({ success: true, sprints: [] });
       }
@@ -47,12 +74,17 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "Failed to load sprints." }, { status: 500 });
     }
 
-    // Fetch tasks counts grouped by sprint
-    const { data: tasks } = await adminSupabase
+    // Fetch tasks counts grouped by sprint (strictly scoped by company workspace)
+    let tasksQuery = adminSupabase
       .from("project_tasks")
       .select("id, sprint_id, status, story_points")
-      .eq("project_id", projectId)
-      .eq("company_id", company.id);
+      .eq("project_id", projectId);
+
+    if (project.company_id) {
+      tasksQuery = tasksQuery.eq("company_id", project.company_id);
+    }
+
+    const { data: tasks } = await tasksQuery;
 
     const taskMap = {};
     (tasks || []).forEach((t) => {
@@ -87,7 +119,7 @@ export async function GET(req, { params }) {
 
 /**
  * POST /api/projects/[id]/sprints
- * Creates a new sprint.
+ * Creates a new sprint (Team Lead, Manager, or Admin only).
  */
 export async function POST(req, { params }) {
   try {
@@ -103,34 +135,32 @@ export async function POST(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role } = await getCompanyAndRoleForUser(adminSupabase, user);
-    if (!company) {
-      return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
-    }
 
-    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
-    const canManage = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr") || cleanRole.includes("manager") || cleanRole.includes("lead");
-    if (!canManage) {
-      return NextResponse.json({ message: "Access denied. Team Leads, Managers, and Admins only." }, { status: 403 });
-    }
-
-    const body = await req.json();
-    const { name, goal = "", start_date, end_date, status = "PLANNED" } = body;
-
-    if (!name || !name.trim()) {
-      return NextResponse.json({ message: "Sprint name is required." }, { status: 400 });
-    }
-
-    // Verify parent project exists and is not Kanban
+    // Verify parent project exists and user is authorized to manage sprints
     const { data: targetProject, error: projErr } = await adminSupabase
       .from("projects")
-      .select("id, name, project_type")
+      .select("*")
       .eq("id", projectId)
-      .eq("company_id", company.id)
       .maybeSingle();
 
     if (projErr || !targetProject) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, targetProject.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = targetProject.created_by === employeeProfile?.id || targetProject.owner_id === employeeProfile?.id;
+    const isAssignedLead = targetProject.team_lead_id === employeeProfile?.id;
+    const canManage = isOwnerOrAdmin || isManager || isProjectOwnerOrCreator || isAssignedLead;
+
+    if (!canManage) {
+      return NextResponse.json({ message: "Access denied. Only the assigned Team Lead, Project Manager, or Admin can create sprints." }, { status: 403 });
     }
 
     if ((targetProject.project_type || "").toLowerCase() === "kanban") {
@@ -140,8 +170,15 @@ export async function POST(req, { params }) {
       );
     }
 
+    const body = await req.json();
+    const { name, goal = "", start_date, end_date, status = "PLANNED" } = body;
+
+    if (!name || !name.trim()) {
+      return NextResponse.json({ message: "Sprint name is required." }, { status: 400 });
+    }
+
     const payload = {
-      company_id: company.id,
+      company_id: targetProject.company_id || company.id,
       project_id: projectId,
       name: name.trim(),
       goal: goal.trim(),
@@ -150,11 +187,11 @@ export async function POST(req, { params }) {
       end_date: end_date || null,
     };
 
-    const { data: newSprint, error: insertErr } = await adminSupabase
+    let { data: newSprint, error: insertErr } = await adminSupabase
       .from("project_sprints")
       .insert([payload])
       .select()
-      .single();
+      .maybeSingle();
 
     if (insertErr) {
       console.error("Insert sprint error:", insertErr);
@@ -163,9 +200,9 @@ export async function POST(req, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: `Sprint "${newSprint.name}" created.`,
+      message: `Sprint "${newSprint?.name || "Sprint"}" created.`,
       sprint: {
-        ...newSprint,
+        ...(newSprint || payload),
         metrics: { totalTasks: 0, completedTasks: 0, totalPoints: 0, completedPoints: 0 },
       },
     });
@@ -193,9 +230,32 @@ export async function PATCH(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
+
+    // Verify project and permissions
+    const { data: targetProject } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!targetProject) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, targetProject.company_id);
     if (!company) {
-      return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = targetProject.created_by === employeeProfile?.id || targetProject.owner_id === employeeProfile?.id;
+    const isAssignedLead = targetProject.team_lead_id === employeeProfile?.id;
+    const canManage = isOwnerOrAdmin || isManager || isProjectOwnerOrCreator || isAssignedLead;
+
+    if (!canManage) {
+      return NextResponse.json({ message: "Access denied. Only the assigned Team Lead, Project Manager, or Admin can update sprints." }, { status: 403 });
     }
 
     const body = await req.json();
@@ -205,7 +265,7 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ message: "Sprint ID is required." }, { status: 400 });
     }
 
-    const updateData = { updated_at: new Date().toISOString() };
+    const updateData = {};
     if (name !== undefined) updateData.name = name.trim();
     if (goal !== undefined) updateData.goal = goal.trim();
     if (start_date !== undefined) updateData.start_date = start_date || null;
@@ -213,19 +273,36 @@ export async function PATCH(req, { params }) {
     if (status !== undefined && ["PLANNED", "ACTIVE", "COMPLETED"].includes(status)) {
       updateData.status = status;
     }
+    updateData.updated_at = new Date().toISOString();
 
-    const { data: updatedSprint, error: updateErr } = await adminSupabase
+    let { data: updatedSprint, error: updateErr } = await adminSupabase
       .from("project_sprints")
       .update(updateData)
       .eq("id", sprint_id)
       .eq("project_id", projectId)
-      .eq("company_id", company.id)
+      .eq("company_id", targetProject.company_id)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (updateErr) {
+    // Fallback if updated_at column is not present in schema
+    if (updateErr && (updateErr.message?.includes("updated_at") || updateErr.code === "42703")) {
+      const fallbackData = { ...updateData };
+      delete fallbackData.updated_at;
+      const retry = await adminSupabase
+        .from("project_sprints")
+        .update(fallbackData)
+        .eq("id", sprint_id)
+        .eq("project_id", projectId)
+        .eq("company_id", targetProject.company_id)
+        .select()
+        .maybeSingle();
+      updatedSprint = retry.data;
+      updateErr = retry.error;
+    }
+
+    if (updateErr || !updatedSprint) {
       console.error("Update sprint error:", updateErr);
-      return NextResponse.json({ message: updateErr.message || "Failed to update sprint." }, { status: 500 });
+      return NextResponse.json({ message: updateErr?.message || "Failed to update sprint." }, { status: 500 });
     }
 
     let movedTasksCount = 0;
@@ -239,7 +316,8 @@ export async function PATCH(req, { params }) {
           .from("project_tasks")
           .select("*")
           .eq("sprint_id", sprint_id)
-          .eq("company_id", company.id);
+          .eq("project_id", projectId)
+          .eq("company_id", targetProject.company_id);
 
         for (const t of (sprintTasks || [])) {
           const targetAssignee = t.planned_assignee_id || t.assigned_to;
@@ -250,7 +328,8 @@ export async function PATCH(req, { params }) {
                 assigned_to: targetAssignee,
                 updated_at: new Date().toISOString(),
               })
-              .eq("id", t.id);
+              .eq("id", t.id)
+              .eq("company_id", targetProject.company_id);
           }
         }
       } catch (activationErr) {
@@ -264,7 +343,7 @@ export async function PATCH(req, { params }) {
           .select("id, title, status, progress, assigned_to")
           .eq("sprint_id", sprint_id)
           .eq("project_id", projectId)
-          .eq("company_id", company.id);
+          .eq("company_id", targetProject.company_id);
 
         if (!fetchTasksErr && Array.isArray(sprintTasks)) {
           const unfinishedTasks = sprintTasks.filter((t) => t.status !== "COMPLETED");
@@ -282,7 +361,7 @@ export async function PATCH(req, { params }) {
                 updated_at: new Date().toISOString(),
               })
               .in("id", unfinishedIds)
-              .eq("company_id", company.id);
+              .eq("company_id", targetProject.company_id);
 
             if (moveErr) {
               console.error("Move unfinished tasks to backlog error:", moveErr);
@@ -290,7 +369,7 @@ export async function PATCH(req, { params }) {
               // Audit the rollover in task_status_history
               try {
                 const historyEntries = unfinishedTasks.map((t) => ({
-                  company_id: company.id,
+                  company_id: targetProject.company_id,
                   task_id: t.id,
                   changed_by: employeeProfile?.id || null,
                   old_status: t.status,
@@ -329,6 +408,94 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     console.error("PATCH sprint error:", err);
+    return NextResponse.json({ message: "Internal server error." }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/projects/[id]/sprints
+ * Deletes or cancels a planned sprint after safely unlinking associated tasks.
+ */
+export async function DELETE(req, { params }) {
+  try {
+    const { id: projectId } = await params;
+    if (!projectId) {
+      return NextResponse.json({ message: "Project ID is required." }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const user = await getAuthUser(req, supabase);
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
+    }
+
+    const adminSupabase = createAdminClient();
+
+    const { data: targetProject } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!targetProject) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, targetProject.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = targetProject.created_by === employeeProfile?.id || targetProject.owner_id === employeeProfile?.id;
+    const isAssignedLead = targetProject.team_lead_id === employeeProfile?.id;
+    const canManage = isOwnerOrAdmin || isManager || isProjectOwnerOrCreator || isAssignedLead;
+
+    if (!canManage) {
+      return NextResponse.json({ message: "Access denied. Only the assigned Team Lead, Project Manager, or Admin can delete sprints." }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    let sprintId = searchParams.get("sprint_id");
+    if (!sprintId) {
+      try {
+        const body = await req.json();
+        sprintId = body.sprint_id;
+      } catch {}
+    }
+
+    if (!sprintId) {
+      return NextResponse.json({ message: "Sprint ID is required." }, { status: 400 });
+    }
+
+    // Unlink any tasks associated with this sprint strictly within company
+    await adminSupabase
+      .from("project_tasks")
+      .update({ sprint_id: null })
+      .eq("sprint_id", sprintId)
+      .eq("project_id", projectId)
+      .eq("company_id", targetProject.company_id);
+
+    const { error: delErr } = await adminSupabase
+      .from("project_sprints")
+      .delete()
+      .eq("id", sprintId)
+      .eq("project_id", projectId)
+      .eq("company_id", targetProject.company_id);
+
+    if (delErr) {
+      console.error("Delete sprint error:", delErr);
+      return NextResponse.json({ message: delErr.message || "Failed to delete sprint." }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Sprint deleted successfully. Associated tasks moved to Backlog.",
+    });
+  } catch (err) {
+    console.error("DELETE sprint error:", err);
     return NextResponse.json({ message: "Internal server error." }, { status: 500 });
   }
 }

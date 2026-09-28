@@ -26,37 +26,32 @@ export async function GET(req) {
       return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
     }
 
-    const userRoleStr = (role || "").toLowerCase();
+    const userRoleStr = String(role || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const userDesignation = String(employeeProfile?.designation || "").toLowerCase();
     const isOwnerOrAdmin =
-      ["admin", "owner", "hr_manager", "hr_executive"].includes(userRoleStr) ||
+      userRoleStr.includes("admin") ||
+      userRoleStr.includes("owner") ||
+      userRoleStr.includes("hr") ||
       Boolean(isOwner || employeeProfile?.is_owner);
     const isLeadOrAdmin =
-      isOwnerOrAdmin || ["manager", "team_lead"].includes(userRoleStr);
+      isOwnerOrAdmin ||
+      userRoleStr.includes("manager") ||
+      userRoleStr.includes("lead") ||
+      userRoleStr.includes("supervisor") ||
+      userDesignation.includes("manager") ||
+      userDesignation.includes("lead") ||
+      userDesignation.includes("head");
 
     if (!isLeadOrAdmin) {
       return NextResponse.json({ message: "Access denied. Team Lead / Manager role required." }, { status: 403 });
     }
 
-    const isTeamLeadOrManager = ["manager", "team_lead"].includes(userRoleStr) && !isOwnerOrAdmin;
     const userDepartment = (employeeProfile?.department || "").trim();
 
     const { searchParams } = new URL(req.url);
     const now = new Date();
     const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const targetMonth = searchParams.get("month") || defaultMonth; // "YYYY-MM"
-
-    // If Team Lead / Manager has no department assigned, they have no department employees to evaluate
-    if (isTeamLeadOrManager && !userDepartment) {
-      return NextResponse.json({
-        success: true,
-        month: targetMonth,
-        department: null,
-        totalEmployees: 0,
-        evaluatedCount: 0,
-        pendingCount: 0,
-        employees: [],
-      });
-    }
 
     // Parse Month Boundaries
     const [yearStr, monthStr] = targetMonth.split("-");
@@ -70,16 +65,14 @@ export async function GET(req) {
     const startMonthDateStr = `${targetMonth}-01`;
     const endMonthDateStr = new Date(year, month, 0).toISOString().split("T")[0];
 
-    // 1. Fetch company employees: scoped to user's department for Team Leads & Managers
+    const targetEmpId = searchParams.get("employee_id");
+
+    // 1. Fetch company employees
     let empQuery = adminSupabase
       .from("employees")
       .select("id, full_name, email, department, designation, role, status")
       .eq("company_id", company.id)
       .eq("status", "active");
-
-    if (isTeamLeadOrManager && userDepartment) {
-      empQuery = empQuery.ilike("department", userDepartment);
-    }
 
     const { data: employeesData, error: empErr } = await empQuery.order("full_name", { ascending: true });
 
@@ -88,16 +81,23 @@ export async function GET(req) {
       return NextResponse.json({ message: "Failed to fetch employees." }, { status: 500 });
     }
 
-    // Filter so Team Leads and Managers only evaluate department company employees (not themselves and not other roles)
-    const employeesList = (employeesData || []).filter((emp) => {
+    // Strictly filter: ONLY users with the role 'employee' can be evaluated (no Team Leads, Managers, HR, or Admins)
+    let employeesList = (employeesData || []).filter((emp) => {
       // Cannot evaluate themselves
       if (employeeProfile?.id && emp.id === employeeProfile.id) {
         return false;
       }
-      // Strictly evaluate company employees
       const r = (emp.role || "employee").toLowerCase().trim();
       return r === "employee";
     });
+
+    // If targetEmpId was requested specifically, ensure it is only included if its role is strictly 'employee'
+    if (targetEmpId && !employeesList.some((e) => e.id === targetEmpId)) {
+      const specificEmp = (employeesData || []).find((e) => e.id === targetEmpId);
+      if (specificEmp && specificEmp.id !== employeeProfile?.id && (specificEmp.role || "employee").toLowerCase().trim() === "employee") {
+        employeesList.unshift(specificEmp);
+      }
+    }
 
     // 2. Fetch all project tasks for this company falling into this month
     const { data: tasksData, error: tasksErr } = await adminSupabase

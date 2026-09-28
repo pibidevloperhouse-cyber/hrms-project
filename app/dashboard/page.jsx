@@ -17,6 +17,7 @@ import MyDocumentsCard from "./components/MyDocumentsCard";
 import ProjectManagement from "./components/ProjectManagement";
 import RolePromotionModal from "./components/RolePromotionModal";
 import ExecutivePerformanceMatrix from "./components/ExecutivePerformanceMatrix";
+import TLMonthlyEvaluationModal from "./components/TLMonthlyEvaluationModal";
 import { checkTaskSprintOverdue } from "@/lib/projectUtils";
 
 // ─── NAV CONFIG ──────────────────────────────────────────────────────────────
@@ -264,6 +265,8 @@ function DashboardContent() {
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [selectedEmpForRoleModal, setSelectedEmpForRoleModal] = useState(null);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [showTLMonthlyEvalModal, setShowTLMonthlyEvalModal] = useState(false);
+  const [selectedEmpForTLEval, setSelectedEmpForTLEval] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -276,12 +279,25 @@ function DashboardContent() {
     department: "Engineering", designation: "", role: "employee",
   });
 
-  // Computed Roles
-  const isAdmin = userRole === "ADMIN";
-  const isHR = ["hr_manager", "hr_executive"].includes(userRole);
+  // Computed Roles (case-insensitive & designation aware)
+  const normalizedUserRole = String(userRole || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+  const normalizedDesignation = String(employeeProfile?.designation || "").toLowerCase();
+
+  const isAdmin = normalizedUserRole.includes("admin") || normalizedUserRole.includes("owner");
+  const isHR = normalizedUserRole.includes("hr");
   const canInvite = isAdmin || isHR;
-  const isManager = ["ADMIN", "hr_manager", "manager", "team_lead"].includes(userRole);
-  const isStaff = userRole === "employee";
+  const isManager =
+    isAdmin ||
+    isHR ||
+    normalizedUserRole.includes("manager") ||
+    normalizedUserRole.includes("lead") ||
+    normalizedUserRole.includes("supervisor") ||
+    normalizedUserRole.includes("director") ||
+    normalizedDesignation.includes("manager") ||
+    normalizedDesignation.includes("lead") ||
+    normalizedDesignation.includes("supervisor") ||
+    normalizedDesignation.includes("head");
+  const isStaff = !isManager && !isAdmin && !isHR;
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
   const [inviteError, setInviteError] = useState("");
   const [inviteSuccessData, setInviteSuccessData] = useState(null);
@@ -1234,6 +1250,10 @@ function DashboardContent() {
                 userSession={userSession}
                 employeeProfile={employeeProfile}
                 onOpenInviteModal={() => openInviteModal("hr_manager")}
+                onOpenEvaluationModal={(emp) => {
+                  setSelectedEmpForTLEval(emp || null);
+                  setShowTLMonthlyEvalModal(true);
+                }}
                 onEmployeeUpdated={fetchEmployees}
                 renderRoleBadge={(r) => <RoleBadge role={r} />}
                 renderStatusBadge={(s) => <StatusBadge status={s} />}
@@ -1340,8 +1360,31 @@ function DashboardContent() {
                     <AttendanceCard />
                   </div>
 
-                  {/* Monthly Working Hours Widget */}
-                  <MonthlyWorkingHoursWidget />
+                  {/* Manager / TL Monthly Evaluation Banner */}
+                  {isManager && (
+                    <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200/90 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+                      <div className="space-y-1">
+                        <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                          <span className="text-base">⭐</span>
+                          <span>Manager Monthly Team Performance Evaluation</span>
+                        </h3>
+                        <p className="text-xs text-amber-800/90">
+                          Evaluate team members on task completion, deadline punctuality, learning agility, innovation, and collaboration. Submit scores and monthly feedback remarks.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEmpForTLEval(null);
+                          setShowTLMonthlyEvalModal(true);
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold shadow-xs shadow-amber-600/20 transition-all shrink-0 cursor-pointer flex items-center gap-1.5 active:scale-[0.98]"
+                      >
+                        <span>⭐</span>
+                        <span>Open Monthly Evaluation</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Leave Request Quick Action Banner */}
                   <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
@@ -1433,6 +1476,22 @@ function DashboardContent() {
                   </div>
 
                   <div className="flex items-center gap-2.5">
+                    {/* Monthly Evaluation Trigger (Manager / TL / HR / Admin) */}
+                    {isManager && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEmpForTLEval(null);
+                          setShowTLMonthlyEvalModal(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold transition shadow-xs shadow-amber-600/20 cursor-pointer active:scale-[0.98]"
+                        title="Open Team Monthly Performance & Feedback Evaluation Dialog"
+                      >
+                        <span className="text-amber-200">⭐</span>
+                        <span>Monthly Evaluation</span>
+                      </button>
+                    )}
+
                     {canInvite && (
                       <button
                         type="button"
@@ -1631,6 +1690,20 @@ function DashboardContent() {
                                 <td className="py-3.5 px-5">
                                   <div className="flex items-center gap-2">
                                     <RoleBadge role={emp.role} />
+                                    {isManager && emp.id !== employeeProfile?.id && (emp.role === "employee" || (!emp.role && !emp.is_owner)) && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedEmpForTLEval(emp);
+                                          setShowTLMonthlyEvalModal(true);
+                                        }}
+                                        className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-[0.98]"
+                                        title={`Evaluate monthly performance for ${emp.full_name}`}
+                                      >
+                                        <span>⭐</span>
+                                        <span>Evaluate</span>
+                                      </button>
+                                    )}
                                     {canInvite && (
                                       <button
                                         type="button"
@@ -2235,7 +2308,20 @@ function DashboardContent() {
         }}
       />
 
-      {/* Right side toast removed as requested */}
+      {/* --- MONTHLY TEAM LEAD & MANAGER PERFORMANCE EVALUATION MODAL --- */}
+      {showTLMonthlyEvalModal && (
+        <TLMonthlyEvaluationModal
+          isOpen={showTLMonthlyEvalModal}
+          onClose={() => {
+            setShowTLMonthlyEvalModal(false);
+            setSelectedEmpForTLEval(null);
+          }}
+          initialEmployeeId={selectedEmpForTLEval?.id || null}
+          onSaved={() => {
+            fetchEmployees();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import SprintDetailModal from "./SprintDetailModal";
 import TaskDetailModal from "./TaskDetailModal";
 import ProjectTeamModal from "./ProjectTeamModal";
@@ -86,21 +87,19 @@ export default function ProjectOverviewTab({
   // Active Sprint
   const activeSprint = useMemo(() => {
     if (isKanban) return null;
-    return sprints.find((s) => s.status === "ACTIVE") || null;
+    return (
+      (sprints || []).find((s) => {
+        const raw = String(s.status || "").trim().toUpperCase();
+        return ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(raw);
+      }) || null
+    );
   }, [sprints, isKanban]);
 
   const handleUpdateSprintStatus = async (sprintId, newStatus) => {
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/${project.id}/sprints`, {
+      const res = await authFetch(`/api/projects/${project.id}/sprints`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sprint_id: sprintId,
           status: newStatus,
@@ -153,38 +152,6 @@ export default function ProjectOverviewTab({
 
   return (
     <div className="space-y-6 text-xs text-slate-800">
-      {/* Pending Deliverable Review Alert for Team Leads & Managers */}
-      {reviewTasks > 0 && (
-        <div className="p-3.5 rounded-xl bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-200/90 flex flex-wrap items-center justify-between gap-3 shadow-2xs animate-fadeIn">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <span className="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
-              🔍
-            </span>
-            <div>
-              <h4 className="text-xs font-bold text-purple-950 flex items-center gap-2">
-                <span>{reviewTasks} Deliverable{reviewTasks > 1 ? "s" : ""} Awaiting Review</span>
-                <span className="px-1.5 py-0.2 rounded-full bg-purple-200 text-purple-900 text-[10px] font-bold animate-pulse">
-                  Action Required
-                </span>
-              </h4>
-              <p className="text-[11px] text-purple-700">
-                Team members submitted completion notes &amp; proof screenshots for verification.
-              </p>
-            </div>
-          </div>
-          {onSelectTab && (
-            <button
-              type="button"
-              onClick={() => onSelectTab("reviews")}
-              className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition cursor-pointer shadow-xs flex items-center gap-1.5"
-            >
-              <span>Inspect &amp; Review Deliverables</span>
-              <span>→</span>
-            </button>
-          )}
-        </div>
-      )}
-
       {/* 1. Key Metrics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {/* Progress Card */}

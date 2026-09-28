@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import CreateProjectModal from "./CreateProjectModal";
 import ProjectWorkspace from "./project/ProjectWorkspace";
 import TaskProgressUpdateModal from "./project/TaskProgressUpdateModal";
@@ -10,7 +11,6 @@ import TaskSuggestionModal from "./project/TaskSuggestionModal";
 import TaskDetailModal from "./project/TaskDetailModal";
 import TaskExtensionModal from "./project/TaskExtensionModal";
 import TaskExtensionReviewModal from "./project/TaskExtensionReviewModal";
-import SprintPerformanceModal from "./project/SprintPerformanceModal";
 import TLMonthlyEvaluationModal from "./TLMonthlyEvaluationModal";
 import { calculateFinalPerformanceScore } from "@/lib/performanceUtils";
 
@@ -120,12 +120,17 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const [sprintScopeFilter, setSprintScopeFilter] = useState("active"); // "active" | "planned" | "backlog" | "all"
 
   // Project & Role Context
-  const cleanRole = (userRole || "").toLowerCase();
-  const isManager = cleanRole === "manager";
-  const isTeamLead = cleanRole === "team_lead";
-  const isAdmin = cleanRole === "admin";
-  const isEmployee = !isManager && !isTeamLead && !isAdmin;
+  const cleanRole = String(userRole || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+  const designation = String(employeeProfile?.designation || "").toLowerCase();
+  const isAdmin = cleanRole.includes("admin") || cleanRole.includes("owner");
+  const isManager = cleanRole.includes("manager") || designation.includes("manager") || designation.includes("head") || designation.includes("director");
+  const isTeamLead = cleanRole.includes("lead") || designation.includes("lead");
+  const isEmployee = !isManager && !isTeamLead && !isAdmin && !cleanRole.includes("hr");
   const canCreate = isManager || isAdmin;
+  const canEvaluate = isManager || isTeamLead || isAdmin || cleanRole.includes("hr");
+
+  const [showTLMonthlyEvalModal, setShowTLMonthlyEvalModal] = useState(false);
+  const [selectedEmpForTLEval, setSelectedEmpForTLEval] = useState(null);
 
   const [leadAssigneeFilter, setLeadAssigneeFilter] = useState({}); // { [projectId]: employeeId | "all" }
   const [activeViewMode, setActiveViewMode] = useState(isEmployee ? "my-tasks" : "projects"); // "projects" | "analytics" | "my-tasks"
@@ -154,34 +159,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState(null);
   const [selectedTaskForExtension, setSelectedTaskForExtension] = useState(null);
   const [selectedTaskForExtensionReview, setSelectedTaskForExtensionReview] = useState(null);
-  const [selectedSprintForPerfEval, setSelectedSprintForPerfEval] = useState(null);
-  const [isTLMonthlyEvalModalOpen, setIsTLMonthlyEvalModalOpen] = useState(false);
-  const [perfViewMode, setPerfViewMode] = useState("overview"); // "overview" | "monthly"
-  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [monthlyData, setMonthlyData] = useState(null);
-  const [loadingMonthlyData, setLoadingMonthlyData] = useState(false);
-
-  const fetchMonthlyPerformance = useCallback(async (monthStr) => {
-    setLoadingMonthlyData(true);
-    try {
-      const res = await fetch(`/api/projects/performance/monthly?month=${monthStr || selectedMonth}`);
-      const data = await res.json();
-      if (res.ok) {
-        setMonthlyData(data);
-      }
-    } catch (err) {
-      console.error("Fetch monthly performance error:", err);
-    } finally {
-      setLoadingMonthlyData(false);
-    }
-  }, [selectedMonth]);
-
-  useEffect(() => {
-    if (activeViewMode === "analytics" && perfViewMode === "monthly") {
-      fetchMonthlyPerformance(selectedMonth);
-    }
-  }, [activeViewMode, perfViewMode, selectedMonth, fetchMonthlyPerformance]);
-
   // Helper: Check if task has active Team Lead feedback / suggestions
   const hasActiveTlSuggestions = (task) => {
     if (!task) return false;
@@ -247,11 +224,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   // Fetch projects from API
   const fetchProjects = useCallback(async () => {
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -270,16 +243,12 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeaders]);
+  }, []);
 
   // Batch fetch all company project tasks in a single optimized query
   const fetchBatchTasks = useCallback(async () => {
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects/tasks?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/tasks?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -306,17 +275,13 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     } catch (err) {
       console.error("fetchBatchTasks error:", err);
     }
-  }, [getAuthHeaders]);
+  }, []);
 
   // Fetch subtasks for a specific project
   const fetchProjectTasks = useCallback(async (projectId) => {
     try {
       setLoadingTasks((prev) => ({ ...prev, [projectId]: true }));
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects/${projectId}/tasks?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/${projectId}/tasks?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -330,15 +295,12 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     } finally {
       setLoadingTasks((prev) => ({ ...prev, [projectId]: false }));
     }
-  }, [getAuthHeaders]);
+  }, []);
 
   // Fetch available team leads and department employees
   const fetchEmployeesAndLeads = useCallback(async () => {
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch("/api/employees/list", { headers });
+      const res = await authFetch("/api/employees/list");
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.employees)) {
@@ -365,7 +327,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     } catch (err) {
       console.error("fetchEmployeesAndLeads error:", err);
     }
-  }, [getAuthHeaders]);
+  }, []);
 
   // Resolved department member for analytics, defaults to first employee if not set
   const effectiveAnalyticsEmpId = useMemo(() => {
@@ -380,9 +342,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     if (isEmployee) return;
     if (showLoading) setLoadingAnalytics(true);
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
       const params = new URLSearchParams({
         employeeId: effectiveAnalyticsEmpId,
         department: analyticsDeptFilter,
@@ -391,8 +350,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
         t: String(Date.now()),
       });
 
-      const res = await fetch(`/api/projects/analytics?${params.toString()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/analytics?${params.toString()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -406,7 +364,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     } finally {
       if (showLoading) setLoadingAnalytics(false);
     }
-  }, [isEmployee, effectiveAnalyticsEmpId, analyticsDeptFilter, analyticsProjectFilter, analyticsDateRange, getAuthHeaders]);
+  }, [isEmployee, effectiveAnalyticsEmpId, analyticsDeptFilter, analyticsProjectFilter, analyticsDateRange]);
 
   useEffect(() => {
     let isMounted = true;
@@ -601,16 +559,9 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const handleStatusChange = async (projectId, newStatus) => {
     setUpdatingProjectId(projectId);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await authFetch(`/api/projects/${projectId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus }),
       });
 
@@ -631,13 +582,8 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     if (!confirm(`Are you sure you want to delete project "${projectName}"?`)) return;
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      const res = await fetch(`/api/projects/${projectId}`, {
+      const res = await authFetch(`/api/projects/${projectId}`, {
         method: "DELETE",
-        headers,
       });
 
       if (res.ok) {
@@ -696,16 +642,9 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
 
     setIsCreatingTask(true);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/${selectedProjectForTask.id}/tasks`, {
+      const res = await authFetch(`/api/projects/${selectedProjectForTask.id}/tasks`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(taskFormData),
       });
 
@@ -790,13 +729,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     });
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
       const payload = { status: normStatus };
       if (comments) payload.comments = comments;
       if (action) payload.action = action;
@@ -805,9 +737,9 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
       if (review_attachments) payload.review_attachments = review_attachments;
       if (review_submitted_at) payload.review_submitted_at = review_submitted_at;
 
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -950,13 +882,8 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     });
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-
-      await fetch(`/api/projects/tasks/${taskId}`, {
+      await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "DELETE",
-        headers,
       });
     } catch (err) {
       console.error("Failed to delete subtask:", err);
@@ -1076,14 +1003,15 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const activeScopedMyTasks = useMemo(() => {
     return myAssignedTasks.filter((t) => {
       const isKanbanProject = (t.project?.project_type || "").toLowerCase() === "kanban";
+      const rawSprintStatus = String(t.sprint?.status || "").trim().toUpperCase();
       const isSprintActive = Boolean(
         t.is_sprint_active ||
-        (t.sprint && String(t.sprint.status).toUpperCase() === "ACTIVE") ||
+        ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(rawSprintStatus) ||
         isKanbanProject
       );
       const isSprintPlanned = Boolean(
         t.is_sprint_planned ||
-        (t.sprint && String(t.sprint.status).toUpperCase() === "PLANNED")
+        ["PLANNED", "PLANNING", ""].includes(rawSprintStatus)
       );
       const isInBacklog = Boolean(t.is_in_backlog || (!t.sprint_id && !isKanbanProject));
 
@@ -1597,71 +1525,44 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
         {/* Stat Cards & Search Toolbar */}
         {(isEmployee || activeViewMode === "projects") && (
           <>
-            {/* Summary Stat Cards: Modern product metrics ribbon */}
+            {/* Summary Stat Cards */}
             {isEmployee ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all space-y-1">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Tasks</span>
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
                   </div>
-                  <div className="text-2xl font-extrabold text-slate-900 font-mono">{myTotalCount}</div>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{myTotalCount}</div>
                   <p className="text-[10px] text-slate-400">Assigned deliverables</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all space-y-1">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">TODO</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">To Do</span>
                     <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
                   </div>
-                  <div className="text-2xl font-extrabold text-slate-800 font-mono">{myTodoCount}</div>
+                  <div className="text-2xl font-bold text-slate-800 font-mono">{myTodoCount}</div>
                   <p className="text-[10px] text-slate-400">Not started yet</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-white border border-sky-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-sky-700 uppercase tracking-wider">In Progress</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">In Progress</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                   </div>
-                  <div className="text-2xl font-extrabold text-sky-800 font-mono">{myInProgressCount}</div>
-                  <p className="text-[10px] text-sky-600">Active execution</p>
+                  <div className="text-2xl font-bold text-blue-700 font-mono">{myInProgressCount}</div>
+                  <p className="text-[10px] text-slate-400">Active execution</p>
                 </div>
-                {myReviewCount > 0 ? (
-                  <div className="p-4 rounded-2xl bg-white border border-purple-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">In Review</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
-                    </div>
-                    <div className="text-2xl font-extrabold text-purple-800 font-mono">{myReviewCount}</div>
-                    <p className="text-[10px] text-purple-600">Pending review</p>
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-2xl bg-white border border-indigo-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">Completion</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                    </div>
-                    <div className="text-2xl font-extrabold text-indigo-800 font-mono">{myCompletionRate}%</div>
-                    <p className="text-[10px] text-indigo-600">Of assigned tasks</p>
-                  </div>
-                )}
-                <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
+                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Completed</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completed</span>
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   </div>
-                  <div className="text-2xl font-extrabold text-emerald-800 font-mono">{myCompletedCount}</div>
-                  <p className="text-[10px] text-emerald-600">{myCompletionRate}% completion rate</p>
-                </div>
-                <div className="p-4 rounded-2xl bg-white border border-rose-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Overdue</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  </div>
-                  <div className="text-2xl font-extrabold text-rose-800 font-mono">{myOverdueCount}</div>
-                  <p className="text-[10px] text-rose-600">Past target date</p>
+                  <div className="text-2xl font-bold text-emerald-700 font-mono">{myCompletedCount}</div>
+                  <p className="text-[10px] text-slate-400">{myCompletionRate}% completion rate</p>
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -1679,18 +1580,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                   </div>
                   <div className="text-2xl font-extrabold text-blue-700 font-mono">{inProgressCount}</div>
                   <p className="text-[10px] text-blue-600">Active execution</p>
-                </div>
-                <div className={`p-4 rounded-2xl bg-white border shadow-2xs hover:shadow-xs transition-all space-y-1 ${
-                  totalPendingReviewsCount > 0 ? "border-purple-300 ring-2 ring-purple-400/20" : "border-purple-200/80"
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider">
-                      Deliverable Reviews
-                    </span>
-                    <span className={`w-1.5 h-1.5 rounded-full ${totalPendingReviewsCount > 0 ? "bg-purple-600 animate-pulse" : "bg-purple-300"}`} />
-                  </div>
-                  <div className="text-2xl font-extrabold text-purple-800 font-mono">{totalPendingReviewsCount}</div>
-                  <p className="text-[10px] text-purple-600">Pending review</p>
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
                   <div className="flex items-center justify-between">
@@ -1723,7 +1612,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                   type="text"
                   placeholder={
                     isEmployee
-                      ? "Search my tasks, deliverables, leads…"
+                      ? "Search deliverables…"
                       : "Search project, lead, department…"
                   }
                   value={searchQuery}
@@ -1749,7 +1638,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       onClick={() => setEmployeeViewLayout("board")}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                         employeeViewLayout === "board"
-                          ? "bg-sky-600 text-white shadow-xs shadow-sky-600/20"
+                          ? "bg-blue-600 text-white shadow-xs"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                       title="Kanban Board View (Drag & Drop)"
@@ -1759,14 +1648,14 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                         <rect x="10" y="3" width="5" height="12" rx="1" />
                         <rect x="17" y="3" width="5" height="15" rx="1" />
                       </svg>
-                      <span>Board (Drag & Drop)</span>
+                      <span>Board</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setEmployeeViewLayout("table")}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                         employeeViewLayout === "table"
-                          ? "bg-sky-600 text-white shadow-xs shadow-sky-600/20"
+                          ? "bg-blue-600 text-white shadow-xs"
                           : "text-slate-600 hover:text-slate-900"
                       }`}
                       title="Table / List View"
@@ -1786,51 +1675,44 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                     className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
                   >
                     <option value="all">All Deliverables</option>
-                    <option value="active">⚡ Active Sprint Only</option>
-                    <option value="planned">⏳ Planned Sprints</option>
-                    <option value="backlog">📦 Backlog Items</option>
+                    <option value="active">Active Sprint Only</option>
+                    <option value="planned">Planned Sprints</option>
+                    <option value="backlog">Backlog Items</option>
                   </select>
                 )}
 
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
-                >
-                  <option value="all">All Statuses</option>
-                  {isEmployee ? (
-                    <>
-                      <option value="TODO">To Do</option>
-                      <option value="IN_PROGRESS">In Progress</option>
-                      <option value="REVIEW">In Review</option>
-                      <option value="COMPLETED">Completed</option>
-                    </>
-                  ) : (
-                    <>
+                {!isEmployee && (
+                  <>
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value)}
+                      className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">All Statuses</option>
                       <option value="PLANNING">Planning</option>
                       <option value="IN_PROGRESS">In Progress</option>
                       <option value="COMPLETED">Completed</option>
                       <option value="ON_HOLD">On Hold</option>
                       <option value="CANCELLED">Cancelled</option>
-                    </>
-                  )}
-                </select>
+                    </select>
 
-                <select
-                  value={priorityFilter}
-                  onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
-                >
-                  <option value="all">All Priorities</option>
-                  <option value="URGENT">Urgent</option>
-                  <option value="HIGH">High</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="LOW">Low</option>
-                </select>
+                    <select
+                      value={priorityFilter}
+                      onChange={(e) => setPriorityFilter(e.target.value)}
+                      className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+                    >
+                      <option value="all">All Priorities</option>
+                      <option value="URGENT">Urgent</option>
+                      <option value="HIGH">High</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="LOW">Low</option>
+                    </select>
+                  </>
+                )}
 
                 <span className="text-xs font-mono font-bold text-slate-600 bg-white px-3 py-2 rounded-xl border border-slate-200/90 shadow-2xs whitespace-nowrap">
                   {isEmployee
-                    ? `${filteredMyTasks.length} of ${activeScopedMyTasks.length}`
+                    ? `${filteredMyTasks.length} tasks`
                     : `${filteredProjects.length} of ${scopedProjects.length}`}
                 </span>
               </div>
@@ -1916,29 +1798,13 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 </div>
               )}
 
-              {/* Guidance Ribbon */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-600 bg-sky-50/60 px-4 py-2.5 rounded-2xl border border-sky-100">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-lg bg-sky-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                    ⚡
-                  </span>
-                  <p className="font-medium text-slate-700">
-                    <strong className="font-bold text-slate-900">Drag & Drop Workflow Active:</strong> Drag task cards across columns to update execution status in real time.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 self-end sm:self-auto font-mono text-[11px] text-sky-800 font-bold bg-white px-2.5 py-1 rounded-xl border border-sky-200/80 shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Live Sync</span>
-                </div>
-              </div>
-
               {/* 4 Workflow Columns Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
                 {[
-                  { id: "TODO", label: "To Do", bg: "bg-slate-50/80", border: "border-slate-200/90", headerBg: "bg-slate-200/80 text-slate-800", dot: "bg-slate-400", hint: "Drop here to queue task" },
-                  { id: "IN_PROGRESS", label: "In Progress", bg: "bg-sky-50/50", border: "border-sky-200/90", headerBg: "bg-sky-100 text-sky-800", dot: "bg-sky-500 animate-pulse", hint: "Drop here to start work" },
-                  { id: "REVIEW", label: "In Review", bg: "bg-purple-50/50", border: "border-purple-200/90", headerBg: "bg-purple-100 text-purple-800", dot: "bg-purple-500", hint: "Drop here to request review" },
-                  { id: "COMPLETED", label: "Completed", bg: "bg-emerald-50/50", border: "border-emerald-200/90", headerBg: "bg-emerald-100 text-emerald-800", dot: "bg-emerald-500", hint: "Drop here to finish task" },
+                  { id: "TODO", label: "To Do", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-slate-200 text-slate-700", dot: "bg-slate-400", hint: "Drop here to queue task" },
+                  { id: "IN_PROGRESS", label: "In Progress", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-blue-100 text-blue-700", dot: "bg-blue-500", hint: "Drop here to start work" },
+                  { id: "REVIEW", label: "In Review", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-purple-100 text-purple-700", dot: "bg-purple-500", hint: "Drop here to request review" },
+                  { id: "COMPLETED", label: "Completed", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500", hint: "Drop here to finish task" },
                 ].map((col) => {
                   const colTasks = filteredMyTasks.filter((t) => {
                     const normSt = (t.status || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
@@ -2392,8 +2258,9 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       const leadName = resolvedProject?.teamLead?.full_name || "Team Lead";
                       const isUpdating = updatingTaskId === task.id;
 
-                      const isSprintActive = Boolean(task.is_sprint_active || (task.sprint && task.sprint.status === "ACTIVE"));
-                      const isSprintPlanned = Boolean(task.is_sprint_planned || (task.sprint && task.sprint.status === "PLANNED"));
+                      const rawSprintStatus = String(task.sprint?.status || "").trim().toUpperCase();
+                      const isSprintActive = Boolean(task.is_sprint_active || ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(rawSprintStatus));
+                      const isSprintPlanned = Boolean(task.is_sprint_planned || ["PLANNED", "PLANNING", ""].includes(rawSprintStatus));
                       const isInBacklog = Boolean(task.is_in_backlog || !task.sprint_id);
 
                       return (
@@ -2644,408 +2511,168 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
           )
         ) : activeViewMode === "analytics" ? (
           /* ========================================================================= */
-          /* MANAGER & TEAM LEAD PERFORMANCE & PROGRESS BAR CHARTS DASHBOARD */
+          /* INDIVIDUAL MEMBER PERFORMANCE & DELIVERABLES SUMMARY VIEW */
           /* ========================================================================= */
-          <div className="space-y-6 animate-fadeIn">
-            {/* Sleek Top Toolbar: Member Selector (Only Individual View) */}
-            <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-5 animate-fadeIn">
+            {/* Top Toolbar: Member Selector */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shadow-blue-500/20 shrink-0">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs shrink-0">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
                     <span>Individual Member Performance</span>
                     {loadingAnalytics && (
-                      <span className="inline-flex items-center gap-1 text-[11px] text-blue-600 font-normal">
+                      <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 font-normal">
                         <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                         <span>Updating…</span>
                       </span>
                     )}
                   </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Live task execution, deliverable status, and workload metrics
+                  </p>
                 </div>
               </div>
 
-              {/* Sleek Sub-Tab Switcher & Member Filter */}
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-1.5 p-1 rounded-xl bg-slate-100 border border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => setPerfViewMode("overview")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      perfViewMode === "overview"
-                        ? "bg-white text-blue-600 shadow-2xs"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
+              {/* Member Selector Dropdown & Monthly Evaluation Action */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                  <span className="text-xs font-semibold text-slate-500 shrink-0">Member:</span>
+                  <select
+                    value={analyticsEmployeeFilter}
+                    onChange={(e) => setAnalyticsEmployeeFilter(e.target.value)}
+                    className="bg-transparent text-slate-800 text-xs font-semibold focus:outline-none cursor-pointer pr-1"
                   >
-                    📊 Live Task Status &amp; KPIs
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPerfViewMode("monthly")}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      perfViewMode === "monthly"
-                        ? "bg-white text-blue-600 shadow-2xs"
-                        : "text-slate-600 hover:text-slate-900"
-                    }`}
-                  >
-                    📅 Month-End Sprint Rollup
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  {perfViewMode === "monthly" && (
-                    <input
-                      type="month"
-                      value={selectedMonth}
-                      onChange={(e) => {
-                        setSelectedMonth(e.target.value);
-                        fetchMonthlyPerformance(e.target.value);
-                      }}
-                      className="bg-white border border-blue-200 text-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
-                    />
-                  )}
-
-                  <div className="flex items-center gap-2 bg-blue-50/50 px-3.5 py-1.5 rounded-xl border border-blue-100 shadow-2xs">
-                    <span className="text-xs font-bold text-slate-700 shrink-0">Member:</span>
-                    <select
-                      value={analyticsEmployeeFilter}
-                      onChange={(e) => setAnalyticsEmployeeFilter(e.target.value)}
-                      className="bg-white border border-blue-200 text-slate-800 text-xs font-semibold rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
-                    >
-                      {departmentEmployees.length === 0 ? (
-                        <option value="">No department members found</option>
-                      ) : (
-                        departmentEmployees.map((emp) => (
+                    {departmentEmployees.length === 0 ? (
+                      <option value="">No department members found</option>
+                    ) : (
+                      departmentEmployees
+                        .filter((emp) => (emp.role || "employee").toLowerCase().trim() === "employee")
+                        .map((emp) => (
                           <option key={emp.id} value={emp.id}>
-                            {emp.full_name} ({emp.designation || "Employee"})
+                            {emp.full_name}
                           </option>
                         ))
-                      )}
-                    </select>
-                  </div>
-
-                  {(isTeamLead || isManager || isAdmin || isOwner) && (
-                    <button
-                      type="button"
-                      onClick={() => setIsTLMonthlyEvalModalOpen(true)}
-                      className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition cursor-pointer shadow-2xs flex items-center gap-1.5 shrink-0"
-                    >
-                      <span>Monthly Evaluation</span>
-                    </button>
-                  )}
+                    )}
+                  </select>
                 </div>
+
+                {canEvaluate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const targetId = analyticsEmployeeFilter || selectedEmployeeAnalytics?.employee?.id || departmentEmployees[0]?.id || null;
+                      setSelectedEmpForTLEval(targetId);
+                      setShowTLMonthlyEvalModal(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                    title="Open Monthly Performance & Feedback Evaluation Dialog for this member"
+                  >
+                    <span>⭐</span>
+                    <span>Monthly Evaluation</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {perfViewMode === "monthly" ? (
-              /* MONTHLY SPRINT ROLLUP TABLE */
-              <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden space-y-4 p-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div>
-                    <h4 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                      <span>Month-End Sprint Performance Rollup</span>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        {selectedMonth}
-                      </span>
-                    </h4>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Summarizes finalized sprint evaluation snapshots for this calendar month.
-                    </p>
-                  </div>
-
-                  {loadingMonthlyData && (
-                    <span className="text-xs text-blue-600 flex items-center gap-1.5">
-                      <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                      Loading rollup…
-                    </span>
-                  )}
-                </div>
-
-                {(!monthlyData?.employeeRollups || monthlyData.employeeRollups.length === 0) ? (
-                  <div className="py-12 text-center text-xs text-slate-400 italic">
-                    No finalized sprint evaluations found for {selectedMonth}. Sprint evaluations completed by Team Leads will appear here automatically.
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs text-slate-600 border-collapse">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                          <th className="py-3 px-3">Employee</th>
-                          <th className="py-3 px-3">Evaluated Sprints</th>
-                          <th className="py-3 px-3">Story Points (Done/Total)</th>
-                          <th className="py-3 px-3">Avg Progress</th>
-                          <th className="py-3 px-3">Avg Exec Score</th>
-                          <th className="py-3 px-3">Delayed Tasks</th>
-                          <th className="py-3 px-3">Monthly Final Score</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {monthlyData.employeeRollups.map((row) => (
-                          <tr key={row.employeeId} className="hover:bg-slate-50/70 transition">
-                            <td className="py-3 px-3 font-semibold text-slate-900">
-                              {row.employee?.full_name || "Employee"}
-                              <span className="block text-[10px] text-slate-400 font-normal">
-                                {row.employee?.designation || "Member"}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3 font-mono font-bold text-slate-700">
-                              {row.evaluatedSprintsCount} Sprints
-                            </td>
-                            <td className="py-3 px-3 font-mono">
-                              <span className="font-bold text-emerald-700">{row.totalCompletedPoints}</span> / {row.totalAssignedPoints} pts
-                            </td>
-                            <td className="py-3 px-3 font-mono font-bold text-blue-700">
-                              {row.avgProgress}%
-                            </td>
-                            <td className="py-3 px-3 font-mono font-bold text-slate-800">
-                              {row.avgExecutionScore} / 10
-                            </td>
-                            <td className="py-3 px-3 font-mono">
-                              <span className={row.totalDelayedTasks > 0 ? "text-rose-600 font-bold" : "text-slate-600"}>
-                                {row.totalDelayedTasks}
-                              </span>
-                            </td>
-                            <td className="py-3 px-3">
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-black text-sm text-slate-900">
-                                  {row.avgFinalScore}
-                                </span>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  row.performanceBadge === "Exceptional"
-                                    ? "bg-purple-100 text-purple-800 border border-purple-200"
-                                    : row.performanceBadge === "High Performer"
-                                    ? "bg-blue-100 text-blue-800 border border-blue-200"
-                                    : row.performanceBadge === "On Track"
-                                    ? "bg-amber-100 text-amber-800 border border-amber-200"
-                                    : "bg-rose-100 text-rose-800 border border-rose-200"
-                                }`}>
-                                  {row.performanceBadge}
-                                </span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ) : selectedEmployeeAnalytics ? (
-              /* ========================================================================= */
-              /* INDIVIDUAL EMPLOYEE TASK STATUS & DELIVERABLES VIEW */
-              /* ========================================================================= */
-              <div className="space-y-6">
-                {/* 4 Clean Key KPI Summary Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                  {/* Card 1: Execution */}
-                  <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                      <span>🎯 Execution</span>
-                      <span className="text-blue-600 font-mono text-xs">{selectedEmployeeAnalytics.completionRate}%</span>
-                    </div>
-                    <div className="text-2xl font-black font-mono tracking-tight text-slate-900">
-                      {selectedEmployeeAnalytics.executionDisplay}
-                    </div>
-                    <p className="text-[11px] text-slate-500">Completed / Total Tasks</p>
-                  </div>
-
-                  {/* Card 2: Delayed Tasks */}
-                  <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                      <span>⏰ Delayed Tasks</span>
-                      <span className="text-purple-600 font-mono text-xs">{selectedEmployeeAnalytics.onTimeRate}% on-time</span>
-                    </div>
-                    <div className={`text-2xl font-black font-mono tracking-tight ${selectedEmployeeAnalytics.delayedTasks > 0 ? "text-rose-600" : "text-emerald-700"}`}>
-                      {selectedEmployeeAnalytics.delayedTasks}
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      {selectedEmployeeAnalytics.totalDelayDays > 0 ? `${selectedEmployeeAnalytics.totalDelayDays} days delay` : "Zero delay against deadline"}
-                    </p>
-                  </div>
-
-                  {/* Card 3: Active Progress */}
-                  <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
-                      <span>📈 Task Progress</span>
-                      <span className="text-emerald-600 font-mono text-xs">Velocity</span>
-                    </div>
-                    <div className="text-2xl font-black font-mono tracking-tight text-blue-700">
-                      {selectedEmployeeAnalytics.avgProgress}%
-                    </div>
-                    <p className="text-[11px] text-slate-500">Active Task Progress</p>
-                  </div>
-
-                  {/* Card 4: Performance Score */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-indigo-950 text-white shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between text-blue-300 text-[11px] font-bold uppercase tracking-wider">
-                      <span>🏆 Overall Score</span>
-                    </div>
-                    <div className="text-2xl font-black font-mono tracking-tight text-white">
-                      {selectedEmployeeAnalytics.calculatedScore}
-                      <span className="text-xs font-normal text-slate-300 font-sans"> / 100</span>
-                    </div>
-                    <span className="inline-block text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-blue-500/30 text-blue-200 border border-blue-400/40">
-                      {selectedEmployeeAnalytics.performanceBadge}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Individual Employee Task Status Bar Chart Card */}
-                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-6 shadow-xs">
-                  {/* Header: Employee Name, Role Badge, Department & Total Tasks */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 pb-4 border-b border-slate-100">
+            {selectedEmployeeAnalytics ? (
+              <div className="space-y-5">
+                {/* 1. Employee Profile Header Card */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-base flex items-center justify-center shadow-xs shadow-blue-500/20 shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 font-bold text-base flex items-center justify-center border border-blue-100 shadow-2xs shrink-0">
                         {selectedEmployeeAnalytics.employee?.full_name?.charAt(0).toUpperCase() || "E"}
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-base font-bold text-slate-900 tracking-tight">
+                          <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
                             {selectedEmployeeAnalytics.employee?.full_name}
                           </h3>
-                          <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200/80">
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
                             {selectedEmployeeAnalytics.employee?.designation || "Employee"}
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          {selectedEmployeeAnalytics.employee?.department || "Department"} • {selectedEmployeeAnalytics.total} Assigned Tasks
+                          {selectedEmployeeAnalytics.employee?.department || "Department"} • {selectedEmployeeAnalytics.total} Assigned Deliverables
                         </p>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2.5">
-                      {/* Button to open Sprint Performance Evaluation Modal for this member */}
-                      {scopedProjects.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            // Find active sprint or first sprint in scoped projects
-                            const allSprints = scopedProjects.flatMap((p) => p.sprints || []);
-                            const targetSprint = allSprints.find((s) => s.status === "ACTIVE") || allSprints[0] || {
-                              id: "current-sprint",
-                              name: "Sprint 1",
-                              project_id: scopedProjects[0]?.id,
-                            };
-                            setSelectedSprintForPerfEval(targetSprint);
-                          }}
-                          className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition cursor-pointer shadow-2xs flex items-center gap-1.5"
-                          title="Evaluate sprint performance and save finalized snapshot for this member"
-                        >
-                          <span>⭐</span>
-                          <span>Evaluate Sprint Performance</span>
-                        </button>
-                      )}
-
-                      <span className="text-xs font-mono font-bold text-blue-800 bg-blue-50/80 border border-blue-100 px-3 py-1 rounded-xl">
+                      <span className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-lg">
                         {selectedEmployeeAnalytics.total} Tasks Total
                       </span>
                     </div>
                   </div>
-
-                  {/* 4 Vertical Bars: To Do, In Progress, Completed, Overdue */}
-                  {(() => {
-                    const maxVal = Math.max(
-                      selectedEmployeeAnalytics.todo,
-                      selectedEmployeeAnalytics.inProgress,
-                      selectedEmployeeAnalytics.completed,
-                      selectedEmployeeAnalytics.overdue,
-                      1
-                    );
-
-                    const bars = [
-                      {
-                        label: "To Do",
-                        count: selectedEmployeeAnalytics.todo,
-                        color: "from-blue-300 to-blue-400",
-                        textColor: "text-blue-800",
-                        iconColor: "text-blue-500",
-                        icon: (
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                          </svg>
-                        ),
-                      },
-                      {
-                        label: "In Progress",
-                        count: selectedEmployeeAnalytics.inProgress,
-                        color: "from-blue-500 to-blue-600",
-                        textColor: "text-blue-700",
-                        iconColor: "text-blue-600",
-                        icon: (
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                        ),
-                      },
-                      {
-                        label: "Completed",
-                        count: selectedEmployeeAnalytics.completed,
-                        color: "from-blue-700 to-indigo-700",
-                        textColor: "text-blue-900",
-                        iconColor: "text-blue-700",
-                        icon: (
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                        ),
-                      },
-                      {
-                        label: "Overdue",
-                        count: selectedEmployeeAnalytics.overdue,
-                        color: "from-indigo-800 to-blue-950",
-                        textColor: "text-indigo-900",
-                        iconColor: "text-indigo-800",
-                        icon: (
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                          </svg>
-                        ),
-                      },
-                    ];
-
-                    return (
-                      <div className="pt-1">
-                        <div className="h-56 flex items-end justify-between gap-3 sm:gap-6 px-4 sm:px-8 pb-4 pt-4 border border-blue-100 bg-blue-50/30 rounded-2xl">
-                          {bars.map((bar, idx) => {
-                            const heightPercent = Math.max(Math.round((bar.count / maxVal) * 100), bar.count > 0 ? 14 : 6);
-                            const sharePercent = selectedEmployeeAnalytics.total > 0 ? Math.round((bar.count / selectedEmployeeAnalytics.total) * 100) : 0;
-
-                            return (
-                              <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                                <span className={`text-xs font-mono font-bold ${bar.textColor}`}>
-                                  {bar.count}
-                                </span>
-                                <div className="w-full max-w-[56px] sm:max-w-[64px] bg-blue-50/80 rounded-t-xl overflow-hidden flex flex-col justify-end relative h-36 border border-blue-100/60 shadow-inner">
-                                  <div
-                                    style={{ height: `${heightPercent}%` }}
-                                    className={`w-full rounded-t-xl bg-gradient-to-t ${bar.color} transition-all duration-500 shadow-xs group-hover:brightness-105`}
-                                    title={`${bar.label}: ${bar.count} tasks (${sharePercent}%)`}
-                                  />
-                                </div>
-                                <div className="text-center space-y-0.5 pt-1.5 flex flex-col items-center">
-                                  <div className="inline-flex items-center gap-1.5 text-[11px] sm:text-xs font-bold text-slate-700 whitespace-nowrap">
-                                    <span className={bar.iconColor}>{bar.icon}</span>
-                                    <span>{bar.label}</span>
-                                  </div>
-                                  <span className="text-[10px] font-mono text-blue-600 block">
-                                    {sharePercent}%
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
 
-                {/* 2. Assigned Deliverables List for this Employee */}
-                <div className="bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden">
-                  <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+                {/* 2. 4 Clean Status Cards Matching Project Theme */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                  {/* To Do */}
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">To Do</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                    </div>
+                    <div className="text-2xl font-bold text-slate-800 font-mono">
+                      {selectedEmployeeAnalytics.todo}
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.todo / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
+                    </p>
+                  </div>
+
+                  {/* In Progress */}
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">In Progress</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    </div>
+                    <div className="text-2xl font-bold text-blue-700 font-mono">
+                      {selectedEmployeeAnalytics.inProgress}
+                    </div>
+                    <p className="text-[10px] text-blue-600">
+                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.inProgress / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
+                    </p>
+                  </div>
+
+                  {/* Completed */}
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Completed</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    </div>
+                    <div className="text-2xl font-bold text-emerald-700 font-mono">
+                      {selectedEmployeeAnalytics.completed}
+                    </div>
+                    <p className="text-[10px] text-emerald-600">
+                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.completed / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
+                    </p>
+                  </div>
+
+                  {/* Overdue */}
+                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Overdue</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                    </div>
+                    <div className="text-2xl font-bold text-rose-700 font-mono">
+                      {selectedEmployeeAnalytics.overdue}
+                    </div>
+                    <p className="text-[10px] text-rose-600">
+                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.overdue / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
+                    </p>
+                  </div>
+                </div>
+
+                {/* 3. Assigned Deliverables List for this Employee */}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
+                  <div className="p-4 sm:px-5 sm:py-3.5 border-b border-slate-100 flex items-center justify-between">
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
                         <svg className="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -3057,14 +2684,14 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                         All active and completed tasks across projects
                       </p>
                     </div>
-                    <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-xl">
+                    <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg">
                       {selectedEmployeeAnalytics.tasks.length} Deliverables
                     </span>
                   </div>
 
                   {selectedEmployeeAnalytics.tasks.length === 0 ? (
                     <div className="p-8 text-center text-xs text-slate-400 italic">
-                      No subtasks currently assigned to this member.
+                      No deliverables currently assigned to this member.
                     </div>
                   ) : (
                     <div className="divide-y divide-slate-100">
@@ -3084,7 +2711,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                                   <span className="truncate max-w-[160px]">{task.projectName}</span>
                                 </span>
                                 {task.priority && (
-                                  <span className="text-[9px] font-bold text-slate-500 uppercase border border-slate-200 px-1.5 py-0.2 rounded">
+                                  <span className="text-[9px] font-semibold text-slate-500 uppercase border border-slate-200 px-1.5 py-0.2 rounded">
                                     {task.priority}
                                   </span>
                                 )}
@@ -3103,7 +2730,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                                   <span>{new Date(task.due_date).toLocaleDateString([], { month: "short", day: "numeric" })}</span>
                                 </span>
                               )}
-                              <span className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-lg border shadow-2xs ${stConfig.bg} ${stConfig.color}`}>
+                              <span className={`inline-flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-lg border shadow-2xs ${stConfig.bg} ${stConfig.color}`}>
                                 <TaskStatusIcon status={task.status} />
                                 <span>{stConfig.label}</span>
                               </span>
@@ -3116,8 +2743,8 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 </div>
               </div>
             ) : (
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-12 text-center space-y-3 shadow-xs">
-                <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center mx-auto border border-sky-100">
+              <div className="bg-white border border-slate-200 rounded-xl p-12 text-center space-y-3 shadow-2xs">
+                <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto border border-blue-100">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
@@ -3156,435 +2783,155 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
             </p>
           </div>
         ) : (
-          <div className="space-y-6 w-full">
+          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden divide-y divide-slate-100">
             {filteredProjects.map((project) => {
-              const priority = PRIORITY_CONFIG[project.priority] || PRIORITY_CONFIG.MEDIUM;
               const status = STATUS_CONFIG[project.status] || STATUS_CONFIG.PLANNING;
               const isLead = isTeamLead && project.team_lead_id === employeeProfile?.id;
               const isCreator = isManager && project.created_by === employeeProfile?.id;
-              const isDeptManager = isManager && (project.created_by === employeeProfile?.id || project.department?.toLowerCase().trim() === employeeProfile?.department?.toLowerCase().trim());
-              const canManageProjectTasks = isLead || isDeptManager || isAdmin;
-              const leadName = project.teamLead?.full_name || "Unassigned";
-              const leadInitial = leadName.charAt(0).toUpperCase();
-
-              // Subtasks stats for this project
-              const tasks = projectTasks[project.id] || [];
-              const totalTasks = tasks.length;
-              const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length;
-              const inProgressTasks = tasks.filter((t) => t.status === "IN_PROGRESS").length;
-              const todoTasks = tasks.filter((t) => t.status === "TODO").length;
-
-              const hasSubtasks = totalTasks > 0;
-              const dynamicProgress = hasSubtasks
-                ? Math.round((completedTasks / totalTasks) * 100)
-                : project.status === "COMPLETED"
-                ? 100
-                : project.status === "IN_PROGRESS"
-                ? 50
-                : project.status === "PLANNING"
-                ? 15
-                : 0;
-
-              const isExpanded = !collapsedProjects.has(project.id);
-              const isLoadingThisTasks = loadingTasks[project.id];
-
-              // Unique assigned team members in this project (from subtasks + project-level team members)
-              const assignedMembers = Array.from(
-                tasks.reduce((map, t) => {
-                  const empObj =
-                    t.assignee ||
-                    departmentEmployees.find((e) => e.id === (t.assigned_to || t.assignee_id)) ||
-                    teamLeads.find((l) => l.id === (t.assigned_to || t.assignee_id));
-                  if (empObj && !map.has(empObj.id)) {
-                    map.set(empObj.id, empObj);
-                  }
-                  return map;
-                }, new Map()).values()
-              );
-
-              if (Array.isArray(project.teamMembers)) {
-                project.teamMembers.forEach((m) => {
-                  if (m && !assignedMembers.some((am) => am.id === m.id)) {
-                    assignedMembers.push(m);
-                  }
-                });
-              }
+              const isDeptManager =
+                isManager &&
+                (project.created_by === employeeProfile?.id ||
+                  project.department?.toLowerCase().trim() ===
+                    employeeProfile?.department?.toLowerCase().trim());
+              const leadName = project.teamLead?.full_name || null;
 
               const isProjectOverdue =
                 project.end_date &&
                 new Date(project.end_date) < new Date() &&
                 project.status !== "COMPLETED";
 
-              const statusAccentBorder =
-                project.status === "COMPLETED"
-                  ? "border-l-blue-700"
-                  : project.status === "IN_PROGRESS"
-                  ? "border-l-blue-600"
-                  : project.status === "ON_HOLD"
-                  ? "border-l-blue-400"
-                  : project.status === "CANCELLED"
-                  ? "border-l-slate-400"
-                  : "border-l-blue-500";
-
               return (
                 <div
                   key={project.id}
-                  className={`rounded-2xl bg-white border border-slate-200/90 border-l-4 ${statusAccentBorder} hover:border-blue-200 transition-all duration-200 shadow-2xs hover:shadow-xs flex flex-col justify-between overflow-hidden group`}
+                  className="p-4 sm:px-5 sm:py-4.5 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
                 >
-                  <div className="p-5 sm:p-6 space-y-4">
-                    {/* Top Row: Product Identity & Status Control */}
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-2 min-w-0 flex-1">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0 shadow-2xs">
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                              </svg>
-                            </div>
+                  {/* Left: Project Icon, Name, Type/Group Badge, Lead/Creator, Date Range */}
+                  <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                    <div
+                      onClick={() => setActiveWorkspaceProject(project)}
+                      className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0 shadow-2xs cursor-pointer hover:bg-blue-100 transition-colors mt-0.5 sm:mt-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      </svg>
+                    </div>
 
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h3
-                                onClick={() => setActiveWorkspaceProject(project)}
-                                className="text-base sm:text-lg font-bold text-slate-900 tracking-tight hover:text-blue-600 transition-colors truncate cursor-pointer"
-                                title="Click to open Project Workspace (Overview, Backlog, Epics, Sprints, Board)"
-                              >
-                                {project.name}
-                              </h3>
-                              {project.project_type && (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/80 font-mono">
-                                  🏃 {project.project_type}
-                                </span>
-                              )}
-                              {project.project_group && (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/80">
-                                  🏷️ {project.project_group}
-                                </span>
-                              )}
-                              {project.creator && (
-                                <span className="text-[10px] text-slate-500 font-medium hidden sm:inline">
-                                  Owner: <strong className="text-slate-700">{project.creator.full_name}</strong>
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3
+                          onClick={() => setActiveWorkspaceProject(project)}
+                          className="text-sm sm:text-base font-bold text-slate-900 tracking-tight hover:text-blue-600 transition-colors truncate cursor-pointer"
+                          title="Click to open Project Workspace"
+                        >
+                          {project.name}
+                        </h3>
 
-                          {project.description && (
-                            <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
-                              {project.description}
-                            </p>
-                          )}
-                        </div>
+                        {project.project_type && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            {project.project_type}
+                          </span>
+                        )}
 
-                        {/* Status selector, Workspace & Delete Button */}
-                        <div className="shrink-0 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setActiveWorkspaceProject(project)}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                            title="Open Project Workspace (Overview, Backlog, Epics, Sprints, Board)"
-                          >
-                            <span>Workspace</span>
+                        {project.project_group && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                            {project.project_group}
+                          </span>
+                        )}
+
+                        {isProjectOverdue && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            Overdue
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Subtitle Info: Lead / Creator, Date Range, Description */}
+                      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+                        {leadName && (
+                          <span>
+                            Lead: <strong className="text-slate-700 font-medium">{leadName}</strong>
+                          </span>
+                        )}
+                        {project.creator && !leadName && (
+                          <span>
+                            Owner: <strong className="text-slate-700 font-medium">{project.creator.full_name}</strong>
+                          </span>
+                        )}
+                        {(project.start_date || project.end_date) && (
+                          <span className="text-slate-400 flex items-center gap-1 font-mono text-[11px]">
+                            <span>
+                              {project.start_date
+                                ? new Date(project.start_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+                                : "Start"}
+                            </span>
                             <span>→</span>
-                          </button>
-                          {isAdmin || isDeptManager || isCreator || isLead ? (
-                            <div className="relative inline-block">
-                              <select
-                                value={project.status}
-                                disabled={updatingProjectId === project.id}
-                                onChange={(e) => handleStatusChange(project.id, e.target.value)}
-                                className={`text-xs font-bold rounded-xl pl-3 pr-8 py-1.5 border transition cursor-pointer focus:outline-none appearance-none shadow-2xs ${status.bg} ${status.color}`}
-                                title="Update Project Status"
-                              >
-                                <option value="PLANNING">Planning</option>
-                                <option value="IN_PROGRESS">In Progress</option>
-                                <option value="COMPLETED">Completed</option>
-                                <option value="ON_HOLD">On Hold</option>
-                                <option value="CANCELLED">Cancelled</option>
-                              </select>
-                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-current opacity-70">
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                                </svg>
-                              </div>
-                            </div>
-                          ) : (
-                            <span className={`text-xs font-semibold rounded-full px-3 py-1 border inline-flex items-center gap-1.5 shadow-2xs ${status.bg} ${status.color}`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${status.dot || "bg-slate-400"}`} />
-                              <span>{status.label}</span>
+                            <span>
+                              {project.end_date
+                                ? new Date(project.end_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+                                : "Ongoing"}
                             </span>
-                          )}
-
-                          {(isCreator || isDeptManager || isAdmin) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(project.id, project.name)}
-                              className="text-slate-300 hover:text-rose-600 p-1.5 transition cursor-pointer rounded-lg hover:bg-rose-50"
-                              title="Delete Project"
-                            >
-                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
-                        </div>
+                          </span>
+                        )}
+                        {project.description && (
+                          <span className="text-slate-400 hidden lg:inline truncate max-w-md">
+                            • {project.description}
+                          </span>
+                        )}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Prominent Feature Highlights: ASSIGNED TO & SCHEDULE DATE (Blue Theme Styling) */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-3 pb-3 border-y border-blue-50/80 items-stretch text-xs">
-                      {/* Feature 1: ASSIGNED TO */}
-                      <div className="p-3 rounded-xl bg-blue-50/30 hover:bg-blue-50/60 border border-blue-100/80 transition-colors flex items-center justify-between gap-3 min-w-0 shadow-2xs">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="relative shrink-0">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center justify-center shadow-xs">
-                              {leadInitial}
-                            </div>
-                            {project.teamLead?.auth_user_id && onlineUserIds.has(project.teamLead.auth_user_id) && (
-                              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">
-                                ASSIGNED TO
-                              </span>
-                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
-                                Team Lead
-                              </span>
-                            </div>
-                            <p className="text-xs font-bold text-slate-900 truncate">
-                              {leadName}
-                            </p>
-                            {project.teamLead?.designation && (
-                              <p className="text-[10px] text-slate-500 truncate">
-                                {project.teamLead.designation}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                      </div>
-
-                      {/* Feature 2: SCHEDULE DATE */}
-                      <div className="p-3 rounded-xl bg-blue-50/30 hover:bg-blue-50/60 border border-blue-100/80 transition-colors flex items-center justify-between gap-3 min-w-0 shadow-2xs">
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                            </svg>
-                          </div>
-                          <div className="min-w-0 flex-1 space-y-0.5">
-                            <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">
-                              SCHEDULE DATE
-                            </span>
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 truncate">
-                              <span>{project.start_date ? new Date(project.start_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "Start Date"}</span>
-                              <span className="text-slate-400 font-normal">→</span>
-                              <span>{project.end_date ? new Date(project.end_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "Ongoing"}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Status Tag on the right of Schedule Date */}
-                        <div className="shrink-0 pl-2">
-                          {isProjectOverdue ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                              Overdue
-                            </span>
-                          ) : project.status === "COMPLETED" ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                              Delivered
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-100/80 border border-blue-200 text-blue-800 text-[11px] font-bold shadow-2xs">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
-                              On Schedule
-                            </span>
-                          )}
+                  {/* Right: Status Dropdown/Badge, Workspace Button, Delete Button */}
+                  <div className="shrink-0 flex items-center gap-2.5 self-end sm:self-center">
+                    {isAdmin || isDeptManager || isCreator || isLead ? (
+                      <div className="relative inline-block">
+                        <select
+                          value={project.status}
+                          disabled={updatingProjectId === project.id}
+                          onChange={(e) => handleStatusChange(project.id, e.target.value)}
+                          className={`text-xs font-semibold rounded-lg pl-2.5 pr-7 py-1.5 border transition cursor-pointer focus:outline-none appearance-none shadow-2xs ${status.bg} ${status.color}`}
+                          title="Update Project Status"
+                        >
+                          <option value="PLANNING">Planning</option>
+                          <option value="IN_PROGRESS">In Progress</option>
+                          <option value="COMPLETED">Completed</option>
+                          <option value="ON_HOLD">On Hold</option>
+                          <option value="CANCELLED">Cancelled</option>
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-current opacity-70">
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <span className={`text-xs font-semibold rounded-lg px-2.5 py-1.5 border inline-flex items-center gap-1.5 shadow-2xs ${status.bg} ${status.color}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${status.dot || "bg-slate-400"}`} />
+                        <span>{status.label}</span>
+                      </span>
+                    )}
 
-                    {/* Assigned Team Members Section Action Bar */}
-                    <div className="flex items-center justify-between pt-1 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setActiveWorkspaceProject(project)}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                      title="Open Project Workspace"
+                    >
+                      <span>Workspace</span>
+                      <span>→</span>
+                    </button>
+
+                    {(isCreator || isDeptManager || isAdmin) && (
                       <button
                         type="button"
-                        onClick={() => toggleProjectExpand(project.id)}
-                        className="inline-flex items-center gap-2 text-xs font-bold text-slate-900 hover:text-blue-600 transition cursor-pointer"
+                        onClick={() => handleDelete(project.id, project.name)}
+                        className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer rounded-lg hover:bg-rose-50"
+                        title="Delete Project"
                       >
-                        <svg
-                          className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? "rotate-180 text-blue-600" : "text-slate-400"}`}
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        <span>Assigned Team Members</span>
-                        <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold font-mono border border-blue-200">
-                          {assignedMembers.length}
-                        </span>
                       </button>
-
-                      <div className="flex items-center gap-2">
-                        {canManageProjectTasks && (
-                          <button
-                            type="button"
-                            onClick={() => openTaskModal(project)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs shadow-blue-600/20 transition cursor-pointer"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                            </svg>
-                            <span>Add Deliverable</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Expandable Assigned Team Members List */}
-                    {isExpanded && (
-                      <div className="pt-2 animate-fadeIn space-y-2">
-                        {isLoadingThisTasks && tasks.length === 0 ? (
-                          <div className="py-6 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                            <span>Loading team members…</span>
-                          </div>
-                        ) : assignedMembers.length === 0 ? (
-                          <div className="p-6 text-center rounded-xl bg-slate-50/50 border border-dashed border-slate-200 space-y-2">
-                            <p className="text-xs text-slate-500">No team members assigned with deliverables yet.</p>
-                            {canManageProjectTasks && (
-                              <button
-                                type="button"
-                                onClick={() => openTaskModal(project)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg border border-blue-200 cursor-pointer transition"
-                              >
-                                <span>+</span>
-                                <span>Add &amp; Assign First Deliverable</span>
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/80 bg-white overflow-hidden shadow-2xs">
-                            {assignedMembers.map((member) => {
-                              const memberTasks = tasks.filter(
-                                (t) => t.assigned_to === member.id || t.assignee_id === member.id
-                              );
-                              const memberTotal = memberTasks.length;
-                              const memberCompleted = memberTasks.filter((t) => t.status === "COMPLETED").length;
-                              const memberInProgress = memberTasks.filter((t) => t.status === "IN_PROGRESS").length;
-                              const memberTodo = memberTasks.filter((t) => t.status === "TODO").length;
-                              const memberOverdue = memberTasks.filter(
-                                (t) => t.due_date && new Date(t.due_date) < new Date() && t.status !== "COMPLETED"
-                              ).length;
-                              const memberProgressPct = memberTotal > 0 ? Math.round((memberCompleted / memberTotal) * 100) : 0;
-                              const isOnline = member.auth_user_id && onlineUserIds.has(member.auth_user_id);
-
-                              return (
-                                <div
-                                  key={member.id}
-                                  onClick={() =>
-                                    setSelectedMemberModal({
-                                      project,
-                                      member,
-                                      tasks: memberTasks,
-                                    })
-                                  }
-                                  className="p-3 sm:px-4 sm:py-3.5 hover:bg-blue-50/30 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 group/member cursor-pointer"
-                                >
-                                  {/* Left: Avatar, Full Name, Designation, Department */}
-                                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                                    <div className="relative shrink-0">
-                                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white font-bold text-xs flex items-center justify-center shadow-xs">
-                                        {member.full_name?.charAt(0).toUpperCase() || "M"}
-                                      </div>
-                                      {isOnline && (
-                                        <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
-                                      )}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center gap-2 flex-wrap">
-                                        <h4 className="text-xs font-bold text-slate-900 group-hover/member:text-blue-600 transition-colors truncate">
-                                          {member.full_name}
-                                        </h4>
-                                        {member.designation && (
-                                          <span className="text-[10px] font-medium px-2 py-0.2 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                            {member.designation}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <p className="text-[11px] text-slate-500 truncate">
-                                        {member.department || project.department || "Department Member"}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  {/* Right: Quick Progress Chips & "View Tasks & Progress" Action Button */}
-                                  <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap justify-between sm:justify-end">
-                                    {/* Task Summary Badges */}
-                                    <div className="flex items-center gap-1.5 text-[10px] font-semibold">
-                                      <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono border border-slate-200">
-                                        {memberTotal} {memberTotal === 1 ? "task" : "tasks"}
-                                      </span>
-                                      {memberCompleted > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-mono border border-emerald-200">
-                                          {memberCompleted} done
-                                        </span>
-                                      )}
-                                      {memberInProgress > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700 font-mono border border-blue-200">
-                                          {memberInProgress} active
-                                        </span>
-                                      )}
-                                      {memberOverdue > 0 && (
-                                        <span className="px-1.5 py-0.5 rounded-md bg-blue-100/90 text-blue-900 font-mono border border-blue-300">
-                                          {memberOverdue} late
-                                        </span>
-                                      )}
-                                    </div>
-
-                                    {/* Progress Bar & Percentage */}
-                                    <div className="hidden md:flex items-center gap-1.5 w-24">
-                                      <div className="flex-1 h-1.5 rounded-full bg-blue-100/70 overflow-hidden">
-                                        <div
-                                          className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-300"
-                                          style={{ width: `${memberProgressPct}%` }}
-                                        />
-                                      </div>
-                                      <span className="text-[10px] font-mono font-bold text-blue-800">
-                                        {memberProgressPct}%
-                                      </span>
-                                    </div>
-
-                                    {/* View Tasks Action Button */}
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedMemberModal({
-                                          project,
-                                          member,
-                                          tasks: memberTasks,
-                                        });
-                                      }}
-                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200/90 text-xs font-bold transition shadow-2xs cursor-pointer group-hover/member:bg-blue-600 group-hover/member:text-white"
-                                    >
-                                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                      </svg>
-                                      <span>View Tasks</span>
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
                     )}
                   </div>
                 </div>
@@ -3946,65 +3293,70 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
 
               {/* Modal Body with Scroll */}
               <div className="p-5 sm:p-6 overflow-y-auto space-y-6">
-                {/* 1. Quick Stats Metric Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
-                  <div className="p-3 rounded-xl bg-blue-50/40 border border-blue-100 shadow-2xs">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Tasks</span>
-                    <div className="text-xl font-extrabold text-slate-900 font-mono mt-0.5">{total}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-blue-50/50 border border-blue-200/70 shadow-2xs">
-                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">To Do</span>
-                    <div className="text-xl font-extrabold text-blue-800 font-mono mt-0.5">{todo}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-blue-50/80 border border-blue-200 shadow-2xs">
-                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">In Progress</span>
-                    <div className="text-xl font-extrabold text-blue-700 font-mono mt-0.5">{inProgress}</div>
-                  </div>
-                  <div className="p-3 rounded-xl bg-blue-100/70 border border-blue-200 shadow-2xs">
-                    <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">Completed</span>
-                    <div className="text-xl font-extrabold text-blue-900 font-mono mt-0.5">{completed}</div>
-                  </div>
-                </div>
+                {/* Deliverables Health & Status Distribution */}
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-700">Deliverable Status Distribution</span>
+                      <span className="text-slate-500 font-medium">
+                        {completed} of {total} Completed ({total > 0 ? Math.round((completed / total) * 100) : 0}%)
+                      </span>
+                    </div>
 
-                {/* 2. Visual Bar Graph View */}
-                <div className="p-4 sm:p-5 rounded-2xl bg-blue-50/30 border border-blue-100/80 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <svg className="w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Individual Member Performance
-                    </h4>
-                  </div>
-
-                  {/* 4 Vertical Bar Charts */}
-                  <div className="h-44 flex items-end justify-between gap-3 sm:gap-6 px-4 sm:px-8 pb-3 pt-4 border-b border-blue-100 bg-white rounded-xl shadow-2xs">
-                    {bars.map((bar, idx) => {
-                      const heightPercent = Math.max(Math.round((bar.count / maxVal) * 100), bar.count > 0 ? 14 : 6);
-                      const sharePercent = total > 0 ? Math.round((bar.count / total) * 100) : 0;
-
-                      return (
-                        <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                          <span className={`text-xs font-mono font-bold ${bar.textColor}`}>
-                            {bar.count}
-                          </span>
-                          <div className="w-full max-w-[48px] bg-blue-50/80 rounded-t-lg overflow-hidden flex flex-col justify-end relative h-28 border border-blue-100/60">
+                    {/* Distribution Track */}
+                    <div className="h-2.5 w-full bg-slate-100 rounded-full overflow-hidden flex p-0.5 gap-0.5 border border-slate-200/80 shadow-inner">
+                      {total > 0 ? (
+                        <>
+                          {completed > 0 && (
                             <div
-                              className={`w-full rounded-t-lg bg-gradient-to-t ${bar.color} transition-all duration-500 ease-out group-hover:brightness-105 shadow-xs`}
-                              style={{ height: `${heightPercent}%` }}
+                              style={{ width: `${(completed / total) * 100}%` }}
+                              className="h-full bg-emerald-500 rounded-full transition-all duration-500"
+                              title={`Completed: ${completed}`}
                             />
-                          </div>
-                          <div className="text-center">
-                            <div className="flex items-center justify-center gap-1 text-[11px] font-bold text-slate-700">
-                              <span>{bar.label}</span>
-                            </div>
-                            <span className="text-[10px] font-mono text-blue-600">
-                              {sharePercent}%
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                          )}
+                          {inProgress > 0 && (
+                            <div
+                              style={{ width: `${(inProgress / total) * 100}%` }}
+                              className="h-full bg-sky-500 rounded-full transition-all duration-500"
+                              title={`In Progress: ${inProgress}`}
+                            />
+                          )}
+                          {todo > 0 && (
+                            <div
+                              style={{ width: `${(todo / total) * 100}%` }}
+                              className="h-full bg-slate-400 rounded-full transition-all duration-500"
+                              title={`To Do: ${todo}`}
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <div className="h-full w-full bg-slate-200 rounded-full" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 4 Clean Metric Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 shadow-2xs space-y-1">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Tasks</span>
+                      <div className="text-xl font-extrabold text-slate-900">{total}</div>
+                      <p className="text-[10px] text-slate-400">All deliverables</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 shadow-2xs space-y-1">
+                      <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">To Do</span>
+                      <div className="text-xl font-extrabold text-slate-800">{todo}</div>
+                      <p className="text-[10px] text-slate-400">{total > 0 ? Math.round((todo / total) * 100) : 0}% of tasks</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-sky-50/60 border border-sky-200/70 shadow-2xs space-y-1">
+                      <span className="text-[11px] font-bold text-sky-700 uppercase tracking-wider block">In Progress</span>
+                      <div className="text-xl font-extrabold text-sky-900">{inProgress}</div>
+                      <p className="text-[10px] text-sky-700/70">{total > 0 ? Math.round((inProgress / total) * 100) : 0}% of tasks</p>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-emerald-50/60 border border-emerald-200/70 shadow-2xs space-y-1">
+                      <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Completed</span>
+                      <div className="text-xl font-extrabold text-emerald-900">{completed}</div>
+                      <p className="text-[10px] text-emerald-700/70">{total > 0 ? Math.round((completed / total) * 100) : 0}% of tasks</p>
+                    </div>
                   </div>
                 </div>
 
@@ -4374,81 +3726,22 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
           </div>
         </div>
       )}
-      {/* Sprint Performance & Member Evaluation Modal */}
-      {selectedSprintForPerfEval && (() => {
-        const targetProj = projects.find((p) => p.id === (selectedSprintForPerfEval.project_id || selectedSprintForPerfEval.project?.id)) || scopedProjects[0];
-        
-        // Filter members strictly belonging to this project
-        const projectMemberMap = new Map();
-        const pool = [...departmentEmployees, ...allEmployeesList];
-        
-        if (targetProj?.team_lead_id) {
-          const lead = pool.find((e) => e.id === targetProj.team_lead_id);
-          if (lead) projectMemberMap.set(lead.id, lead);
-        }
-        if (targetProj?.owner_id || targetProj?.created_by) {
-          const owner = pool.find((e) => e.id === (targetProj.owner_id || targetProj.created_by));
-          if (owner) projectMemberMap.set(owner.id, owner);
-        }
-        if (Array.isArray(targetProj?.teamMembers)) {
-          targetProj.teamMembers.forEach((m) => { if (m?.id) projectMemberMap.set(m.id, m); });
-        }
-        if (Array.isArray(targetProj?.team_members)) {
-          targetProj.team_members.forEach((m) => {
-            const cleanId = typeof m === "object" ? m?.id : m;
-            if (cleanId && !projectMemberMap.has(cleanId)) {
-              const emp = typeof m === "object" ? m : pool.find((e) => e.id === cleanId);
-              if (emp) projectMemberMap.set(cleanId, emp);
-            }
-          });
-        }
-        // Also include any assignees from target project tasks
-        const projTasks = (tasks || []).filter((t) => t.project_id === targetProj?.id);
-        projTasks.forEach((t) => {
-          const assignId = t.assigned_to || t.planned_assignee_id;
-          if (assignId && !projectMemberMap.has(assignId)) {
-            const emp = pool.find((e) => e.id === assignId);
-            if (emp) projectMemberMap.set(assignId, emp);
-          }
-        });
 
-        const filteredTeamMembers = projectMemberMap.size > 0
-          ? Array.from(projectMemberMap.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""))
-          : (targetProj?.teamMembers || []);
-
-        return (
-          <SprintPerformanceModal
-            isOpen={Boolean(selectedSprintForPerfEval)}
-            onClose={() => setSelectedSprintForPerfEval(null)}
-            sprint={selectedSprintForPerfEval}
-            project={targetProj}
-            teamMembers={filteredTeamMembers}
-            currentUserId={employeeProfile?.id}
-            isTeamLeadOrManager={isTeamLead || isManager || isAdmin || isOwner}
-            initialEmployeeId={analyticsEmployeeFilter !== "all" ? analyticsEmployeeFilter : null}
-            onEvaluationSaved={() => {
-              fetchAnalytics();
-              if (perfViewMode === "monthly") fetchMonthlyPerformance(selectedMonth);
-              showNotificationToast("Sprint performance evaluation saved.", "success");
-            }}
-          />
-        );
-      })()}
-
-      {/* Monthly Performance Evaluation Modal */}
-      <TLMonthlyEvaluationModal
-        isOpen={isTLMonthlyEvalModalOpen}
-        onClose={() => {
-          setIsTLMonthlyEvalModalOpen(false);
-          if (perfViewMode === "monthly") fetchMonthlyPerformance(selectedMonth);
-        }}
-        onSaved={(empName) => {
-          setIsTLMonthlyEvalModalOpen(false);
-          if (perfViewMode === "monthly") fetchMonthlyPerformance(selectedMonth);
-          fetchAnalytics();
-          showNotificationToast(`Monthly evaluation saved successfully for ${empName || "employee"}.`, "success");
-        }}
-      />
+      {/* Monthly Performance & Feedback Evaluation Modal */}
+      {showTLMonthlyEvalModal && (
+        <TLMonthlyEvaluationModal
+          isOpen={showTLMonthlyEvalModal}
+          onClose={() => {
+            setShowTLMonthlyEvalModal(false);
+            setSelectedEmpForTLEval(null);
+          }}
+          initialEmployeeId={typeof selectedEmpForTLEval === "object" ? selectedEmpForTLEval?.id : selectedEmpForTLEval}
+          projectEmployees={departmentEmployees}
+          onSaved={() => {
+            if (!isEmployee) fetchAnalytics();
+          }}
+        />
+      )}
     </div>
   );
 }

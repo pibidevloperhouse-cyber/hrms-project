@@ -4,15 +4,18 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
+import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
  * GET /api/projects
- * Lists projects for the authenticated user's company, scoped by role:
- * - Manager: Projects created by the manager or in the manager's department
- * - Team Lead: Projects assigned to this lead or in their department
+ * Lists projects for the authenticated user's company, scoped strictly by role & permission:
  * - Admin: All projects in the company
+ * - Manager: Projects created by the manager or in the manager's department
+ * - Team Lead: Projects where user is the assigned team_lead_id or squad member
+ * - Employee: Strictly scoped to projects where the employee is in team_members or has assigned tasks
  */
 export async function GET(req) {
   try {
@@ -36,16 +39,34 @@ export async function GET(req) {
       );
     }
 
+    // Auto-sync date-driven sprint lifecycles in background
+    try {
+      await syncSprintLifecycles(adminSupabase, company.id);
+    } catch (sprintSyncErr) {
+      console.warn("Auto sprint sync warning in GET /api/projects:", sprintSyncErr?.message);
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isTeamLead = cleanRole.includes("lead");
+    const userDept = employeeProfile?.department?.trim();
+
+    // Collect all valid identity tokens for the authenticated user
+    const myIdentities = new Set();
+    if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
+    if (user?.id) myIdentities.add(user.id);
+    if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
+    if (employeeProfile?.user_id) myIdentities.add(employeeProfile.user_id);
+    const idList = Array.from(myIdentities);
+
     let query = adminSupabase
       .from("projects")
       .select("*")
       .eq("company_id", company.id)
       .order("created_at", { ascending: false });
 
-    const cleanRole = (role || "").toLowerCase().replace(/\s+/g, "_");
-    const userDept = employeeProfile?.department?.trim();
-
-    if (cleanRole === "manager") {
+    if (isManager) {
       if (employeeProfile?.id) {
         if (userDept) {
           query = query.or(`created_by.eq.${employeeProfile.id},department.ilike."${userDept.replace(/"/g, '""')}"`);
@@ -55,10 +76,10 @@ export async function GET(req) {
       } else if (userDept) {
         query = query.ilike("department", userDept);
       }
-    } else if (cleanRole === "team_lead") {
-      // STRICT SCOPING: A Team Lead must ONLY see projects where they are the assigned team_lead_id
+    } else if (isTeamLead) {
+      // STRICT SCOPING: Team Lead sees projects where they are assigned as lead or creator
       if (employeeProfile?.id) {
-        query = query.eq("team_lead_id", employeeProfile.id);
+        query = query.or(`team_lead_id.eq.${employeeProfile.id},created_by.eq.${employeeProfile.id}`);
       } else {
         return NextResponse.json({
           success: true,
@@ -66,21 +87,14 @@ export async function GET(req) {
           count: 0,
         });
       }
-    } else if (cleanRole === "admin") {
+    } else if (isOwnerOrAdmin) {
       // Admins see all company projects
     } else {
-      // Employees see projects where:
-      // 1. They have assigned or planned tasks
-      // 2. They are listed in team_members
-      // 3. Or the project belongs to their department
-      const myIdentities = new Set();
-      if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
-      if (user?.id) myIdentities.add(user.id);
-      if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
-      if (employeeProfile?.user_id) myIdentities.add(employeeProfile.user_id);
-
-      if (myIdentities.size > 0) {
-        const idList = Array.from(myIdentities);
+      // REGULAR EMPLOYEES: Strictly authorized project membership only
+      // 1. Projects with assigned/planned tasks for this employee
+      // 2. Projects where the employee is in team_members
+      let myTaskProjectIds = [];
+      if (idList.length > 0) {
         const [assignedTasksRes, plannedTasksRes] = await Promise.all([
           adminSupabase
             .from("project_tasks")
@@ -94,25 +108,87 @@ export async function GET(req) {
             .in("planned_assignee_id", idList),
         ]);
 
-        const myProjectIds = Array.from(
+        myTaskProjectIds = Array.from(
           new Set([
             ...(assignedTasksRes.data || []).map((t) => t.project_id),
             ...(plannedTasksRes.data || []).map((t) => t.project_id),
           ].filter(Boolean))
         );
-
-        if (myProjectIds.length > 0) {
-          if (userDept) {
-            query = query.or(`id.in.(${myProjectIds.join(",")}),department.ilike."${userDept.replace(/"/g, '""')}"`);
-          } else {
-            query = query.in("id", myProjectIds);
-          }
-        } else if (userDept) {
-          query = query.ilike("department", userDept);
-        }
-      } else if (userDept) {
-        query = query.ilike("department", userDept);
       }
+
+      // Fetch projects to filter by squad membership & tasks
+      const { data: rawProjects, error: fetchErr } = await query;
+      if (fetchErr) {
+        if (
+          fetchErr.code === "42P01" ||
+          fetchErr.code === "PGRST205" ||
+          fetchErr.code === "PGRST204" ||
+          fetchErr.message?.includes("schema cache") ||
+          fetchErr.message?.includes("Could not find the table")
+        ) {
+          return NextResponse.json({
+            success: true,
+            projects: [],
+            tableNotReady: true,
+          });
+        }
+        console.error("Fetch projects error:", fetchErr);
+        return NextResponse.json({ message: "Failed to load projects." }, { status: 500 });
+      }
+
+      const taskProjIdSet = new Set(myTaskProjectIds);
+      const authorizedProjects = (rawProjects || []).filter((p) => {
+        if (taskProjIdSet.has(p.id)) return true;
+        if (p.created_by && myIdentities.has(p.created_by)) return true;
+        if (p.team_lead_id && myIdentities.has(p.team_lead_id)) return true;
+        if (Array.isArray(p.team_members)) {
+          return p.team_members.some((mId) => myIdentities.has(mId));
+        }
+        return false;
+      });
+
+      // Enrich authorized projects
+      const empIds = new Set();
+      authorizedProjects.forEach((p) => {
+        if (p.created_by) empIds.add(p.created_by);
+        if (p.team_lead_id) empIds.add(p.team_lead_id);
+        if (Array.isArray(p.team_members)) {
+          p.team_members.forEach((mId) => {
+            if (mId) empIds.add(mId);
+          });
+        }
+      });
+
+      const empMap = {};
+      if (empIds.size > 0) {
+        const { data: emps } = await adminSupabase
+          .from("employees")
+          .select("id, full_name, email, role, department, designation, username, avatar_url")
+          .in("id", Array.from(empIds));
+
+        if (emps) {
+          emps.forEach((e) => {
+            empMap[e.id] = e;
+          });
+        }
+      }
+
+      const enrichedProjects = authorizedProjects.map((p) => ({
+        ...p,
+        project_type: p.project_type || "Scrum",
+        project_group: p.project_group || null,
+        creator: empMap[p.created_by] || null,
+        teamLead: empMap[p.team_lead_id] || null,
+        teamMembers: Array.isArray(p.team_members)
+          ? p.team_members.map((mId) => empMap[mId]).filter(Boolean)
+          : [],
+      }));
+
+      return NextResponse.json({
+        success: true,
+        projects: enrichedProjects,
+        count: enrichedProjects.length,
+      });
     }
 
     const { data: projects, error: fetchErr } = await query;

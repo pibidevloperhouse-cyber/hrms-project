@@ -3,17 +3,18 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
  * GET /api/projects/tasks
- * Batch fetches all project tasks for the authenticated user's company in a single optimized query.
- * Scoped properly according to user role:
- * - Admin / Manager: All tasks across accessible company projects
- * - Team Lead: Tasks in lead's projects or assigned to lead
- * - Employee: Tasks assigned to the employee or in user's scoped projects
+ * Batch fetches project tasks for the authenticated user's company, strictly scoped by role:
+ * - Admin: All tasks across company projects
+ * - Manager: Tasks in manager's department or created projects
+ * - Team Lead: Tasks in lead's assigned projects or assigned to lead
+ * - Employee: Tasks in employee's authorized projects or assigned directly to employee
  */
 export async function GET(req) {
   try {
@@ -31,19 +32,16 @@ export async function GET(req) {
       return NextResponse.json({ message: "No company workspace found." }, { status: 404 });
     }
 
+    // Auto-sync date-driven sprint lifecycles
+    try {
+      await syncSprintLifecycles(adminSupabase, company.id);
+    } catch (sprintSyncErr) {
+      console.warn("Auto sprint sync warning in GET /api/projects/tasks:", sprintSyncErr?.message);
+    }
+
     const { searchParams } = new URL(req.url);
     const projectIdFilter = searchParams.get("projectId");
     const assignedOnly = searchParams.get("assignedOnly") === "true";
-
-    let query = adminSupabase
-      .from("project_tasks")
-      .select("*, project:projects(id, name, department, status, priority, team_lead_id, created_by)")
-      .eq("company_id", company.id)
-      .order("created_at", { ascending: true });
-
-    if (projectIdFilter) {
-      query = query.eq("project_id", projectIdFilter);
-    }
 
     const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
     const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
@@ -51,22 +49,100 @@ export async function GET(req) {
     const isLead = cleanRole.includes("lead");
     const isEmployee = !isOwnerOrAdmin && !isManager && !isLead;
 
-    // Collect all valid identity tokens for current employee
+    // Collect all valid identity tokens for current user
     const myIdentities = new Set();
     if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
     if (user?.id) myIdentities.add(user.id);
     if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
     if (employeeProfile?.user_id) myIdentities.add(employeeProfile.user_id);
+    const idList = Array.from(myIdentities);
+
+    let query = adminSupabase
+      .from("project_tasks")
+      .select("*, project:projects(id, name, department, status, priority, team_lead_id, created_by, team_members)")
+      .eq("company_id", company.id)
+      .order("created_at", { ascending: true });
 
     if (assignedOnly) {
-      if (myIdentities.size > 0) {
-        const idList = Array.from(myIdentities);
+      if (idList.length > 0) {
         const orClauses = idList.flatMap((id) => [
           `assigned_to.eq.${id}`,
           `planned_assignee_id.eq.${id}`,
         ]);
         query = query.or(orClauses.join(","));
+      } else {
+        return NextResponse.json({ success: true, tasks: [], tasksByProject: {}, count: 0 });
       }
+    } else if (isEmployee) {
+      // Find all project IDs this employee is authorized to view
+      const { data: memberProjects } = await adminSupabase
+        .from("projects")
+        .select("id, team_members, created_by, team_lead_id")
+        .eq("company_id", company.id);
+
+      const authorizedProjectIds = new Set();
+      (memberProjects || []).forEach((p) => {
+        if (p.created_by && myIdentities.has(p.created_by)) authorizedProjectIds.add(p.id);
+        if (p.team_lead_id && myIdentities.has(p.team_lead_id)) authorizedProjectIds.add(p.id);
+        if (Array.isArray(p.team_members) && p.team_members.some((m) => myIdentities.has(m))) {
+          authorizedProjectIds.add(p.id);
+        }
+      });
+
+      // Also include projects where user has assigned tasks
+      if (idList.length > 0) {
+        const { data: myTasks } = await adminSupabase
+          .from("project_tasks")
+          .select("project_id")
+          .eq("company_id", company.id)
+          .or(idList.flatMap((id) => [`assigned_to.eq.${id}`, `planned_assignee_id.eq.${id}`]).join(","));
+
+        (myTasks || []).forEach((t) => {
+          if (t.project_id) authorizedProjectIds.add(t.project_id);
+        });
+      }
+
+      if (projectIdFilter) {
+        if (!authorizedProjectIds.has(projectIdFilter)) {
+          return NextResponse.json({
+            success: true,
+            tasks: [],
+            tasksByProject: {},
+            count: 0,
+          });
+        }
+        query = query.eq("project_id", projectIdFilter);
+      } else {
+        const projIdList = Array.from(authorizedProjectIds);
+        if (projIdList.length === 0) {
+          return NextResponse.json({ success: true, tasks: [], tasksByProject: {}, count: 0 });
+        }
+        query = query.in("project_id", projIdList);
+      }
+    } else if (isLead) {
+      if (projectIdFilter) {
+        query = query.eq("project_id", projectIdFilter);
+      } else {
+        // Query tasks in lead's projects or assigned to lead
+        const { data: leadProjects } = await adminSupabase
+          .from("projects")
+          .select("id")
+          .eq("company_id", company.id)
+          .eq("team_lead_id", employeeProfile?.id || "none");
+
+        const leadProjIds = (leadProjects || []).map((p) => p.id);
+        if (leadProjIds.length > 0 && idList.length > 0) {
+          query = query.or(
+            `project_id.in.(${leadProjIds.join(",")}),assigned_to.in.(${idList.join(",")}),planned_assignee_id.in.(${idList.join(",")})`
+          );
+        } else if (leadProjIds.length > 0) {
+          query = query.in("project_id", leadProjIds);
+        } else if (idList.length > 0) {
+          query = query.or(idList.flatMap((id) => [`assigned_to.eq.${id}`, `planned_assignee_id.eq.${id}`]).join(","));
+        }
+      }
+    } else if (projectIdFilter) {
+      query = query.eq("project_id", projectIdFilter);
     }
 
     let { data: tasks, error: tasksErr } = await query;
@@ -303,8 +379,16 @@ export async function GET(req) {
         planned_assignee: assignee,
         sprint,
         epic,
-        is_sprint_active: sprint ? sprint.status === "ACTIVE" : false,
-        is_sprint_planned: sprint ? sprint.status === "PLANNED" : false,
+        is_sprint_active: sprint
+          ? ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(
+              String(sprint.status || "").trim().toUpperCase()
+            )
+          : false,
+        is_sprint_planned: sprint
+          ? ["PLANNED", "PLANNING", ""].includes(
+              String(sprint.status || "").trim().toUpperCase()
+            )
+          : false,
         is_in_backlog: !t.sprint_id,
         review_comments: cleanReviewComments,
         review_attachments: effectiveReviewAttachments,

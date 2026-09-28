@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 
 export default function TaskExtensionModal({
   isOpen,
@@ -225,18 +226,9 @@ export default function TaskExtensionModal({
     setErrorMsg("");
 
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "request_extension",
           extension_requested_date: requestedDueDate,

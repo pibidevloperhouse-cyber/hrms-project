@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 
 const PROJECT_TYPES = ["Scrum", "Kanban", "Custom Agile"];
 
@@ -52,10 +53,7 @@ export default function CreateProjectModal({
     if (isOpen) {
       (async () => {
         try {
-          const supabase = createClient();
-          let session = (await supabase.auth.getSession()).data?.session;
-          const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-          const res = await fetch("/api/employees/list", { headers });
+          const res = await authFetch("/api/employees/list");
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data.employees)) {
@@ -159,13 +157,6 @@ export default function CreateProjectModal({
 
     setIsSubmitting(true);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
       const payload = {
         name: name.trim(),
         project_type: projectType,
@@ -181,9 +172,9 @@ export default function CreateProjectModal({
         priority,
       };
 
-      const res = await fetch("/api/projects", {
+      const res = await authFetch("/api/projects", {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 

@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import {
   checkTaskSprintOverdue,
   validateTaskSprintBounds,
@@ -154,10 +155,7 @@ export default function TaskDetailModal({
     if (!sprints || sprints.length === 0) {
       const fetchSprints = async () => {
         try {
-          const supabase = createClient();
-          const { data: { session } } = await supabase.auth.getSession();
-          const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-          const res = await fetch(`/api/projects/${effectiveProjId}/sprints?t=${Date.now()}`, { headers });
+          const res = await authFetch(`/api/projects/${effectiveProjId}/sprints?t=${Date.now()}`);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data.sprints)) {
@@ -174,10 +172,7 @@ export default function TaskDetailModal({
     if (!epics || epics.length === 0) {
       const fetchEpics = async () => {
         try {
-          const supabase = createClient();
-          const { data: { session } } = await supabase.auth.getSession();
-          const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
-          const res = await fetch(`/api/projects/${effectiveProjId}/epics?t=${Date.now()}`, { headers });
+          const res = await authFetch(`/api/projects/${effectiveProjId}/epics?t=${Date.now()}`);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data.epics)) {
@@ -750,16 +745,9 @@ export default function TaskDetailModal({
     setIsDecidingExtension(true);
     setFeedbackMsg({ text: "", type: "" });
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "decide_extension",
           decision,
@@ -916,9 +904,9 @@ export default function TaskDetailModal({
         payload.review_submitted_at = new Date().toISOString();
       }
 
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -955,18 +943,9 @@ export default function TaskDetailModal({
     setIsSubmitting(true);
     setFeedbackMsg({ text: "", type: "" });
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
           progress: 100,
@@ -1014,15 +993,6 @@ export default function TaskDetailModal({
     setIsSubmitting(true);
     setFeedbackMsg({ text: "", type: "" });
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
       const payload = {
         status: "TODO",
         progress: 0,
@@ -1034,9 +1004,9 @@ export default function TaskDetailModal({
         comments: `[Team Lead Suggestions]: ${suggestionNotes.trim()}`,
       };
 
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -1072,18 +1042,9 @@ export default function TaskDetailModal({
     setIsSubmitting(true);
     setFeedbackMsg({ text: "", type: "" });
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "IN_PROGRESS",
           progress: 25,

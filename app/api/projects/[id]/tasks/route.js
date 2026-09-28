@@ -4,12 +4,14 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
+import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
  * GET /api/projects/[id]/tasks
- * Lists all subtasks for a given project.
+ * Lists all subtasks for a given project with strict role-based access control.
  */
 export async function GET(req, { params }) {
   try {
@@ -26,59 +28,60 @@ export async function GET(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
 
-    if (!company) {
-      return NextResponse.json({ message: "No company workspace found." }, { status: 404 });
-    }
-
-    // Verify project exists in this company
+    // Verify project exists in this workspace
     const { data: project, error: projErr } = await adminSupabase
       .from("projects")
-      .select("*, teamLead:employees!projects_team_lead_id_fkey(id, full_name, email, designation)")
+      .select("*")
       .eq("id", projectId)
-      .eq("company_id", company.id)
       .maybeSingle();
 
     if (projErr || !project) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 });
     }
 
-    // Role check:
-    // - ADMIN: Can view any project tasks
-    // - Manager: Can view if created_by them or in their department
-    // - Team Lead: Can view if they are the assigned team_lead_id
-    // - Employee: Can view if project is in their department or task is assigned to them
-    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
-    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
-    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
-    const isLead = cleanRole.includes("lead") || project.team_lead_id === employeeProfile?.id;
-    const isProjectOwnerOrCreator = project.created_by === employeeProfile?.id || project.owner_id === employeeProfile?.id;
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
 
-    // Managers, Leads, Admins, and Project Creators oversee the project and MUST see all tasks to track employee progress!
-    const isManagementOrLead = isOwnerOrAdmin || isManager || isLead || isProjectOwnerOrCreator;
+    // Auto-sync date-driven sprint lifecycles
+    try {
+      if (project.company_id) {
+        await syncSprintLifecycles(adminSupabase, project.company_id, projectId);
+      }
+    } catch (sprintSyncErr) {
+      console.warn("Auto sprint sync warning in GET /api/projects/[id]/tasks:", sprintSyncErr?.message);
+    }
 
-    // Query subtasks
+    // Query subtasks strictly within company workspace
     let tasksQuery = adminSupabase
       .from("project_tasks")
       .select("*")
-      .eq("project_id", projectId)
-      .eq("company_id", company.id)
-      .order("created_at", { ascending: true });
+      .eq("project_id", projectId);
 
-    // Optional query param: ?assignedOnly=true for regular employees checking their own tasks in personal view
+    if (project.company_id) {
+      tasksQuery = tasksQuery.eq("company_id", project.company_id);
+    }
+
+    tasksQuery = tasksQuery.order("created_at", { ascending: true });
+
     const { searchParams } = new URL(req.url);
-    const assignedOnly = searchParams.get("assignedOnly") === "true";
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = project.owner_id === employeeProfile?.id || project.created_by === employeeProfile?.id;
+    const isAssignedLead = project.team_lead_id === employeeProfile?.id;
+    const isManagementOrLead = isOwnerOrAdmin || isManager || isProjectOwnerOrCreator || isAssignedLead || cleanRole.includes("lead");
+
+    const myIdentities = new Set();
+    if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
+    if (user?.id) myIdentities.add(user.id);
+    if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
+    const idList = Array.from(myIdentities);
 
     if (!isManagementOrLead && assignedOnly) {
-      const myIdentities = new Set();
-      if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
-      if (user?.id) myIdentities.add(user.id);
-      if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
-      if (employeeProfile?.user_id) myIdentities.add(employeeProfile.user_id);
-
-      if (myIdentities.size > 0) {
-        const idList = Array.from(myIdentities);
+      if (idList.length > 0) {
         const orClauses = idList.flatMap((id) => [
           `assigned_to.eq.${id}`,
           `planned_assignee_id.eq.${id}`,
@@ -195,9 +198,10 @@ export async function GET(req, { params }) {
     const enrichedTasks = (tasks || []).map((t) => {
       const sprint = t.sprint_id ? sprintMap[t.sprint_id] || null : null;
       const epic = t.epic_id ? epicMap[t.epic_id] || null : null;
-      const isSprintActive = Boolean(sprint && sprint.status === "ACTIVE");
+      const rawSprintStatus = String(sprint?.status || "").trim().toUpperCase();
+      const isSprintActive = Boolean(sprint && ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(rawSprintStatus));
       const isInBacklog = !t.sprint_id;
-      const isSprintPlanned = Boolean(sprint && sprint.status === "PLANNED");
+      const isSprintPlanned = Boolean(sprint && (rawSprintStatus === "PLANNED" || rawSprintStatus === "PLANNING" || !rawSprintStatus));
 
       const rawStatus = t.status || "TODO";
       const normalizedStatus = rawStatus.toUpperCase().replace(/[\s-]+/g, "_");
@@ -388,22 +392,21 @@ export async function POST(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
-
-    if (!company) {
-      return NextResponse.json({ message: "No company workspace found." }, { status: 404 });
-    }
 
     // Fetch parent project
     const { data: project, error: projErr } = await adminSupabase
       .from("projects")
       .select("*")
       .eq("id", projectId)
-      .eq("company_id", company.id)
       .maybeSingle();
 
     if (projErr || !project) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
     }
 
     // Permission check: Team Lead assigned to project, creator Manager, or ADMIN
@@ -462,8 +465,7 @@ export async function POST(req, { params }) {
           await adminSupabase
             .from("projects")
             .update({ team_members: updatedMembers })
-            .eq("id", projectId)
-            .eq("company_id", company.id);
+            .eq("id", projectId);
         }
       } catch (enrollErr) {
         console.warn("Auto team member enrollment warning:", enrollErr?.message);
@@ -480,13 +482,15 @@ export async function POST(req, { params }) {
     let isSprintActive = false;
     let validatedDueDate = due_date || null;
     let targetSprint = null;
+    const projectCompanyId = project.company_id || company.id;
 
     if (body.sprint_id) {
       const { data: sData } = await adminSupabase
         .from("project_sprints")
         .select("id, name, status, start_date, end_date")
         .eq("id", body.sprint_id)
-        .eq("company_id", company.id)
+        .eq("project_id", projectId)
+        .eq("company_id", projectCompanyId)
         .maybeSingle();
 
       if (sData) {
@@ -511,12 +515,26 @@ export async function POST(req, { params }) {
       }
     }
 
+    let targetEpic = null;
+    if (body.epic_id) {
+      const { data: eData } = await adminSupabase
+        .from("project_epics")
+        .select("id, name")
+        .eq("id", body.epic_id)
+        .eq("project_id", projectId)
+        .eq("company_id", projectCompanyId)
+        .maybeSingle();
+      if (eData) {
+        targetEpic = eData;
+      }
+    }
+
     const activeAssignedTo = verifiedAssignee ? verifiedAssignee.id : null;
-    const cleanSprintId = body.sprint_id && String(body.sprint_id).trim() ? String(body.sprint_id).trim() : null;
-    const cleanEpicId = body.epic_id && String(body.epic_id).trim() ? String(body.epic_id).trim() : null;
+    const cleanSprintId = targetSprint ? targetSprint.id : (body.sprint_id && String(body.sprint_id).trim() ? String(body.sprint_id).trim() : null);
+    const cleanEpicId = targetEpic ? targetEpic.id : (body.epic_id && String(body.epic_id).trim() ? String(body.epic_id).trim() : null);
 
     const insertPayload = {
-      company_id: company.id,
+      company_id: projectCompanyId,
       project_id: projectId,
       title: title.trim(),
       description: description.trim(),

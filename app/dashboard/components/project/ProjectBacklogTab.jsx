@@ -2,10 +2,9 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import TaskDetailModal from "./TaskDetailModal";
 import CreateStoryTaskModal from "./CreateStoryTaskModal";
-import { checkTaskSprintOverdue } from "@/lib/projectUtils";
 
 export default function ProjectBacklogTab({
   project,
@@ -17,6 +16,7 @@ export default function ProjectBacklogTab({
   employeeProfile,
   currentUserId,
   onTasksUpdated,
+  onSprintsUpdated,
 }) {
   const allEmployees = useMemo(() => {
     const map = new Map();
@@ -67,13 +67,12 @@ export default function ProjectBacklogTab({
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [epicFilter, setEpicFilter] = useState("all");
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [defaultSprintForModal, setDefaultSprintForModal] = useState("");
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState(null);
   const [toastMsg, setToastMsg] = useState(null); // { message, type }
 
   useEffect(() => {
     if (toastMsg) {
-      const timer = setTimeout(() => setToastMsg(null), 2500);
+      const timer = setTimeout(() => setToastMsg(null), 3000);
       return () => clearTimeout(timer);
     }
   }, [toastMsg]);
@@ -84,45 +83,58 @@ export default function ProjectBacklogTab({
 
   const isKanban = (project?.project_type || "").toLowerCase() === "kanban";
 
+  const normalizeSprintStatus = (status) => {
+    const s = String(status || "").trim().toUpperCase();
+    if (["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(s)) return "ACTIVE";
+    if (["COMPLETED", "DONE", "FINISHED", "CLOSED"].includes(s)) return "COMPLETED";
+    return "PLANNED";
+  };
+
   // Filter tasks that match search, priority, and epic
   const taskMatchesFilter = (t) => {
     const matchSearch =
       !search.trim() ||
       t.title?.toLowerCase().includes(search.toLowerCase().trim()) ||
       t.assignee?.full_name?.toLowerCase().includes(search.toLowerCase().trim());
-    const matchPriority = priorityFilter === "all" || t.priority === priorityFilter;
+    const matchPriority = priorityFilter === "all" || (t.priority || "MEDIUM").toUpperCase() === priorityFilter;
     const matchEpic = epicFilter === "all" || t.epic_id === epicFilter;
     return matchSearch && matchPriority && matchEpic;
   };
 
-  // Tasks in Backlog (unscheduled in Scrum, or unstarted/continuous in Kanban)
+  // All Active and Planned Sprints for assign dropdown selectors
+  const activeAndPlannedSprints = useMemo(() => {
+    return (sprints || []).filter((s) => {
+      const norm = normalizeSprintStatus(s.status);
+      return norm === "ACTIVE" || norm === "PLANNED";
+    });
+  }, [sprints]);
+
+  // Tasks in Backlog: ONLY tasks that are NOT assigned to any sprint
   const backlogTasks = useMemo(() => {
     return tasks.filter((t) => {
-      const isUnscheduled = !t.sprint_id || !sprints.some((s) => s.id === t.sprint_id);
-      if (isKanban) {
-        return (t.status === "TODO" || !t.status) && taskMatchesFilter(t);
-      }
-      return isUnscheduled && taskMatchesFilter(t);
-    });
-  }, [tasks, sprints, search, priorityFilter, epicFilter, isKanban]);
+      const rawSprintId = t.sprint_id || t.sprint?.id;
+      const hasAssignedSprint = Boolean(
+        rawSprintId &&
+        String(rawSprintId).trim() !== "" &&
+        String(rawSprintId).trim() !== "null" &&
+        String(rawSprintId).trim() !== "undefined" &&
+        String(rawSprintId).trim() !== "backlog"
+      );
 
-  // Active and Planned Sprints
-  const activeAndPlannedSprints = useMemo(() => {
-    return sprints.filter((s) => s.status !== "COMPLETED");
-  }, [sprints]);
+      // Once a task is assigned to a sprint, NEVER show it in the backlog
+      if (hasAssignedSprint) {
+        return false;
+      }
+
+      return taskMatchesFilter(t);
+    });
+  }, [tasks, search, priorityFilter, epicFilter]);
 
   // Create Story or Backlog Item via Modal
   const handleCreateBacklogItem = async (taskPayload) => {
-    const supabase = createClient();
-    const { data: { session } } = await supabase.auth.getSession();
-    const headers = {
-      "Content-Type": "application/json",
-      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-    };
-
-    const res = await fetch(`/api/projects/${project.id}/tasks`, {
+    const res = await authFetch(`/api/projects/${project.id}/tasks`, {
       method: "POST",
-      headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(taskPayload),
     });
 
@@ -148,17 +160,10 @@ export default function ProjectBacklogTab({
       const movingTask = tasks.find((t) => t.id === taskId);
       if (!movingTask) return;
 
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
       let targetDueDate = movingTask.due_date;
       let targetSprintObj = null;
 
-      if (targetSprintId) {
+      if (targetSprintId && targetSprintId !== "backlog") {
         targetSprintObj = sprints.find((s) => s.id === targetSprintId);
         if (targetSprintObj) {
           const sprintStart = targetSprintObj.start_date ? targetSprintObj.start_date.split("T")[0] : null;
@@ -171,11 +176,11 @@ export default function ProjectBacklogTab({
         }
       }
 
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          sprint_id: targetSprintId || null,
+          sprint_id: (targetSprintId === "backlog" || !targetSprintId) ? null : targetSprintId,
           due_date: targetDueDate,
         }),
       });
@@ -183,12 +188,12 @@ export default function ProjectBacklogTab({
       const data = await res.json();
       if (res.ok) {
         const msg = targetSprintObj
-          ? `✓ Moved to Sprint "${targetSprintObj.name}".`
-          : "✓ Moved to Backlog (Unscheduled).";
+          ? `✓ Assigned to Sprint "${targetSprintObj.name}".`
+          : "✓ Moved to Backlog.";
         showNotificationToast(msg, "success");
         if (onTasksUpdated) onTasksUpdated();
       } else {
-        showNotificationToast(data.message || "Failed to move task to sprint.", "error");
+        showNotificationToast(data.message || "Failed to assign task to sprint.", "error");
       }
     } catch (err) {
       console.error("Failed to move task to sprint:", err);
@@ -199,16 +204,9 @@ export default function ProjectBacklogTab({
   // Assign or Change Epic
   const handleAssignEpic = async (taskId, epicId) => {
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           epic_id: epicId || null,
         }),
@@ -233,9 +231,139 @@ export default function ProjectBacklogTab({
     }
   };
 
-  const openCreateModal = (sprintId = "") => {
-    setDefaultSprintForModal(sprintId);
-    setIsAddingItem(true);
+  // Render individual backlog task row
+  const renderTaskRow = (item) => {
+    const linkedEpic = item.epic || epics.find((e) => e.id === item.epic_id);
+    const assignee =
+      item.assignee ||
+      item.planned_assignee ||
+      allEmployees.find((e) => e.id === (item.assigned_to || item.planned_assignee_id || item.assignee_id));
+
+    return (
+      <div
+        key={item.id}
+        onClick={() => setSelectedTaskForDetail(item)}
+        className="py-3 px-3.5 hover:bg-slate-50/90 rounded-lg transition flex flex-wrap items-center justify-between gap-3 cursor-pointer group border border-transparent hover:border-slate-200"
+      >
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <span
+            className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+              item.status === "COMPLETED"
+                ? "bg-emerald-500"
+                : item.status === "IN_PROGRESS"
+                ? "bg-sky-500"
+                : item.status === "REVIEW"
+                ? "bg-purple-500"
+                : "bg-slate-400"
+            }`}
+          />
+          <span className="font-semibold text-slate-900 truncate text-xs group-hover:text-blue-600 transition">
+            {item.title}
+          </span>
+
+          {/* Detailed description icon */}
+          {item.description && (
+            <span
+              title="Contains detailed description. Click to view."
+              className="text-[11px] text-slate-400 shrink-0"
+            >
+              📄
+            </span>
+          )}
+
+          {/* Status badge */}
+          {item.status && item.status !== "TODO" && (
+            <span
+              className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                item.status === "IN_PROGRESS"
+                  ? "bg-sky-50 text-sky-700 border-sky-200"
+                  : item.status === "REVIEW"
+                  ? "bg-purple-50 text-purple-700 border-purple-200"
+                  : item.status === "COMPLETED"
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-slate-100 text-slate-600 border-slate-200"
+              }`}
+            >
+              {item.status} {item.progress > 0 ? `${item.progress}%` : ""}
+            </span>
+          )}
+
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 shrink-0 font-medium">
+            {item.story_points || 1} pts
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {/* Epic Assign Dropdown */}
+          <select
+            value={item.epic_id || ""}
+            onChange={(e) => handleAssignEpic(item.id, e.target.value)}
+            className={`h-7 px-2 text-[10px] font-semibold rounded border cursor-pointer focus:outline-none transition ${
+              linkedEpic
+                ? "bg-indigo-50 text-indigo-700 border-indigo-200"
+                : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+            }`}
+            title="Assign or change Epic"
+          >
+            <option value="">No Epic</option>
+            {epics.map((ep) => (
+              <option key={ep.id} value={ep.id}>
+                ⚡ {ep.name}
+              </option>
+            ))}
+          </select>
+
+          {/* Priority Badge */}
+          <span
+            className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${
+              (item.priority || "").toUpperCase() === "URGENT"
+                ? "bg-rose-50 text-rose-700 border border-rose-200"
+                : (item.priority || "").toUpperCase() === "HIGH"
+                ? "bg-orange-50 text-orange-700 border border-orange-200"
+                : (item.priority || "").toUpperCase() === "MEDIUM"
+                ? "bg-amber-50 text-amber-700 border border-amber-200"
+                : "bg-slate-100 text-slate-600"
+            }`}
+          >
+            {item.priority || "MEDIUM"}
+          </span>
+
+          {/* Assignee */}
+          {assignee ? (
+            <div className="flex items-center gap-1.5 w-24 truncate justify-end">
+              <span className="text-[11px] font-medium text-slate-700 truncate">{assignee.full_name}</span>
+            </div>
+          ) : (
+            <span className="text-[11px] text-slate-400 italic w-24 text-right">Unassigned</span>
+          )}
+
+          {/* Assign to Sprint dropdown selector (Scrum only) */}
+          {!isKanban && (
+            <select
+              value="backlog"
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val && val !== "backlog") {
+                  handleMoveToSprint(item.id, val);
+                }
+              }}
+              className="h-7 px-2.5 text-[10px] font-semibold rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-blue-400 focus:outline-none cursor-pointer shadow-2xs"
+              title="Assign this task to a Sprint"
+            >
+              <option value="backlog">📋 Backlog (Unassigned)</option>
+              {activeAndPlannedSprints.map((s) => {
+                const isAct = normalizeSprintStatus(s.status) === "ACTIVE";
+                return (
+                  <option key={s.id} value={s.id}>
+                    {isAct ? "⚡ " : "🏃 "} {s.name} ({s.status})
+                  </option>
+                );
+              })}
+            </select>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -249,14 +377,14 @@ export default function ProjectBacklogTab({
             placeholder="Search tasks, deliverables, assignees…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full sm:w-64 h-8.5 px-3 rounded-lg border border-slate-300 bg-white text-xs focus:outline-none focus:border-blue-600 transition"
+            className="w-full sm:w-64 h-8.5 px-3 rounded-lg border border-slate-300 bg-white text-xs focus:outline-none focus:border-blue-600 transition shadow-2xs"
           />
 
           <select
             id="backlog-priority-filter"
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
-            className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600 cursor-pointer"
+            className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
           >
             <option value="all">All Priorities</option>
             <option value="LOW">Low</option>
@@ -270,7 +398,7 @@ export default function ProjectBacklogTab({
               id="backlog-epic-filter"
               value={epicFilter}
               onChange={(e) => setEpicFilter(e.target.value)}
-              className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600 cursor-pointer"
+              className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
             >
               <option value="all">All Epics</option>
               {epics.map((ep) => (
@@ -285,7 +413,7 @@ export default function ProjectBacklogTab({
         <button
           id="backlog-add-task-btn"
           type="button"
-          onClick={() => openCreateModal("")}
+          onClick={() => setIsAddingItem(true)}
           className="h-8.5 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs shrink-0"
         >
           <span>+</span>
@@ -293,163 +421,50 @@ export default function ProjectBacklogTab({
         </button>
       </div>
 
-      {/* Professional Create Task / Bug Modal Popup */}
+      {/* Professional Create Task / Bug Modal Popup (defaults to unassigned backlog) */}
       <CreateStoryTaskModal
         isOpen={isAddingItem}
-        onClose={() => {
-          setIsAddingItem(false);
-          setDefaultSprintForModal("");
-        }}
+        onClose={() => setIsAddingItem(false)}
         project={project}
         tasks={tasks}
         sprints={sprints}
         epics={epics}
         allEmployees={allEmployees}
-        defaultSprintId={defaultSprintForModal}
+        defaultSprintId=""
         onCreateTask={handleCreateBacklogItem}
       />
 
-
-
-      {/* BACKLOG SECTION (Unscheduled / Unstarted Deliverables) */}
+      {/* PRODUCT BACKLOG LIST SECTION (Only unassigned tasks) */}
       <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-3">
-        <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-          <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-            <span>📋</span> Backlog Deliverables ({backlogTasks.length})
-          </span>
-          <span className="text-[10px] text-slate-400">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-slate-900 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+              <span>📋</span> {isKanban ? "Continuous Backlog" : "Product Backlog (Unscheduled)"}
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 font-mono">
+              {backlogTasks.length} {backlogTasks.length === 1 ? "task" : "tasks"}
+            </span>
+          </div>
+          <span className="text-[10px] text-slate-400 hidden sm:inline">
             {isKanban
               ? "Continuous backlog tasks ready for prioritization & board execution"
-              : "Unscheduled tasks waiting for sprint allocation"}
+              : "Unassigned tasks waiting for sprint allocation"}
           </span>
         </div>
 
         {backlogTasks.length === 0 ? (
-          <div className="py-8 text-center text-slate-400 italic">
-            No backlog items found. Click &quot;+ Add Task&quot; above to create items.
+          <div className="py-12 px-4 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200 my-1">
+            <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-white shadow-2xs border border-slate-200 flex items-center justify-center text-slate-400 text-xl">
+              📋
+            </div>
+            <p className="font-semibold text-slate-700 text-xs">No unassigned backlog items found</p>
+            <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+              All tasks in this project are currently assigned to sprints. Click &quot;+ Add Task&quot; above to create new backlog items.
+            </p>
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {backlogTasks.map((item) => {
-              const linkedEpic = item.epic || epics.find((e) => e.id === item.epic_id);
-              const assignee =
-                item.assignee ||
-                item.planned_assignee ||
-                allEmployees.find((e) => e.id === (item.assigned_to || item.planned_assignee_id || item.assignee_id));
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={() => setSelectedTaskForDetail(item)}
-                  className="py-2.5 px-2 hover:bg-slate-50/80 rounded-lg transition flex flex-wrap items-center justify-between gap-3 cursor-pointer group"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                    <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
-                    <span className="font-semibold text-slate-900 truncate text-xs group-hover:text-blue-600 transition">
-                      {item.title}
-                    </span>
-
-                    {/* Detailed description badge */}
-                    {item.description && (
-                      <span
-                        title="Contains detailed description. Click to view."
-                        className="text-[11px] text-slate-400 shrink-0"
-                      >
-                        📄
-                      </span>
-                    )}
-
-                    {/* Status & Progress badge for in-progress backlog items */}
-                    {item.status && item.status !== "TODO" && (
-                      <span
-                        className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border shrink-0 ${
-                          item.status === "IN_PROGRESS"
-                            ? "bg-sky-50 text-sky-700 border-sky-200"
-                            : item.status === "REVIEW"
-                            ? "bg-purple-50 text-purple-700 border-purple-200"
-                            : "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}
-                        title={`Task is currently ${item.status} with ${item.progress || 0}% progress`}
-                      >
-                        {item.status} {item.progress > 0 ? `${item.progress}%` : ""}
-                      </span>
-                    )}
-
-                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 shrink-0">
-                      {item.story_points || 1} pts
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    {/* Epic Assign Dropdown */}
-                    <select
-                      value={item.epic_id || ""}
-                      onChange={(e) => handleAssignEpic(item.id, e.target.value)}
-                      className={`h-6.5 px-2 text-[10px] font-semibold rounded border cursor-pointer focus:outline-none transition ${
-                        linkedEpic
-                          ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-                          : "bg-white text-slate-400 border-slate-200 hover:border-slate-300"
-                      }`}
-                      title="Assign or change Epic"
-                    >
-                      <option value="">No Epic</option>
-                      {epics.map((ep) => (
-                        <option key={ep.id} value={ep.id}>
-                          ⚡ {ep.name}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* Priority Badge */}
-                    <span
-                      className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${
-                        item.priority === "URGENT"
-                          ? "bg-rose-50 text-rose-700 border border-rose-200"
-                          : item.priority === "HIGH"
-                          ? "bg-orange-50 text-orange-700 border border-orange-200"
-                          : item.priority === "MEDIUM"
-                          ? "bg-amber-50 text-amber-700 border border-amber-200"
-                          : "bg-slate-100 text-slate-600"
-                      }`}
-                    >
-                      {item.priority}
-                    </span>
-
-                    {/* Assignee */}
-                    {assignee ? (
-                      <div className="flex items-center gap-1.5 w-24 truncate justify-end">
-                        <span className="text-[11px] font-medium text-slate-700 truncate">{assignee.full_name}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[11px] text-slate-400 italic w-24 text-right">Unassigned</span>
-                    )}
-
-                    {/* Move to Sprint dropdown (Scrum / Custom Agile only) */}
-                    {!isKanban && activeAndPlannedSprints.length > 0 && (
-                      <select
-                        defaultValue=""
-                        onChange={(e) => {
-                          if (e.target.value) handleMoveToSprint(item.id, e.target.value);
-                        }}
-                        className="h-7 px-2 text-[10px] font-semibold rounded border border-blue-200 bg-blue-50/50 text-blue-700 hover:bg-blue-100/60 focus:outline-none cursor-pointer"
-                      >
-                        <option value="" disabled>
-                          Move to Sprint…
-                        </option>
-                        {activeAndPlannedSprints.map((s) => {
-                          const optWarning = checkTaskSprintOverdue(item.due_date, s);
-                          return (
-                            <option key={s.id} value={s.id}>
-                              {optWarning ? `⚠️ ${s.name} (+${optWarning.diffDays}d overdue)` : `${s.name} (${s.status})`}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {backlogTasks.map(renderTaskRow)}
           </div>
         )}
       </div>
@@ -480,7 +495,6 @@ export default function ProjectBacklogTab({
       {toastMsg && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] pointer-events-auto animate-scaleIn">
           <div className="relative pt-2.5">
-            {/* Top Left Pill Badge */}
             <div className="absolute top-0 left-4 z-10">
               <span
                 className={`px-3 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white shadow-xs ${
@@ -503,7 +517,6 @@ export default function ProjectBacklogTab({
               </span>
             </div>
 
-            {/* Main Toast Box */}
             <div
               className={`bg-white rounded-2xl border-2 px-4 py-3 shadow-xl flex items-center gap-3 min-w-[280px] sm:min-w-[320px] max-w-md ${
                 toastMsg.type === "warning"
@@ -515,38 +528,15 @@ export default function ProjectBacklogTab({
                   : "border-emerald-500 shadow-emerald-500/10"
               }`}
             >
-              {/* Circular Icon */}
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-black shrink-0 ${
-                  toastMsg.type === "warning"
-                    ? "border-amber-500 text-amber-500"
-                    : toastMsg.type === "error"
-                    ? "border-rose-500 text-rose-500"
-                    : toastMsg.type === "info"
-                    ? "border-sky-500 text-sky-500"
-                    : "border-emerald-500 text-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "!"
-                  : toastMsg.type === "error"
-                  ? "✕"
-                  : toastMsg.type === "info"
-                  ? "ℹ"
-                  : "✓"}
+              <div className="flex-1">
+                <p className="text-xs font-semibold text-slate-800 leading-snug">
+                  {toastMsg.message}
+                </p>
               </div>
-
-              {/* Message */}
-              <span className="flex-1 text-sm font-bold text-slate-900 tracking-tight leading-snug">
-                {toastMsg.message}
-              </span>
-
-              {/* Close Button */}
               <button
                 type="button"
                 onClick={() => setToastMsg(null)}
-                className="text-slate-400 hover:text-slate-700 shrink-0 text-xs font-bold cursor-pointer p-1 rounded-full hover:bg-slate-100 transition"
-                title="Close"
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold p-1 cursor-pointer"
               >
                 ✕
               </button>

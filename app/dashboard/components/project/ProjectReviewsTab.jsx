@@ -3,7 +3,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import TaskDetailModal from "./TaskDetailModal";
+import TLMonthlyEvaluationModal from "../TLMonthlyEvaluationModal";
 
 export default function ProjectReviewsTab({
   project,
@@ -21,6 +23,8 @@ export default function ProjectReviewsTab({
   const [selectedEmployeeFilter, setSelectedEmployeeFilter] = useState("all");
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState(null);
   const [activeScreenshotModal, setActiveScreenshotModal] = useState(null);
+  const [showEvalModal, setShowEvalModal] = useState(false);
+  const [selectedEmpForEval, setSelectedEmpForEval] = useState(null);
 
   // Suggestion Mode per-task: taskId | null
   const [suggestingTaskId, setSuggestingTaskId] = useState(null);
@@ -180,16 +184,9 @@ export default function ProjectReviewsTab({
     setIsProcessing(true);
     setActionMsg(null);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
           progress: 100,
@@ -254,13 +251,6 @@ export default function ProjectReviewsTab({
     setIsProcessing(true);
     setActionMsg(null);
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
       const payload = {
         status: "TODO",
         progress: 0,
@@ -272,9 +262,9 @@ export default function ProjectReviewsTab({
         comments: `[Team Lead Suggestions]: ${suggestionNotes.trim()}`,
       };
 
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -475,6 +465,22 @@ export default function ProjectReviewsTab({
                 </option>
               ))}
           </select>
+
+          {/* Monthly Evaluation Button (Manager / Lead / Admin) */}
+          {canReview && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedEmpForEval(null);
+                setShowEvalModal(true);
+              }}
+              className="h-8 px-3 rounded-lg bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-semibold text-xs transition cursor-pointer shadow-xs active:scale-[0.98] flex items-center gap-1.5 shrink-0"
+              title="Open Team Member Monthly Performance & Evaluation Dialog"
+            >
+              <span className="text-amber-200">⭐</span>
+              <span className="hidden sm:inline">Monthly Evaluation</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -743,7 +749,23 @@ export default function ProjectReviewsTab({
                             <span>Give Suggestions &amp; Move to To Do</span>
                           </button>
 
-                          {/* 3. Full Details Modal */}
+                          {/* 3. Evaluate Member Modal (Only for Employee role) */}
+                          {task.assigned_to && (submitter?.role === "employee" || !submitter?.role) && submitter?.id !== employeeProfile?.id && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmpForEval(task.assigned_to);
+                                setShowEvalModal(true);
+                              }}
+                              className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-[0.98]"
+                              title={`Evaluate monthly performance for ${submitterName}`}
+                            >
+                              <span>⭐</span>
+                              <span>Evaluate Member</span>
+                            </button>
+                          )}
+
+                          {/* 4. Full Details Modal */}
                           <button
                             type="button"
                             onClick={() => setSelectedTaskForDetail(task)}
@@ -917,6 +939,21 @@ export default function ProjectReviewsTab({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Monthly Performance & Feedback Evaluation Modal */}
+      {showEvalModal && (
+        <TLMonthlyEvaluationModal
+          isOpen={showEvalModal}
+          onClose={() => {
+            setShowEvalModal(false);
+            setSelectedEmpForEval(null);
+          }}
+          initialEmployeeId={typeof selectedEmpForEval === "object" ? selectedEmpForEval?.id : selectedEmpForEval}
+          onSaved={() => {
+            if (onTasksUpdated) onTasksUpdated();
+          }}
+        />
       )}
     </div>
   );

@@ -3,12 +3,137 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+/**
+ * GET /api/projects/tasks/[taskId]
+ * Securely retrieves a single task with role-based authorization check.
+ */
+export async function GET(req, { params }) {
+  try {
+    const { taskId } = await params;
+    if (!taskId) {
+      return NextResponse.json({ message: "Task ID is required." }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const user = await getAuthUser(req, supabase);
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
+    }
+
+    const adminSupabase = createAdminClient();
+
+    const { data: task, error: taskErr } = await adminSupabase
+      .from("project_tasks")
+      .select("*")
+      .eq("id", taskId)
+      .maybeSingle();
+
+    if (taskErr || !task) {
+      return NextResponse.json({ message: "Task not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, task.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    // Verify parent project authorization
+    let project = null;
+    if (task.project_id) {
+      const { data: projData } = await adminSupabase
+        .from("projects")
+        .select("id, name, department, status, priority, team_lead_id, created_by, owner_id, team_members")
+        .eq("id", task.project_id)
+        .eq("company_id", task.company_id)
+        .maybeSingle();
+      project = projData;
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = project?.created_by === employeeProfile?.id || project?.owner_id === employeeProfile?.id;
+    const isLead = cleanRole.includes("lead") || project?.team_lead_id === employeeProfile?.id;
+    const isDeptManager = isManager && project?.department && employeeProfile?.department && project.department.toLowerCase() === employeeProfile.department.toLowerCase();
+
+    const myIdentities = new Set();
+    if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
+    if (user?.id) myIdentities.add(user.id);
+    if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
+    if (employeeProfile?.user_id) myIdentities.add(employeeProfile.user_id);
+
+    const isAssigned = Boolean(
+      (task.assigned_to && myIdentities.has(task.assigned_to)) ||
+      (task.planned_assignee_id && myIdentities.has(task.planned_assignee_id))
+    );
+    const isSquadMember = Array.isArray(project?.team_members) && project.team_members.some((mId) => myIdentities.has(mId));
+
+    const canView = isOwnerOrAdmin || isDeptManager || isProjectOwnerOrCreator || isLead || isAssigned || isSquadMember;
+
+    if (!canView) {
+      return NextResponse.json({ message: "Access denied to task details." }, { status: 403 });
+    }
+
+    // Enrich assignee and sprint
+    let assignee = null;
+    const effectiveAssigneeId = task.assigned_to || task.planned_assignee_id;
+    if (effectiveAssigneeId) {
+      const { data: a } = await adminSupabase
+        .from("employees")
+        .select("id, full_name, email, role, department, designation, avatar_url, auth_user_id")
+        .eq("id", effectiveAssigneeId)
+        .maybeSingle();
+      assignee = a;
+    }
+
+    let sprint = null;
+    if (task.sprint_id) {
+      const { data: s } = await adminSupabase
+        .from("project_sprints")
+        .select("id, name, goal, status, start_date, end_date")
+        .eq("id", task.sprint_id)
+        .maybeSingle();
+      sprint = s;
+    }
+
+    let epic = null;
+    if (task.epic_id) {
+      const { data: ep } = await adminSupabase
+        .from("project_epics")
+        .select("id, name, color")
+        .eq("id", task.epic_id)
+        .maybeSingle();
+      epic = ep;
+    }
+
+    return NextResponse.json({
+      success: true,
+      task: {
+        ...task,
+        assignee,
+        planned_assignee: assignee,
+        sprint,
+        epic,
+        is_sprint_active: Boolean(sprint && sprint.status === "ACTIVE"),
+        is_in_backlog: !task.sprint_id,
+      },
+    });
+  } catch (err) {
+    console.error("GET task error:", err);
+    return NextResponse.json({ message: "Internal server error." }, { status: 500 });
+  }
+}
 
 /**
  * PATCH /api/projects/tasks/[taskId]
  * Updates a subtask's status, details, priority, or assignee.
- * - Assigned Employee: Can update status (e.g. TODO -> IN_PROGRESS -> REVIEW -> COMPLETED)
- * - Team Lead / Manager / Admin: Can update all fields
+ * - Assigned Employee: Can update status (e.g. TODO -> IN_PROGRESS -> REVIEW), submit deliverable attachments & comments, request extensions
+ * - Team Lead / Manager / Admin: Can update all fields, approve completions, decide extensions, reassign
  */
 export async function PATCH(req, { params }) {
   try {
@@ -25,13 +150,8 @@ export async function PATCH(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
 
-    if (!company) {
-      return NextResponse.json({ message: "No company workspace found." }, { status: 404 });
-    }
-
-    // Fetch existing task directly without brittle relational joins
+    // Fetch existing task directly first to identify company workspace
     const { data: task, error: taskErr } = await adminSupabase
       .from("project_tasks")
       .select("*")
@@ -43,22 +163,30 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ message: "Task not found." }, { status: 404 });
     }
 
-    // Fetch parent project directly
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, task.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    // Fetch parent project directly within company
     let project = null;
     if (task.project_id) {
       const { data: projData } = await adminSupabase
         .from("projects")
         .select("*")
         .eq("id", task.project_id)
+        .eq("company_id", company.id)
         .maybeSingle();
       project = projData;
     }
 
-    // Verify company authorization
-    const taskCompanyId = task.company_id || project?.company_id;
-    if (taskCompanyId && taskCompanyId !== company.id) {
-      return NextResponse.json({ message: "Task not found." }, { status: 404 });
+    // Auto-sync date-driven sprint lifecycles before evaluating sprint status
+    try {
+      await syncSprintLifecycles(adminSupabase, company.id, task.project_id);
+    } catch (sprintSyncErr) {
+      console.warn("Auto sprint sync warning in PATCH task:", sprintSyncErr?.message);
     }
+
     const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
     const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
     const isProjectOwnerOrCreator = project?.owner_id === employeeProfile?.id || project?.created_by === employeeProfile?.id;
@@ -353,85 +481,88 @@ export async function PATCH(req, { params }) {
       }
     }
 
-    if (body.due_date !== undefined || (body.sprint_id !== undefined && validatedDueDate)) {
-      const cleanDue = validatedDueDate ? String(validatedDueDate).split("T")[0] : null;
-      updateData.due_date = cleanDue;
-      if (!task.original_due_date) {
-        updateData.original_due_date = cleanDue;
-      }
-      if (!task.effective_due_date || task.extension_status !== "APPROVED") {
-        updateData.effective_due_date = cleanDue;
-      }
-    }
-
-    if (body.sprint_id !== undefined) {
-      updateData.sprint_id = body.sprint_id || null;
-    }
-
-    // Epic ID
-    if (body.epic_id !== undefined) {
-      updateData.epic_id = body.epic_id || null;
-    }
-
-    // Story Points
-    if (body.story_points !== undefined) {
-      updateData.story_points = Number(body.story_points) || 1;
-    }
-
-    // Task Type
-    if (body.task_type !== undefined) {
-      updateData.task_type = body.task_type || "STORY";
-    }
-
-    // Priority
-    if (body.priority !== undefined) {
-      const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
-      const cleanPriority = String(body.priority).toUpperCase().trim();
-      if (validPriorities.includes(cleanPriority)) {
-        updateData.priority = cleanPriority;
-      }
-    }
-
-    // Assignee
-    const rawAssignee = body.assigned_to !== undefined ? body.assigned_to : body.assignee_id;
-    if (rawAssignee !== undefined) {
-      if (!rawAssignee) {
-        updateData.assigned_to = null;
-        if (hasPlannedAssigneeColumn) {
-          updateData.planned_assignee_id = null;
+    // Management-only fields: Due date, sprint, epic, points, priority, assignee
+    if (isLeadOrManagerOrAdmin) {
+      if (body.due_date !== undefined || (body.sprint_id !== undefined && validatedDueDate)) {
+        const cleanDue = validatedDueDate ? String(validatedDueDate).split("T")[0] : null;
+        updateData.due_date = cleanDue;
+        if (!task.original_due_date) {
+          updateData.original_due_date = cleanDue;
         }
-      } else {
-        const { data: newAssignee } = await adminSupabase
-          .from("employees")
-          .select("id, full_name, department, auth_user_id")
-          .eq("id", rawAssignee)
-          .eq("company_id", company.id)
-          .maybeSingle();
-
-        if (!newAssignee) {
-          return NextResponse.json({ message: "Assigned employee not found in this company." }, { status: 400 });
+        if (!task.effective_due_date || task.extension_status !== "APPROVED") {
+          updateData.effective_due_date = cleanDue;
         }
+      }
 
-        // Auto-enroll the new assignee into project squad if not already present
-        if (project?.id) {
-          try {
-            const currentMembers = Array.isArray(project.team_members) ? project.team_members : [];
-            if (!currentMembers.includes(newAssignee.id) && newAssignee.id !== project.team_lead_id && newAssignee.id !== project.created_by && newAssignee.id !== project.owner_id) {
-              const updatedMembers = [...currentMembers, newAssignee.id];
-              await adminSupabase
-                .from("projects")
-                .update({ team_members: updatedMembers })
-                .eq("id", project.id)
-                .eq("company_id", company.id);
-            }
-          } catch (enrollErr) {
-            console.warn("Auto team member enrollment on reassign warning:", enrollErr?.message);
+      if (body.sprint_id !== undefined) {
+        updateData.sprint_id = body.sprint_id || null;
+      }
+
+      // Epic ID
+      if (body.epic_id !== undefined) {
+        updateData.epic_id = body.epic_id || null;
+      }
+
+      // Story Points
+      if (body.story_points !== undefined) {
+        updateData.story_points = Number(body.story_points) || 1;
+      }
+
+      // Task Type
+      if (body.task_type !== undefined) {
+        updateData.task_type = body.task_type || "STORY";
+      }
+
+      // Priority
+      if (body.priority !== undefined) {
+        const validPriorities = ["LOW", "MEDIUM", "HIGH", "URGENT"];
+        const cleanPriority = String(body.priority).toUpperCase().trim();
+        if (validPriorities.includes(cleanPriority)) {
+          updateData.priority = cleanPriority;
+        }
+      }
+
+      // Assignee
+      const rawAssignee = body.assigned_to !== undefined ? body.assigned_to : body.assignee_id;
+      if (rawAssignee !== undefined) {
+        if (!rawAssignee) {
+          updateData.assigned_to = null;
+          if (hasPlannedAssigneeColumn) {
+            updateData.planned_assignee_id = null;
           }
-        }
+        } else {
+          const { data: newAssignee } = await adminSupabase
+            .from("employees")
+            .select("id, full_name, department, auth_user_id")
+            .eq("id", rawAssignee)
+            .eq("company_id", company.id)
+            .maybeSingle();
 
-        updateData.assigned_to = newAssignee.id;
-        if (hasPlannedAssigneeColumn) {
-          updateData.planned_assignee_id = newAssignee.id;
+          if (!newAssignee) {
+            return NextResponse.json({ message: "Assigned employee not found in this company." }, { status: 400 });
+          }
+
+          // Auto-enroll the new assignee into project squad if not already present
+          if (project?.id) {
+            try {
+              const currentMembers = Array.isArray(project.team_members) ? project.team_members : [];
+              if (!currentMembers.includes(newAssignee.id) && newAssignee.id !== project.team_lead_id && newAssignee.id !== project.created_by && newAssignee.id !== project.owner_id) {
+                const updatedMembers = [...currentMembers, newAssignee.id];
+                await adminSupabase
+                  .from("projects")
+                  .update({ team_members: updatedMembers })
+                  .eq("id", project.id)
+                  .eq("company_id", company.id);
+              }
+            } catch (enrollErr) {
+              console.warn("Auto team member enrollment on reassign warning:", enrollErr?.message);
+            }
+          }
+
+          updateData.assigned_to = newAssignee.id;
+          if (hasPlannedAssigneeColumn) {
+            updateData.planned_assignee_id = newAssignee.id;
+          }
         }
       }
     }
@@ -442,6 +573,7 @@ export async function PATCH(req, { params }) {
       .from("project_tasks")
       .update(updateData)
       .eq("id", taskId)
+      .eq("company_id", company.id)
       .select()
       .maybeSingle();
 
@@ -821,11 +953,6 @@ export async function DELETE(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
-
-    if (!company) {
-      return NextResponse.json({ message: "No company found." }, { status: 404 });
-    }
 
     const { data: task, error: taskErr } = await adminSupabase
       .from("project_tasks")
@@ -837,26 +964,28 @@ export async function DELETE(req, { params }) {
       return NextResponse.json({ message: "Task not found." }, { status: 404 });
     }
 
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, task.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied." }, { status: 403 });
+    }
+
     let project = null;
     if (task.project_id) {
       const { data: projData } = await adminSupabase
         .from("projects")
         .select("id, created_by, team_lead_id, company_id")
         .eq("id", task.project_id)
+        .eq("company_id", company.id)
         .maybeSingle();
       project = projData;
     }
 
-    const taskCompanyId = task.company_id || project?.company_id;
-    if (taskCompanyId && taskCompanyId !== company.id) {
-      return NextResponse.json({ message: "Task not found." }, { status: 404 });
-    }
-
-    const cleanRole = (role || "").toLowerCase();
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
     const canDelete =
-      cleanRole === "admin" ||
-      (cleanRole === "manager" && project?.created_by === employeeProfile?.id) ||
-      (cleanRole === "team_lead" && (project?.team_lead_id === employeeProfile?.id || task.created_by === employeeProfile?.id));
+      cleanRole.includes("admin") ||
+      cleanRole.includes("owner") ||
+      (cleanRole.includes("manager") && project?.created_by === employeeProfile?.id) ||
+      (cleanRole.includes("lead") && (project?.team_lead_id === employeeProfile?.id || task.created_by === employeeProfile?.id));
 
     if (!canDelete) {
       return NextResponse.json({ message: "Access denied." }, { status: 403 });
@@ -865,7 +994,8 @@ export async function DELETE(req, { params }) {
     const { error: delErr } = await adminSupabase
       .from("project_tasks")
       .delete()
-      .eq("id", taskId);
+      .eq("id", taskId)
+      .eq("company_id", company.id);
 
     if (delErr) {
       return NextResponse.json({ message: "Failed to delete task." }, { status: 500 });

@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 
 export default function TaskSuggestionModal({
   isOpen,
@@ -144,16 +145,9 @@ export default function TaskSuggestionModal({
     setIsSubmitting(true);
     setFeedbackError("");
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${task.id}`, {
+      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "IN_PROGRESS",
           progress: 25,

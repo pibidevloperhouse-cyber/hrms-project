@@ -3,24 +3,65 @@
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
-import ProjectOverviewTab from "./ProjectOverviewTab";
+import { authFetch } from "@/lib/api/authFetch";
 import ProjectBacklogTab from "./ProjectBacklogTab";
 import ProjectEpicsTab from "./ProjectEpicsTab";
 import ProjectSprintsTab from "./ProjectSprintsTab";
 import ProjectBoardTab from "./ProjectBoardTab";
-import ProjectReviewsTab from "./ProjectReviewsTab";
 import ProjectTeamTab from "./ProjectTeamTab";
 import ProjectTeamModal from "./ProjectTeamModal";
 
 const TABS = [
-  { id: "overview", label: "Overview", icon: "📊" },
-  { id: "backlog", label: "Backlog", icon: "📋" },
-  { id: "epics", label: "Epics", icon: "⚡" },
-  { id: "sprints", label: "Sprints", icon: "🏃" },
-  { id: "board", label: "Board", icon: "📌" },
-  { id: "reviews", label: "Reviews", icon: "🔍" },
-  { id: "team", label: "Team", icon: "👥" },
+  { id: "backlog", label: "Backlog" },
+  { id: "epics", label: "Epics" },
+  { id: "sprints", label: "Sprints" },
+  { id: "board", label: "Board" },
+  { id: "team", label: "Team" },
 ];
+
+const renderTabIcon = (tabId) => {
+  switch (tabId) {
+    case "backlog":
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+          <polyline points="2 17 12 22 22 17" />
+          <polyline points="2 12 12 17 22 12" />
+        </svg>
+      );
+    case "epics":
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+        </svg>
+      );
+    case "sprints":
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+        </svg>
+      );
+    case "board":
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="5" height="18" rx="1" />
+          <rect x="10" y="3" width="5" height="12" rx="1" />
+          <rect x="17" y="3" width="5" height="15" rx="1" />
+        </svg>
+      );
+    case "team":
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 export default function ProjectWorkspace({
   project,
@@ -42,7 +83,7 @@ export default function ProjectWorkspace({
     });
     return Array.from(map.values());
   });
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState("backlog");
   const [tasks, setTasks] = useState([]);
   const [sprints, setSprints] = useState([]);
   const [epics, setEpics] = useState([]);
@@ -84,9 +125,7 @@ export default function ProjectWorkspace({
   // Fetch full list of company employees for roster and assignment
   const fetchWorkspaceEmployees = useCallback(async () => {
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-      const res = await fetch("/api/employees/list", { headers });
+      const res = await authFetch("/api/employees/list");
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.employees)) {
@@ -96,16 +135,13 @@ export default function ProjectWorkspace({
     } catch (err) {
       console.error("fetchWorkspaceEmployees error:", err);
     }
-  }, [getAuthHeaders]);
+  }, []);
 
   // Fetch fresh project details with populated creator, team lead, and team members
   const fetchProjectDetails = useCallback(async () => {
     if (!project?.id) return;
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-      const res = await fetch(`/api/projects/${project.id}?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/${project.id}?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -305,14 +341,10 @@ export default function ProjectWorkspace({
         ? targetProj.teamMembers.filter((m) => (typeof m === "object" ? m?.id !== memberId : m !== memberId))
         : [];
 
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects/${targetProj.id}`, {
+      const res = await authFetch(`/api/projects/${targetProj.id}`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          ...headers,
         },
         body: JSON.stringify({
           team_members: updatedIds,
@@ -341,7 +373,7 @@ export default function ProjectWorkspace({
       setIsRemoving(false);
       setMemberToRemove(null);
     }
-  }, [memberToRemove, isRemoving, currentProject, project, getAuthHeaders, handleProjectUpdated]);
+  }, [memberToRemove, isRemoving, currentProject, project, handleProjectUpdated]);
 
   // Set an optimistic mutation lock on a task to prevent stale DB queries or WebSocket echoes from reverting state
   const setTaskLock = useCallback((taskId, { status, progress }) => {
@@ -362,11 +394,7 @@ export default function ProjectWorkspace({
   const fetchTasks = useCallback(async () => {
     if (!project?.id) return;
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects/${project.id}/tasks?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/${project.id}/tasks?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -389,7 +417,7 @@ export default function ProjectWorkspace({
     } catch (err) {
       console.error("fetchTasks error:", err);
     }
-  }, [project?.id, getAuthHeaders]);
+  }, [project?.id]);
 
   // Fetch sprints (skipped for Kanban projects)
   const fetchSprints = useCallback(async () => {
@@ -398,11 +426,7 @@ export default function ProjectWorkspace({
       return;
     }
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects/${project.id}/sprints?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/${project.id}/sprints?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -412,17 +436,13 @@ export default function ProjectWorkspace({
     } catch (err) {
       console.error("fetchSprints error:", err);
     }
-  }, [project?.id, isKanban, getAuthHeaders]);
+  }, [project?.id, isKanban]);
 
   // Fetch epics
   const fetchEpics = useCallback(async () => {
     if (!project?.id) return;
     try {
-      const supabase = createClient();
-      const headers = await getAuthHeaders(supabase);
-
-      const res = await fetch(`/api/projects/${project.id}/epics?t=${Date.now()}`, {
-        headers,
+      const res = await authFetch(`/api/projects/${project.id}/epics?t=${Date.now()}`, {
         cache: "no-store",
       });
       if (res.ok) {
@@ -432,7 +452,7 @@ export default function ProjectWorkspace({
     } catch (err) {
       console.error("fetchEpics error:", err);
     }
-  }, [project?.id, getAuthHeaders]);
+  }, [project?.id]);
 
   // Unified refresh for tasks, sprints, epics, project details, and employees
   const refreshWorkspace = useCallback(async () => {
@@ -631,8 +651,8 @@ export default function ProjectWorkspace({
     <div className="space-y-5 animate-fadeIn">
       {/* Top Workspace Header */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 sm:p-5 space-y-4">
-        {/* Navigation & Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Navigation & Add Employee Action */}
+        <div className="flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onBack}
@@ -642,44 +662,35 @@ export default function ProjectWorkspace({
             <span>Back to All Projects</span>
           </button>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-              {effectiveProject?.status || "PLANNING"}
-            </span>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-              {effectiveProject?.priority || "MEDIUM"}
-            </span>
-          </div>
+          {canManageTeam && (
+            <button
+              type="button"
+              onClick={() => setIsTeamModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition cursor-pointer shadow-xs shrink-0"
+              title="Add or manage employees in this project"
+            >
+              <span>+</span>
+              <span>Add Employee</span>
+            </button>
+          )}
         </div>
 
         {/* Project Title & Metadata */}
         <div className="flex flex-wrap items-start justify-between gap-3 pt-1">
-          <div className="space-y-1 min-w-0">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                {effectiveProject?.name || "Project Workspace"}
-              </h1>
-              {effectiveProject?.project_type && (
-                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 font-mono">
-                  {effectiveProject.project_type}
-                </span>
-              )}
-              {effectiveProject?.project_group && (
-                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                  {effectiveProject.project_group}
-                </span>
-              )}
-            </div>
+          <div className="space-y-1 min-w-0 flex-1">
+            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              {effectiveProject?.name || "Project Workspace"}
+            </h1>
 
             {effectiveProject?.description && (
-              <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
+              <p className="text-xs text-slate-500 leading-relaxed max-w-3xl pt-0.5">
                 {effectiveProject.description}
               </p>
             )}
           </div>
 
-          {/* Quick Lead & Owner attribution */}
-          <div className="flex items-center gap-4 text-xs text-slate-600">
+          {/* Lead & Owner attribution */}
+          <div className="flex items-center gap-5 text-xs text-slate-600 shrink-0">
             {effectiveProject?.creator && (
               <div>
                 <span className="text-[10px] text-slate-400 block font-medium">Owner</span>
@@ -695,81 +706,7 @@ export default function ProjectWorkspace({
           </div>
         </div>
 
-        {/* Project Team & Employee List Strip with Add Employee Button */}
-        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 p-3 rounded-xl border border-slate-100">
-          <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 shrink-0">
-              <span className="text-sm">👥</span>
-              <span>Project Team</span>
-              <span className="text-[10px] font-mono font-semibold px-1.5 py-0.2 rounded-full bg-white text-slate-700 border border-slate-200 shadow-2xs">
-                {projectRoster.length}
-              </span>
-            </div>
-
-            {/* List of current project employees with name and role badges */}
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {projectRoster.length === 0 ? (
-                <span className="text-xs text-slate-400 italic">No team members assigned yet</span>
-              ) : (
-                projectRoster.map((member) => {
-                  const isOwner = member.projectRole === "Owner";
-                  const isLead = member.projectRole === "Team Lead";
-                  const canRemoveThisMember = canManageTeam && !isOwner && !isLead;
-
-                  return (
-                    <div
-                      key={member.id}
-                      className="group inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-white border border-slate-200 text-xs shadow-2xs hover:border-slate-300 hover:shadow-xs transition"
-                      title={`${member.full_name} (${member.designation || member.role || "Member"}${member.email ? ` • ${member.email}` : ""})`}
-                    >
-                      <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-[9px] shrink-0 uppercase shadow-2xs">
-                        {member.full_name?.charAt(0) || "U"}
-                      </div>
-                      <span className="font-semibold text-slate-800 text-xs truncate max-w-[130px]">
-                        {member.full_name}
-                      </span>
-                      <span
-                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded border ${
-                          member.badgeBg || "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        {member.projectRole}
-                      </span>
-                      {canRemoveThisMember && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMemberToRemove(member);
-                          }}
-                          className="opacity-60 group-hover:opacity-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 w-4 h-4 rounded flex items-center justify-center text-[10px] font-bold transition cursor-pointer ml-0.5"
-                          title={`Remove ${member.full_name} from this project`}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Add / Assign Employee Button */}
-          {canManageTeam && (
-            <button
-              type="button"
-              onClick={() => setIsTeamModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition cursor-pointer shadow-xs shrink-0"
-              title="Add or remove employees assigned to this project"
-            >
-              <span>+</span>
-              <span>Add Employee</span>
-            </button>
-          )}
-        </div>
-
-        {/* Feature Tabs (Overview, Backlog, Epics, Sprints, Board) */}
+        {/* Feature Tabs Bar with Professional SVG Icons */}
         <div className="flex items-center gap-1 border-t border-slate-100 pt-3 overflow-x-auto">
           {availableTabs.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -778,62 +715,60 @@ export default function ProjectWorkspace({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 shrink-0 ${isActive
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-2 shrink-0 ${
+                  isActive
                     ? "bg-blue-600 text-white shadow-2xs"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
-                  }`}
+                }`}
               >
-                <span>{tab.icon}</span>
+                <span className={isActive ? "text-white" : "text-slate-500"}>
+                  {renderTabIcon(tab.id)}
+                </span>
                 <span>{tab.label}</span>
                 {tab.id === "backlog" && (
                   <span
-                    className={`ml-1 text-[10px] font-mono px-1 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                      }`}
+                    className={`ml-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}
                   >
-                    {tasks.filter((t) => !t.sprint_id).length}
+                    {tasks.filter((t) => {
+                      const sId = t.sprint_id || t.sprint?.id;
+                      return !sId || String(sId).trim() === "" || String(sId).trim() === "null" || String(sId).trim() === "undefined" || String(sId).trim() === "backlog";
+                    }).length}
                   </span>
                 )}
                 {tab.id === "sprints" && (
                   <span
-                    className={`ml-1 text-[10px] font-mono px-1 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                      }`}
+                    className={`ml-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}
                   >
                     {sprints.length}
                   </span>
                 )}
                 {tab.id === "epics" && (
                   <span
-                    className={`ml-1 text-[10px] font-mono px-1 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                      }`}
+                    className={`ml-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}
                   >
                     {epics.length}
                   </span>
                 )}
                 {tab.id === "board" && (
                   <span
-                    className={`ml-1 text-[10px] font-mono px-1 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                      }`}
+                    className={`ml-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}
                   >
                     {tasks.length}
                   </span>
                 )}
-                {tab.id === "reviews" && (
-                  <span
-                    className={`ml-1 text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold transition ${
-                      tasks.filter((t) => t.status === "REVIEW").length > 0
-                        ? "bg-purple-600 text-white animate-pulse shadow-xs"
-                        : isActive
-                        ? "bg-white/20 text-white"
-                        : "bg-slate-200 text-slate-700"
-                    }`}
-                  >
-                    {tasks.filter((t) => t.status === "REVIEW").length}
-                  </span>
-                )}
                 {tab.id === "team" && (
                   <span
-                    className={`ml-1 text-[10px] font-mono px-1 rounded-full ${isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-                      }`}
+                    className={`ml-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}
                   >
                     {projectRoster.length}
                   </span>
@@ -852,24 +787,7 @@ export default function ProjectWorkspace({
         </div>
       ) : (
         <>
-          {activeTab === "overview" && (
-            <ProjectOverviewTab
-              project={effectiveProject}
-              tasks={tasks}
-              sprints={sprints}
-              epics={epics}
-              departmentEmployees={effectiveEmployees}
-              teamLeads={teamLeads}
-              employeeProfile={employeeProfile}
-              currentUserId={employeeProfile?.id}
-              canManageTeam={canManageTeam}
-              onSelectTab={(tabId) => setActiveTab(tabId)}
-              onRemoveMember={(member) => setMemberToRemove(member)}
-              onTasksUpdated={refreshWorkspace}
-              onSprintsUpdated={refreshWorkspace}
-              onProjectUpdated={handleProjectUpdated}
-            />
-          )}
+
 
           {activeTab === "backlog" && (
             <ProjectBacklogTab
@@ -882,6 +800,7 @@ export default function ProjectWorkspace({
               employeeProfile={employeeProfile}
               currentUserId={employeeProfile?.id}
               onTasksUpdated={refreshWorkspace}
+              onSprintsUpdated={refreshWorkspace}
             />
           )}
 
@@ -928,20 +847,6 @@ export default function ProjectWorkspace({
               currentUserId={employeeProfile?.id}
               setTaskLock={setTaskLock}
               clearTaskLock={clearTaskLock}
-              onTasksUpdated={refreshWorkspace}
-            />
-          )}
-
-          {activeTab === "reviews" && (
-            <ProjectReviewsTab
-              project={effectiveProject}
-              tasks={tasks}
-              sprints={sprints}
-              epics={epics}
-              departmentEmployees={effectiveEmployees}
-              teamLeads={teamLeads}
-              employeeProfile={employeeProfile}
-              currentUserId={employeeProfile?.id}
               onTasksUpdated={refreshWorkspace}
             />
           )}

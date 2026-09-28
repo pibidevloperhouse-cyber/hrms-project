@@ -9,7 +9,7 @@ export const revalidate = 0;
 
 /**
  * GET /api/projects/[id]/epics
- * Returns all epics for a project with task progress.
+ * Returns all epics for a project with task progress and role authorization.
  */
 export async function GET(req, { params }) {
   try {
@@ -25,18 +25,34 @@ export async function GET(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company } = await getCompanyAndRoleForUser(adminSupabase, user);
-    if (!company) {
-      return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
+
+    // Verify parent project exists & check user authorization
+    const { data: project } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!project) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
     }
 
-    // Query epics for project
-    const { data: epics, error: epicErr } = await adminSupabase
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    // Query epics for project strictly within company workspace
+    let epicQuery = adminSupabase
       .from("project_epics")
       .select("*")
-      .eq("project_id", projectId)
-      .eq("company_id", company.id)
-      .order("created_at", { ascending: true });
+      .eq("project_id", projectId);
+
+    if (project.company_id) {
+      epicQuery = epicQuery.eq("company_id", project.company_id);
+    }
+
+    const { data: epics, error: epicErr } = await epicQuery.order("created_at", { ascending: true });
 
     if (epicErr) {
       if (epicErr.code === "42P01" || epicErr.message?.includes("does not exist")) {
@@ -46,12 +62,17 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "Failed to load epics." }, { status: 500 });
     }
 
-    // Fetch tasks grouped by epic
-    const { data: tasks } = await adminSupabase
+    // Fetch tasks grouped by epic (strictly scoped by company workspace)
+    let tasksQuery = adminSupabase
       .from("project_tasks")
       .select("id, epic_id, status")
-      .eq("project_id", projectId)
-      .eq("company_id", company.id);
+      .eq("project_id", projectId);
+
+    if (project.company_id) {
+      tasksQuery = tasksQuery.eq("company_id", project.company_id);
+    }
+
+    const { data: tasks } = await tasksQuery;
 
     const epicMap = {};
     (tasks || []).forEach((t) => {
@@ -125,13 +146,25 @@ export async function POST(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
+
+    // Verify parent project exists
+    const { data: targetProject } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!targetProject) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, targetProject.company_id);
     if (!company) {
-      return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
     }
 
     const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
-    const canManage = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr") || cleanRole.includes("manager") || cleanRole.includes("lead");
+    const canManage = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr") || cleanRole.includes("manager") || cleanRole.includes("lead") || targetProject.created_by === employeeProfile?.id || targetProject.team_lead_id === employeeProfile?.id;
     if (!canManage) {
       return NextResponse.json({ message: "Access denied. Team Leads, Managers, and Admins only." }, { status: 403 });
     }
@@ -152,7 +185,7 @@ export async function POST(req, { params }) {
     }
 
     const payload = {
-      company_id: company.id,
+      company_id: targetProject.company_id || company.id,
       project_id: projectId,
       name: name.trim(),
       description: description.trim(),
@@ -168,7 +201,7 @@ export async function POST(req, { params }) {
       .from("project_epics")
       .insert([payload])
       .select()
-      .single();
+      .maybeSingle();
 
     // Graceful fallback if created_by or creator_note column does not exist yet
     if (insertErr && (insertErr.message?.includes("created_by") || insertErr.message?.includes("creator_note"))) {
@@ -189,7 +222,7 @@ export async function POST(req, { params }) {
         .from("project_epics")
         .insert([fallbackPayload])
         .select()
-        .single();
+        .maybeSingle();
 
       newEpic = fallbackRes.data;
       insertErr = fallbackRes.error;
@@ -202,9 +235,9 @@ export async function POST(req, { params }) {
 
     return NextResponse.json({
       success: true,
-      message: `Epic "${newEpic.name}" created.`,
+      message: `Epic "${newEpic?.name || "Epic"}" created.`,
       epic: {
-        ...newEpic,
+        ...(newEpic || payload),
         creator: employeeProfile ? {
           id: employeeProfile.id,
           full_name: employeeProfile.full_name,
@@ -240,9 +273,32 @@ export async function PATCH(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company } = await getCompanyAndRoleForUser(adminSupabase, user);
+
+    // Verify parent project and permissions
+    const { data: targetProject } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!targetProject) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, targetProject.company_id);
     if (!company) {
-      return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = targetProject.created_by === employeeProfile?.id || targetProject.owner_id === employeeProfile?.id;
+    const isAssignedLead = targetProject.team_lead_id === employeeProfile?.id;
+    const canManage = isOwnerOrAdmin || isManager || isProjectOwnerOrCreator || isAssignedLead;
+
+    if (!canManage) {
+      return NextResponse.json({ message: "Access denied. Only the assigned Team Lead, Project Manager, or Admin can update epics." }, { status: 403 });
     }
 
     const body = await req.json();
@@ -261,18 +317,34 @@ export async function PATCH(req, { params }) {
     if (status !== undefined) updateData.status = status;
     if (creator_note !== undefined) updateData.creator_note = creator_note ? creator_note.trim() : null;
 
-    const { data: updatedEpic, error: updateErr } = await adminSupabase
+    let { data: updatedEpic, error: updateErr } = await adminSupabase
       .from("project_epics")
       .update(updateData)
       .eq("id", epic_id)
       .eq("project_id", projectId)
-      .eq("company_id", company.id)
+      .eq("company_id", targetProject.company_id)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (updateErr) {
+    if (updateErr && (updateErr.message?.includes("updated_at") || updateErr.code === "42703" || updateErr.message?.includes("creator_note"))) {
+      const fallbackData = { ...updateData };
+      delete fallbackData.updated_at;
+      delete fallbackData.creator_note;
+      const retry = await adminSupabase
+        .from("project_epics")
+        .update(fallbackData)
+        .eq("id", epic_id)
+        .eq("project_id", projectId)
+        .eq("company_id", targetProject.company_id)
+        .select()
+        .maybeSingle();
+      updatedEpic = retry.data;
+      updateErr = retry.error;
+    }
+
+    if (updateErr || !updatedEpic) {
       console.error("Update epic error:", updateErr);
-      return NextResponse.json({ message: updateErr.message || "Failed to update epic." }, { status: 500 });
+      return NextResponse.json({ message: updateErr?.message || "Failed to update epic." }, { status: 500 });
     }
 
     return NextResponse.json({
@@ -282,6 +354,94 @@ export async function PATCH(req, { params }) {
     });
   } catch (err) {
     console.error("PATCH epic error:", err);
+    return NextResponse.json({ message: "Internal server error." }, { status: 500 });
+  }
+}
+
+/**
+ * DELETE /api/projects/[id]/epics
+ * Deletes an epic after safely unlinking tasks.
+ */
+export async function DELETE(req, { params }) {
+  try {
+    const { id: projectId } = await params;
+    if (!projectId) {
+      return NextResponse.json({ message: "Project ID is required." }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const user = await getAuthUser(req, supabase);
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
+    }
+
+    const adminSupabase = createAdminClient();
+
+    const { data: targetProject } = await adminSupabase
+      .from("projects")
+      .select("*")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    if (!targetProject) {
+      return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, targetProject.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = targetProject.created_by === employeeProfile?.id || targetProject.owner_id === employeeProfile?.id;
+    const isAssignedLead = targetProject.team_lead_id === employeeProfile?.id;
+    const canManage = isOwnerOrAdmin || isManager || isProjectOwnerOrCreator || isAssignedLead;
+
+    if (!canManage) {
+      return NextResponse.json({ message: "Access denied. Only the assigned Team Lead, Project Manager, or Admin can delete epics." }, { status: 403 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    let epicId = searchParams.get("epic_id");
+    if (!epicId) {
+      try {
+        const body = await req.json();
+        epicId = body.epic_id;
+      } catch {}
+    }
+
+    if (!epicId) {
+      return NextResponse.json({ message: "Epic ID is required." }, { status: 400 });
+    }
+
+    // Unlink any tasks from this epic strictly within company
+    await adminSupabase
+      .from("project_tasks")
+      .update({ epic_id: null })
+      .eq("epic_id", epicId)
+      .eq("project_id", projectId)
+      .eq("company_id", targetProject.company_id);
+
+    const { error: delErr } = await adminSupabase
+      .from("project_epics")
+      .delete()
+      .eq("id", epicId)
+      .eq("project_id", projectId)
+      .eq("company_id", targetProject.company_id);
+
+    if (delErr) {
+      console.error("Delete epic error:", delErr);
+      return NextResponse.json({ message: delErr.message || "Failed to delete epic." }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "Epic deleted successfully.",
+    });
+  } catch (err) {
+    console.error("DELETE epic error:", err);
     return NextResponse.json({ message: "Internal server error." }, { status: 500 });
   }
 }

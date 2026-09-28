@@ -205,7 +205,6 @@ export async function POST(req) {
       early_checkout: isEarly || Boolean(earlyReasonText),
       early_reason: earlyReasonText,
       approval_status: approvalStatus,
-      check_out_ip: networkCheck.clientIp,
       updated_at: checkOutTimeIso,
     };
 

@@ -20,6 +20,7 @@ export default function OwnerDashboard({
   employeeProfile,
   onOpenInviteModal,
   onEmployeeUpdated,
+  onOpenEvaluationModal,
   renderRoleBadge,
   renderStatusBadge,
 }) {
@@ -84,6 +85,18 @@ export default function OwnerDashboard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onOpenEvaluationModal && (
+              <button
+                type="button"
+                onClick={() => onOpenEvaluationModal(null)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold transition shadow-xs shadow-amber-600/20 cursor-pointer active:scale-[0.98]"
+                title="Open Team Monthly Performance & Feedback Evaluation Dialog"
+              >
+                <span className="text-amber-200">⭐</span>
+                <span>Monthly Evaluation</span>
+              </button>
+            )}
+
             <button
               onClick={onOpenInviteModal}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-sky-600/20 cursor-pointer"
@@ -325,6 +338,17 @@ export default function OwnerDashboard({
                           <td className="py-4 px-5 whitespace-nowrap">
                             <div className="flex items-center gap-2">
                               {renderRoleBadge(emp.role)}
+                              {onOpenEvaluationModal && emp.id !== employeeProfile?.id && (emp.role === "employee" || (!emp.role && !emp.is_owner)) && (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenEvaluationModal(emp)}
+                                  className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-[0.98]"
+                                  title={`Evaluate monthly performance for ${emp.full_name}`}
+                                >
+                                  <span>⭐</span>
+                                  <span>Evaluate</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {

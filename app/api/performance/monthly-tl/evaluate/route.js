@@ -25,18 +25,27 @@ export async function POST(req) {
       return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
     }
 
-    const userRoleStr = (role || "").toLowerCase();
+    const userRoleStr = String(role || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const userDesignation = String(employeeProfile?.designation || "").toLowerCase();
     const isOwnerOrAdmin =
-      ["admin", "owner", "hr_manager", "hr_executive"].includes(userRoleStr) ||
+      userRoleStr.includes("admin") ||
+      userRoleStr.includes("owner") ||
+      userRoleStr.includes("hr") ||
       Boolean(isOwner || employeeProfile?.is_owner);
     const isLeadOrAdmin =
-      isOwnerOrAdmin || ["manager", "team_lead"].includes(userRoleStr);
+      isOwnerOrAdmin ||
+      userRoleStr.includes("manager") ||
+      userRoleStr.includes("lead") ||
+      userRoleStr.includes("supervisor") ||
+      userDesignation.includes("manager") ||
+      userDesignation.includes("lead") ||
+      userDesignation.includes("head");
 
     if (!isLeadOrAdmin) {
       return NextResponse.json({ message: "Access denied. Team Lead or Manager privileges required." }, { status: 403 });
     }
 
-    const isTeamLeadOrManager = ["manager", "team_lead"].includes(userRoleStr) && !isOwnerOrAdmin;
+    const isTeamLeadOrManager = !isOwnerOrAdmin;
     const userDepartment = (employeeProfile?.department || "").trim().toLowerCase();
 
     const body = await req.json();
@@ -96,24 +105,47 @@ export async function POST(req) {
       return NextResponse.json({ message: "You cannot submit a Team Lead evaluation for yourself." }, { status: 400 });
     }
 
-    // Team Leads and Managers can ONLY evaluate employees in their own department
+    // Check authorization to evaluate this employee:
+    // 1. Owner / Admin / HR can evaluate any employee in the company
+    // 2. Department Lead / Manager can evaluate employees in their department
+    // 3. Project Lead / Creator can evaluate members in their project squad
     if (isTeamLeadOrManager) {
       const targetDept = (targetEmployee.department || "").trim().toLowerCase();
-      if (!userDepartment || targetDept !== userDepartment) {
+      const sameDept = Boolean(userDepartment && targetDept === userDepartment);
+
+      let isProjectLeadForEmployee = false;
+      if (!sameDept && employeeProfile?.id) {
+        const { data: sharedProjects } = await adminSupabase
+          .from("projects")
+          .select("id, team_lead_id, created_by, owner_id, team_members")
+          .eq("company_id", company.id)
+          .or(`team_lead_id.eq.${employeeProfile.id},created_by.eq.${employeeProfile.id},owner_id.eq.${employeeProfile.id}`);
+
+        if (Array.isArray(sharedProjects)) {
+          isProjectLeadForEmployee = sharedProjects.some((p) => {
+            if (Array.isArray(p.team_members)) {
+              return p.team_members.some((m) => (typeof m === "object" ? m?.id : m) === targetEmployee.id);
+            }
+            return false;
+          });
+        }
+      }
+
+      if (!sameDept && !isProjectLeadForEmployee && !userRoleStr.includes("manager")) {
         return NextResponse.json(
           {
-            message: `Access denied. You can only evaluate employees in your department (${employeeProfile?.department || "Unassigned"}).`,
+            message: `Access denied. You can only evaluate employees in your department (${employeeProfile?.department || "Unassigned"}) or assigned project squads.`,
           },
           { status: 403 }
         );
       }
     }
 
-    // Evaluations are only for company employees, not other roles
-    const targetRole = (targetEmployee.role || "employee").toLowerCase().trim();
+    // Evaluations are strictly for employee role only (cannot evaluate team leads, managers, HR, or admins/owners)
+    const targetRole = String(targetEmployee.role || "employee").toLowerCase().trim();
     if (targetRole !== "employee") {
       return NextResponse.json(
-        { message: "Team Lead performance evaluations can only be submitted for regular company employees." },
+        { message: "Monthly team performance evaluations can only be submitted for employees (role: 'employee'). Team Leads, Managers, HR, and Administrators cannot be evaluated via this review." },
         { status: 400 }
       );
     }

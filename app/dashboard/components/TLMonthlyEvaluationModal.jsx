@@ -17,7 +17,7 @@ import { computeFinalTLEvaluation } from "@/lib/teamLeadEvaluationUtils";
  * - Feedback Remarks Textarea
  * - Blue Save Evaluation and Cancel action buttons
  */
-export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
+export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved, initialEmployeeId = null, projectEmployees = [] }) {
   const [mounted, setMounted] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
@@ -25,7 +25,7 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
   });
   const [loading, setLoading] = useState(true);
   const [summaryData, setSummaryData] = useState(null);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(initialEmployeeId || "");
 
   // Team Lead Manual Qualitative Ratings (1.0 to 10.0 scale)
   const [learningRating, setLearningRating] = useState(8.0);
@@ -39,6 +39,13 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Sync initialEmployeeId when changed or modal opened
+  useEffect(() => {
+    if (initialEmployeeId) {
+      setSelectedEmployeeId(initialEmployeeId);
+    }
+  }, [initialEmployeeId]);
 
   // Lock body scroll on modal open
   useEffect(() => {
@@ -77,14 +84,18 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
       setFormError("");
       setFormSuccess("");
       try {
-        const res = await authFetch(`/api/performance/monthly-tl/summary?month=${monthStr}`);
+        const targetEmpId = preserveEmpId || selectedEmployeeId || initialEmployeeId;
+        const url = targetEmpId 
+          ? `/api/performance/monthly-tl/summary?month=${monthStr}&employee_id=${targetEmpId}`
+          : `/api/performance/monthly-tl/summary?month=${monthStr}`;
+        const res = await authFetch(url);
         if (res.ok) {
           const json = await res.json();
           setSummaryData(json);
 
           const list = json.employees || [];
           if (list.length > 0) {
-            const targetId = preserveEmpId || selectedEmployeeId;
+            const targetId = targetEmpId || list[0].employee?.id;
             const found = list.find((e) => e.employee?.id === targetId) || list[0];
             setSelectedEmployeeId(found.employee?.id || "");
             applyEmployeeData(found);
@@ -102,14 +113,15 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
         setLoading(false);
       }
     },
-    [selectedEmployeeId]
+    [selectedEmployeeId, initialEmployeeId]
   );
 
   useEffect(() => {
     if (isOpen) {
-      fetchMonthlySummary(selectedMonth);
+      const targetEmp = initialEmployeeId || selectedEmployeeId;
+      fetchMonthlySummary(selectedMonth, targetEmp);
     }
-  }, [isOpen, selectedMonth]);
+  }, [isOpen, selectedMonth, initialEmployeeId]);
 
   const handleMonthChange = (newMonth) => {
     setSelectedMonth(newMonth);
@@ -133,14 +145,20 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
     }
   };
 
+  const rawEmployees = summaryData?.employees || [];
+  const employees = useMemo(() => {
+    return rawEmployees.filter((item) => {
+      const r = (item.employee?.role || "employee").toLowerCase().trim();
+      return r === "employee";
+    });
+  }, [rawEmployees]);
+
   const handleSelectEmployeeById = (empId) => {
     setSelectedEmployeeId(empId);
-    const list = summaryData?.employees || [];
-    const found = list.find((e) => e.employee?.id === empId);
+    const found = employees.find((e) => e.employee?.id === empId);
     applyEmployeeData(found);
   };
 
-  const employees = summaryData?.employees || [];
   const activeEmpItem = employees.find((e) => e.employee?.id === selectedEmployeeId) || null;
   const activeEmp = activeEmpItem?.employee || {};
   const activeMetrics = activeEmpItem?.metrics || {};
@@ -316,15 +334,13 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
                   className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors cursor-pointer"
                 >
                   <option value="">
-                    {loading ? "Loading team..." : `-- Choose Team Member (${employees.length} available) --`}
+                    {loading ? "Loading..." : "-- Select Employee --"}
                   </option>
                   {employees.map((item) => {
                     const emp = item.employee || {};
-                    const isEval = item.isEvaluated;
                     return (
                       <option key={emp.id} value={emp.id}>
-                        {emp.full_name} ({emp.designation || "Staff"} · {emp.department || "Engineering"}){" "}
-                        {isEval ? `[⭐ ${item.evaluation?.finalScore}/100]` : "[Pending]"}
+                        {emp.full_name}
                       </option>
                     );
                   })}

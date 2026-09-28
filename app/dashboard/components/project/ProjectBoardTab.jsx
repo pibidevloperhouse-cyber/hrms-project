@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { authFetch } from "@/lib/api/authFetch";
 import TaskDetailModal from "./TaskDetailModal";
 import TaskProgressUpdateModal from "./TaskProgressUpdateModal";
 import CreateStoryTaskModal from "./CreateStoryTaskModal";
@@ -109,10 +110,19 @@ export default function ProjectBoardTab({
   }, [project, departmentEmployees, teamLeads]);
   const isKanban = (project?.project_type || "").toLowerCase() === "kanban";
 
-  const activeSprint = useMemo(() => {
-    if (isKanban) return null;
-    return (sprints || []).find((s) => String(s.status).toUpperCase() === "ACTIVE") || null;
+  const activeSprints = useMemo(() => {
+    if (isKanban) return [];
+    return (sprints || []).filter((s) => {
+      const raw = String(s.status || "").trim().toUpperCase();
+      return ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(raw);
+    });
   }, [sprints, isKanban]);
+
+  const activeSprintIds = useMemo(() => {
+    return new Set(activeSprints.map((s) => s.id));
+  }, [activeSprints]);
+
+  const activeSprint = activeSprints.length > 0 ? activeSprints[0] : null;
 
   const [sprintFilter, setSprintFilter] = useState("active");
   const [assigneeFilter, setAssigneeFilter] = useState("all");
@@ -258,20 +268,17 @@ export default function ProjectBoardTab({
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
       if (!isKanban) {
-        // STRICT RULE FOR EMPLOYEES: Only tasks in the currently ACTIVE sprint are shown on the board!
-        // Tasks in upcoming/planned sprints or unscheduled backlog are excluded.
-        if (!isLeadOrManagerOrAdmin) {
-          if (!activeSprint || task.sprint_id !== activeSprint.id) return false;
-        } else {
-          if (sprintFilter === "active") {
-            if (!activeSprint || task.sprint_id !== activeSprint.id) return false;
-          } else if (sprintFilter === "backlog") {
-            const isInBacklog = !task.sprint_id || !sprints.some((s) => s.id === task.sprint_id);
-            if (!isInBacklog) return false;
-          } else if (sprintFilter !== "all") {
-            // Specific sprint ID filter
-            if (task.sprint_id !== sprintFilter) return false;
+        if (sprintFilter === "active") {
+          if (activeSprintIds.size > 0) {
+            if (!activeSprintIds.has(task.sprint_id)) return false;
           }
+          // If no active sprint is running, show all project tasks
+        } else if (sprintFilter === "backlog") {
+          const isInBacklog = !task.sprint_id || !sprints.some((s) => s.id === task.sprint_id);
+          if (!isInBacklog) return false;
+        } else if (sprintFilter !== "all") {
+          // Specific sprint ID filter
+          if (task.sprint_id !== sprintFilter) return false;
         }
       }
 
@@ -372,16 +379,9 @@ export default function ProjectBoardTab({
     setUpdatingTaskId(taskId);
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: normStatus,
           progress: nextProgress,
@@ -600,9 +600,9 @@ export default function ProjectBoardTab({
       if (review_attachments !== undefined) payload.review_attachments = review_attachments;
       if (review_submitted_at !== undefined) payload.review_submitted_at = review_submitted_at;
 
-      const res = await fetch(`/api/projects/tasks/${taskId}`, {
+      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
         method: "PATCH",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
@@ -661,16 +661,9 @@ export default function ProjectBoardTab({
     setFormError("");
 
     try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const res = await fetch(`/api/projects/${project.id}/tasks`, {
+      const res = await authFetch(`/api/projects/${project.id}/tasks`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(taskPayload),
       });
 
@@ -705,6 +698,29 @@ export default function ProjectBoardTab({
     }
   };
 
+  const handleStartSprint = async (sprintId) => {
+    try {
+      const res = await authFetch(`/api/projects/${project.id}/sprints`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sprint_id: sprintId,
+          status: "ACTIVE",
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showNotificationToast(data.message || "Sprint started successfully! Deliverables are now live.", "success");
+        if (onTasksUpdated) onTasksUpdated();
+      } else {
+        showNotificationToast(data.message || "Failed to start sprint.", "error");
+      }
+    } catch (err) {
+      console.error("Start sprint error:", err);
+      showNotificationToast("Network error starting sprint.", "error");
+    }
+  };
+
   return (
     <div className="space-y-4 text-xs text-slate-800">
       {/* Board Filter Bar */}
@@ -712,29 +728,22 @@ export default function ProjectBoardTab({
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Sprint Filter (Only in Scrum / Custom Agile) */}
           {!isKanban && (
-            isLeadOrManagerOrAdmin ? (
-              <select
-                value={sprintFilter}
-                onChange={(e) => setSprintFilter(e.target.value)}
-                className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
-              >
-                <option value="active">
-                  ⚡ Active Sprint {activeSprint ? `(${activeSprint.name})` : "(None Running)"}
+            <select
+              value={sprintFilter}
+              onChange={(e) => setSprintFilter(e.target.value)}
+              className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
+            >
+              <option value="active">
+                ⚡ Active Sprints {activeSprints.length > 0 ? `(${activeSprints.map((s) => s.name).join(", ")})` : "(None Running)"}
+              </option>
+              {sprints.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.status})
                 </option>
-                {sprints.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.status})
-                  </option>
-                ))}
-                <option value="backlog">Backlog (Unscheduled)</option>
-                <option value="all">All Sprints &amp; Tasks</option>
-              </select>
-            ) : (
-              <div className="h-8.5 px-3 rounded-lg border border-blue-200 bg-blue-50/70 text-blue-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>⚡ Active Sprint: {activeSprint ? activeSprint.name : "None Running"}</span>
-              </div>
-            )
+              ))}
+              <option value="backlog">Backlog (Unscheduled)</option>
+              <option value="all">All Sprints &amp; Tasks</option>
+            </select>
           )}
 
           {/* Assignee Filter */}
@@ -775,39 +784,38 @@ export default function ProjectBoardTab({
         </button>
       </div>
 
-      {/* Active Sprint Notice / Summary Banner for Scrum */}
-      {!isKanban && sprintFilter === "active" && (
-        activeSprint ? (
-          <div className="px-4 py-2.5 rounded-xl bg-blue-50/70 border border-blue-200 flex flex-wrap items-center justify-between gap-2 text-xs">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="font-bold text-slate-900">Active Sprint: {activeSprint.name}</span>
-              {activeSprint.goal && (
-                <span className="text-slate-500 text-[11px] hidden sm:inline truncate max-w-md">
-                  — {activeSprint.goal}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 text-[11px] text-slate-500 font-mono">
-              <span>📅 {activeSprint.start_date || "Start"} → {activeSprint.end_date || "End"}</span>
-              <span className="font-bold text-blue-700">
-                {filteredTasks.filter((t) => t.status === "COMPLETED").length} of {filteredTasks.length} tasks completed
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex items-center justify-between gap-3 text-xs">
+      {/* No Active Sprint Notice for Scrum */}
+      {!isKanban && sprintFilter === "active" && activeSprints.length === 0 && (
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex flex-wrap items-center justify-between gap-3 text-xs animate-fadeIn">
             <div className="flex items-center gap-2.5">
               <span className="text-base">ℹ️</span>
               <div>
                 <p className="font-bold">No Active Sprint Running</p>
                 <p className="text-[11px] text-amber-700">
-                  The Scrum board displays tasks for the active sprint only. Tasks in planned or upcoming sprints are managed in the Sprints &amp; Backlog tabs until started.
+                  {sprints.length > 0
+                    ? `You have ${sprints.length} planned sprint(s). Start a sprint to focus deliverables on this cycle.`
+                    : "The Scrum board displays tasks for the active sprint. Create and start a sprint in the Sprints tab."}
                 </p>
               </div>
             </div>
+            {isLeadOrManagerOrAdmin && sprints.length > 0 && (
+              <div className="flex items-center gap-2">
+                {sprints
+                  .filter((s) => String(s.status || "").toUpperCase() === "PLANNED" || !s.status)
+                  .slice(0, 2)
+                  .map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => handleStartSprint(s.id)}
+                      className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition cursor-pointer shadow-2xs text-xs flex items-center gap-1.5"
+                    >
+                      <span>⚡ Start {s.name}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
           </div>
-        )
       )}
 
       {/* Kanban Board Columns with HTML5 Drag and Drop */}

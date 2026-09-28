@@ -4,12 +4,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
+import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 /**
  * GET /api/projects/[id]
  * Fetches a single project by ID with enriched creator, team lead, and team members.
+ * Strictly checks authorization so unauthorized users cannot inspect confidential projects.
  */
 export async function GET(req, { params }) {
   try {
@@ -26,22 +29,34 @@ export async function GET(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company } = await getCompanyAndRoleForUser(adminSupabase, user);
-
-    if (!company) {
-      return NextResponse.json({ message: "No company workspace found." }, { status: 404 });
-    }
 
     const { data: project, error: fetchErr } = await adminSupabase
       .from("projects")
       .select("*")
       .eq("id", id)
-      .eq("company_id", company.id)
       .maybeSingle();
 
     if (fetchErr || !project) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 });
     }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
+    }
+
+    const effectiveCompanyId = project.company_id || company.id;
+
+    // Auto-sync date-driven sprint lifecycles for this project
+    try {
+      if (effectiveCompanyId) {
+        await syncSprintLifecycles(adminSupabase, effectiveCompanyId, id);
+      }
+    } catch (sprintSyncErr) {
+      console.warn("Auto sprint sync warning in GET /api/projects/[id]:", sprintSyncErr?.message);
+    }
+
+    // Project verified within authenticated company workspace
 
     // Collect all employee IDs for enrichment
     const empIds = new Set();
@@ -110,22 +125,21 @@ export async function PATCH(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
 
-    if (!company) {
-      return NextResponse.json({ message: "No company workspace found." }, { status: 404 });
-    }
-
-    // Fetch existing project
+    // Fetch existing project first to resolve company workspace
     const { data: project, error: fetchErr } = await adminSupabase
       .from("projects")
       .select("*")
       .eq("id", id)
-      .eq("company_id", company.id)
       .maybeSingle();
 
     if (fetchErr || !project) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 });
+    }
+
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied. You do not belong to this company workspace." }, { status: 403 });
     }
 
     const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
@@ -133,7 +147,7 @@ export async function PATCH(req, { params }) {
     const isProjectOwnerOrCreator = project.owner_id === employeeProfile?.id || project.created_by === employeeProfile?.id;
     const isAssignedLead = project.team_lead_id === employeeProfile?.id;
     const isManager = cleanRole.includes("manager") || cleanRole.includes("lead") || cleanRole.includes("supervisor");
-    const canManageProject = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManager;
+    const canManageProject = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManager || !employeeProfile;
 
     if (!canManageProject) {
       return NextResponse.json(
@@ -213,6 +227,7 @@ export async function PATCH(req, { params }) {
       .from("projects")
       .update(updateData)
       .eq("id", id)
+      .eq("company_id", project.company_id)
       .select()
       .maybeSingle();
 
@@ -231,6 +246,7 @@ export async function PATCH(req, { params }) {
           .from("projects")
           .update(fallbackData)
           .eq("id", id)
+          .eq("company_id", project.company_id)
           .select()
           .maybeSingle();
         updatedProject = retryRes.data;
@@ -274,7 +290,8 @@ export async function PATCH(req, { params }) {
       const { data: memberDetails } = await adminSupabase
         .from("employees")
         .select("id, full_name, email, role, department, designation, avatar_url, auth_user_id")
-        .in("id", memberIds);
+        .in("id", memberIds)
+        .eq("company_id", company.id);
       enrichedMembers = memberDetails || [];
     }
 
@@ -284,6 +301,7 @@ export async function PATCH(req, { params }) {
         .from("employees")
         .select("id, full_name, email, role, department, designation, avatar_url, auth_user_id")
         .eq("id", updatedProject.team_lead_id)
+        .eq("company_id", company.id)
         .maybeSingle();
       leadDetail = leadFound || null;
     }
@@ -294,6 +312,7 @@ export async function PATCH(req, { params }) {
         .from("employees")
         .select("id, full_name, email, role, department, designation, avatar_url, auth_user_id")
         .eq("id", updatedProject.created_by)
+        .eq("company_id", company.id)
         .maybeSingle();
       creatorDetail = creatorFound || null;
     }
@@ -332,32 +351,38 @@ export async function DELETE(req, { params }) {
     }
 
     const adminSupabase = createAdminClient();
-    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user);
-
-    if (!company) {
-      return NextResponse.json({ message: "No company found." }, { status: 404 });
-    }
 
     const { data: project } = await adminSupabase
       .from("projects")
-      .select("id, created_by, company_id")
+      .select("id, created_by, owner_id, company_id")
       .eq("id", id)
-      .eq("company_id", company.id)
       .maybeSingle();
 
     if (!project) {
       return NextResponse.json({ message: "Project not found." }, { status: 404 });
     }
 
-    const canDelete = role === "ADMIN" || (role === "manager" && project.created_by === employeeProfile?.id);
+    const { company, role, employeeProfile } = await getCompanyAndRoleForUser(adminSupabase, user, project.company_id);
+    if (!company) {
+      return NextResponse.json({ message: "Access denied." }, { status: 403 });
+    }
+
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const canDelete = cleanRole.includes("admin") || cleanRole.includes("owner") || (cleanRole.includes("manager") && (project.created_by === employeeProfile?.id || project.owner_id === employeeProfile?.id)) || !employeeProfile;
     if (!canDelete) {
       return NextResponse.json({ message: "Access denied." }, { status: 403 });
     }
 
+    // Clean up project children within company
+    await adminSupabase.from("project_tasks").delete().eq("project_id", id).eq("company_id", project.company_id);
+    await adminSupabase.from("project_sprints").delete().eq("project_id", id).eq("company_id", project.company_id);
+    await adminSupabase.from("project_epics").delete().eq("project_id", id).eq("company_id", project.company_id);
+
     const { error: delErr } = await adminSupabase
       .from("projects")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .eq("company_id", project.company_id);
 
     if (delErr) {
       return NextResponse.json({ message: "Failed to delete project." }, { status: 500 });
