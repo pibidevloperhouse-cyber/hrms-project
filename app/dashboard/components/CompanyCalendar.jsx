@@ -1,8 +1,6 @@
-/* eslint-disable react-hooks/set-state-in-effect, react-hooks/preserve-manual-memoization */
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { createClient } from "@/lib/supabase/client";
+import React, { useState, useEffect } from "react";
 import { authFetch } from "@/lib/api/authFetch";
 
 const ALL_DAYS_OF_WEEK = [
@@ -23,6 +21,24 @@ const HOLIDAY_TYPES = [
   "Optional Holiday",
 ];
 
+function calculateHoursBetween(start, end) {
+  if (!start || !end) return 8.0;
+  try {
+    const [sH, sM] = start.split(":").map(Number);
+    const [eH, eM] = end.split(":").map(Number);
+    if (isNaN(sH) || isNaN(sM) || isNaN(eH) || isNaN(eM)) return 8.0;
+
+    let diffMinutes = (eH * 60 + eM) - (sH * 60 + sM);
+    if (diffMinutes <= 0) {
+      diffMinutes += 24 * 60;
+    }
+    const hours = diffMinutes / 60;
+    return Math.round(hours * 10) / 10;
+  } catch {
+    return 8.0;
+  }
+}
+
 function formatDateDisplay(dateStr) {
   if (!dateStr) return "—";
   try {
@@ -39,9 +55,11 @@ function formatDateDisplay(dateStr) {
   }
 }
 
-export default function CompanyCalendar() {
+export default function CompanyCalendar({ userRole }) {
   const [loading, setLoading] = useState(true);
-  const [isHR, setIsHR] = useState(false);
+  const [isHR, setIsHR] = useState(
+    () => ["ADMIN", "hr_manager", "hr_executive"].includes(userRole)
+  );
   const [companyName, setCompanyName] = useState("");
   
   const [schedule, setSchedule] = useState({
@@ -81,7 +99,7 @@ export default function CompanyCalendar() {
   const [actionLoadingId, setActionLoadingId] = useState(null);
 
   // Fetch Calendar Data
-  const fetchCalendarData = useCallback(async (isSilent = false) => {
+  const fetchCalendarData = async (isSilent = false) => {
     try {
       if (!isSilent) setLoading(true);
       const res = await authFetch("/api/company/calendar");
@@ -90,7 +108,8 @@ export default function CompanyCalendar() {
       }
       if (res.ok) {
         const data = await res.json();
-        setIsHR(data.isHR || false);
+        const roleDeterminedIsHR = data.isHR ?? ["ADMIN", "hr_manager", "hr_executive"].includes(data.userRole || userRole);
+        setIsHR(Boolean(roleDeterminedIsHR));
         setCompanyName(data.companyName || "Company Workspace");
         if (data.schedule) {
           setSchedule(data.schedule);
@@ -105,7 +124,7 @@ export default function CompanyCalendar() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
     let isSubscribed = true;
@@ -117,7 +136,8 @@ export default function CompanyCalendar() {
     return () => {
       isSubscribed = false;
     };
-  }, [fetchCalendarData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole]);
 
   // Save Working Schedule (HR Only)
   const handleSaveSchedule = async (e) => {
@@ -274,11 +294,6 @@ export default function CompanyCalendar() {
       {/* Top Banner & Header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-          </div>
           <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Company Working Calendar</h2>
           <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-semibold">
             {companyName}
@@ -290,7 +305,12 @@ export default function CompanyCalendar() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full md:w-auto">
             <button
               onClick={() => {
-                setScheduleForm(schedule);
+                setNotice({ error: "", success: "" });
+                const autoHours = calculateHoursBetween(schedule.startTime, schedule.endTime);
+                setScheduleForm({
+                  ...schedule,
+                  dailyWorkingHours: autoHours,
+                });
                 setShowScheduleModal(true);
               }}
               className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
@@ -302,8 +322,11 @@ export default function CompanyCalendar() {
               <span>Configure Hours</span>
             </button>
             <button
-              onClick={() => setShowHolidayModal(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-sky-600/20 cursor-pointer"
+              onClick={() => {
+                setNotice({ error: "", success: "" });
+                setShowHolidayModal(true);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition shadow-md shadow-[#1f6fb2]/20 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.25">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -334,28 +357,14 @@ export default function CompanyCalendar() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-2 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Standard Working Hours</span>
-            <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
           </div>
           <div className="text-2xl font-bold text-slate-900 font-mono tracking-tight">{schedule.dailyWorkingHours} hrs <span className="text-xs text-slate-500 font-normal font-sans">/ day</span></div>
-          <div className="text-xs text-slate-500 font-mono flex items-center gap-1.5 pt-0.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            <span>{schedule.startTime} — {schedule.endTime}</span>
-          </div>
         </div>
 
         {/* Work Days */}
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-2 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active Work Days</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
-            </div>
           </div>
           <div className="text-2xl font-bold text-slate-900 tracking-tight">{schedule.workDays.length} Days <span className="text-xs text-slate-500 font-normal">/ week</span></div>
         </div>
@@ -364,13 +373,8 @@ export default function CompanyCalendar() {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 space-y-2 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Company Holidays</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
           </div>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight">{holidays.length} Days <span className="text-xs text-slate-500 font-normal">scheduled</span></div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight">{holidays.length} Days</div>
         </div>
       </div>
 
@@ -475,6 +479,7 @@ export default function CompanyCalendar() {
                         key={`day-${dayNum}`}
                         onClick={() => {
                           if (isHR) {
+                            setNotice({ error: "", success: "" });
                             setHolidayForm({
                               title: "",
                               date: formattedDateStr,
@@ -549,11 +554,11 @@ export default function CompanyCalendar() {
           <div className="space-y-3">
             {holidays.length === 0 ? (
               <div className="py-16 text-center space-y-2 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                <p className="text-xs font-semibold text-slate-700">No Company Holidays Scheduled</p>
+                <p className="text-xs font-semibold text-slate-700">No Company Holidays</p>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
                   {isHR
-                    ? "Click 'Add Holiday' above to schedule recognized company holidays."
-                    : "No official company holidays have been scheduled for this period."}
+                    ? "Click 'Add Holiday' above to add recognized company holidays."
+                    : "No official company holidays for this period."}
                 </p>
               </div>
             ) : (
@@ -605,145 +610,177 @@ export default function CompanyCalendar() {
 
       {/* --- MODAL 1: CONFIGURE WORKING HOURS (HR ONLY) --- */}
       {showScheduleModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-5 shadow-2xl animate-fadeIn max-h-[85vh] overflow-y-auto">
-            
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                  </div>
-                  <span>Configure Company Working Hours</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">Set daily standard target hours, working window, and work days.</p>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !scheduleSaving) setShowScheduleModal(false);
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">Configure:</span>
+                <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+                  Working Hours &amp; Schedule
+                </span>
               </div>
+
+              {/* Close button */}
               <button
+                type="button"
+                disabled={scheduleSaving}
                 onClick={() => setShowScheduleModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-base cursor-pointer p-1"
+                className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveSchedule} className="space-y-4 text-xs">
-              
-              {/* Start & End Time Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                    Standard Start Time *
+            {/* Form Body */}
+            <form onSubmit={handleSaveSchedule} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {notice.error && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                  {notice.error}
+                </div>
+              )}
+
+              {/* Section 1: Working Time Window & Auto-Calculated Target Hours */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Working Time Window
+                </span>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Start Time
                   </label>
-                  <input
-                    type="time"
-                    value={scheduleForm.startTime}
-                    onChange={(e) => {
-                      const newStart = e.target.value;
-                      setScheduleForm((prev) => ({
-                        ...prev,
-                        startTime: newStart,
-                      }));
-                    }}
-                    required
-                    className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
-                  />
+                  <div className="flex-1">
+                    <input
+                      type="time"
+                      required
+                      value={scheduleForm.startTime}
+                      onChange={(e) => {
+                        const newStart = e.target.value;
+                        const calculatedHours = calculateHoursBetween(newStart, scheduleForm.endTime);
+                        setScheduleForm((prev) => ({
+                          ...prev,
+                          startTime: newStart,
+                          dailyWorkingHours: calculatedHours,
+                        }));
+                      }}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                    Standard End Time *
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    End Time
                   </label>
-                  <input
-                    type="time"
-                    value={scheduleForm.endTime}
-                    onChange={(e) => {
-                      const newEnd = e.target.value;
-                      setScheduleForm((prev) => ({
-                        ...prev,
-                        endTime: newEnd,
-                      }));
-                    }}
-                    required
-                    className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
-                  />
+                  <div className="flex-1">
+                    <input
+                      type="time"
+                      required
+                      value={scheduleForm.endTime}
+                      onChange={(e) => {
+                        const newEnd = e.target.value;
+                        const calculatedHours = calculateHoursBetween(scheduleForm.startTime, newEnd);
+                        setScheduleForm((prev) => ({
+                          ...prev,
+                          endTime: newEnd,
+                          dailyWorkingHours: calculatedHours,
+                        }));
+                      }}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                    />
+                  </div>
+                </div>
+
+                {/* Target Hours (Auto Calculated & Disabled) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Target Hours
+                  </label>
+                  <div className="flex-1 flex items-center gap-2">
+                    <input
+                      type="number"
+                      disabled
+                      readOnly
+                      value={scheduleForm.dailyWorkingHours}
+                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs bg-slate-50 text-slate-700 font-mono outline-none shadow-2xs cursor-not-allowed select-none font-semibold"
+                    />
+                    <span className="text-xs text-slate-500 font-medium shrink-0">hrs/day</span>
+                  </div>
                 </div>
               </div>
 
-              {/* Target Hours */}
-              <div className="space-y-1.5">
-                <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                  Daily Standard Target Hours *
-                </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="1"
-                  max="24"
-                  value={scheduleForm.dailyWorkingHours}
-                  onChange={(e) =>
-                    setScheduleForm((prev) => ({ ...prev, dailyWorkingHours: e.target.value }))
-                  }
-                  required
-                  placeholder="e.g. 8.0"
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-sm focus:outline-none focus:border-sky-500"
-                />
-              </div>
+              {/* Small separation divider */}
+              <div className="border-t border-slate-100" />
 
-              {/* Work Days Checkboxes */}
-              <div className="space-y-2">
-                <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                  Active Working Days *
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-sky-50/40 p-3 rounded-xl border border-sky-200">
-                  {ALL_DAYS_OF_WEEK.map((day) => {
-                    const isChecked = scheduleForm.workDays.includes(day);
-                    return (
-                      <label key={day} className="flex items-center gap-2 text-slate-700 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setScheduleForm({
-                                ...scheduleForm,
-                                workDays: [...scheduleForm.workDays, day],
-                              });
+              {/* Section 3: Active Work Days */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Active Work Days ({scheduleForm.workDays.length} Days)
+                </span>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Schedule Days
+                  </label>
+                  <div className="flex-1 flex flex-wrap items-center gap-1.5">
+                    {ALL_DAYS_OF_WEEK.map((day) => {
+                      const isChecked = scheduleForm.workDays.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => {
+                            if (isChecked) {
+                              setScheduleForm((prev) => ({
+                                ...prev,
+                                workDays: prev.workDays.filter((d) => d !== day),
+                              }));
                             } else {
-                              setScheduleForm({
-                                ...scheduleForm,
-                                workDays: scheduleForm.workDays.filter((d) => d !== day),
-                              });
+                              setScheduleForm((prev) => ({
+                                ...prev,
+                                workDays: [...prev.workDays, day],
+                              }));
                             }
                           }}
-                          className="w-4 h-4 rounded border-sky-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                        />
-                        <span className="font-medium">{day}</span>
-                      </label>
-                    );
-                  })}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                            isChecked
+                              ? "bg-brand-gradient text-white shadow-xs"
+                              : "bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200/80"
+                          }`}
+                        >
+                          {day.slice(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
-              {/* Submit Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-3 border-t border-sky-100">
+              {/* Bottom Action Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={scheduleSaving || scheduleForm.workDays.length === 0}
+                  className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20"
+                >
+                  {scheduleSaving ? "Saving…" : "Save Schedule"}
+                </button>
                 <button
                   type="button"
+                  disabled={scheduleSaving}
                   onClick={() => setShowScheduleModal(false)}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-slate-700 font-bold transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={scheduleSaving}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold transition disabled:opacity-50 shadow-md shadow-sky-500/20 cursor-pointer"
-                >
-                  {scheduleSaving ? "Saving Schedule…" : "Save Working Hours"}
-                </button>
               </div>
-
             </form>
           </div>
         </div>
@@ -751,111 +788,139 @@ export default function CompanyCalendar() {
 
       {/* --- MODAL 2: ADD COMPANY HOLIDAY (HR ONLY) --- */}
       {showHolidayModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-5 sm:p-6 space-y-5 shadow-2xl animate-fadeIn max-h-[85vh] overflow-y-auto">
-            
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-slate-900 flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <span>Add Company Holiday</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">Schedule an official company holiday or recognized non-working day.</p>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !holidaySaving) setShowHolidayModal(false);
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">Add:</span>
+                <span className="text-[#2ec4b6] font-bold text-sm sm:text-base">
+                  Company Holiday
+                </span>
               </div>
+
+              {/* Close button */}
               <button
+                type="button"
+                disabled={holidaySaving}
                 onClick={() => setShowHolidayModal(false)}
-                className="text-slate-400 hover:text-slate-700 text-base cursor-pointer p-1"
+                className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleAddHoliday} className="space-y-4 text-xs">
-              
-              {/* Holiday Title */}
-              <div className="space-y-1.5">
-                <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                  Holiday Name / Title *
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Independence Day / New Year Holiday"
-                  value={holidayForm.title}
-                  onChange={(e) => setHolidayForm({ ...holidayForm, title: e.target.value })}
-                  required
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 text-xs focus:outline-none focus:border-sky-500"
-                />
-              </div>
+            {/* Form Body */}
+            <form onSubmit={handleAddHoliday} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {notice.error && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                  {notice.error}
+                </div>
+              )}
 
-              {/* Date & Type Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                    Holiday Date *
+              {/* Section 1: Holiday Title & Date */}
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Holiday Name
                   </label>
-                  <input
-                    type="date"
-                    value={holidayForm.date}
-                    onChange={(e) => setHolidayForm({ ...holidayForm, date: e.target.value })}
-                    required
-                    className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 font-mono text-xs focus:outline-none focus:border-sky-500"
-                  />
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      required
+                      autoFocus
+                      placeholder="e.g., Independence Day / Spring Festival"
+                      value={holidayForm.title}
+                      onChange={(e) => setHolidayForm((prev) => ({ ...prev, title: e.target.value }))}
+                      className="w-full border border-slate-200 focus:border-[#2ec4b6] focus:ring-2 focus:ring-[#2ec4b6]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 transition placeholder:text-slate-400 outline-none shadow-2xs"
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-1.5">
-                  <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                    Holiday Type *
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Holiday Date
                   </label>
-                  <select
-                    value={holidayForm.holidayType}
-                    onChange={(e) => setHolidayForm({ ...holidayForm, holidayType: e.target.value })}
-                    className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 text-xs focus:outline-none focus:border-sky-500 cursor-pointer"
-                  >
-                    {HOLIDAY_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex-1">
+                    <input
+                      type="date"
+                      required
+                      value={holidayForm.date}
+                      onChange={(e) => setHolidayForm((prev) => ({ ...prev, date: e.target.value }))}
+                      className="w-full border border-slate-200 focus:border-[#2ec4b6] focus:ring-2 focus:ring-[#2ec4b6]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Description */}
-              <div className="space-y-1.5">
-                <label className="block text-sky-900 font-bold uppercase tracking-wider">
-                  Description / Remarks (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="e.g. Official paid company holiday for all departments..."
-                  value={holidayForm.description}
-                  onChange={(e) => setHolidayForm({ ...holidayForm, description: e.target.value })}
-                  className="w-full bg-sky-50/50 border border-sky-200 rounded-xl p-3 text-slate-800 text-xs focus:outline-none focus:border-sky-500"
-                />
+              {/* Small separation divider */}
+              <div className="border-t border-slate-100" />
+
+              {/* Section 2: Details */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#2ec4b6] uppercase tracking-wider block">
+                  Classification &amp; Details
+                </span>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Holiday Type
+                  </label>
+                  <div className="flex-1">
+                    <select
+                      value={holidayForm.holidayType}
+                      onChange={(e) => setHolidayForm((prev) => ({ ...prev, holidayType: e.target.value }))}
+                      className="w-full border border-slate-200 focus:border-[#2ec4b6] focus:ring-2 focus:ring-[#2ec4b6]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 cursor-pointer outline-none shadow-2xs transition"
+                    >
+                      {HOLIDAY_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 pt-1">
+                    Description
+                  </label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={2}
+                      placeholder="Optional notes or remarks regarding this holiday..."
+                      value={holidayForm.description}
+                      onChange={(e) => setHolidayForm((prev) => ({ ...prev, description: e.target.value }))}
+                      className="w-full border border-slate-200 focus:border-[#2ec4b6] focus:ring-2 focus:ring-[#2ec4b6]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs"
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Submit Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-end gap-2.5 pt-3 border-t border-sky-100">
+              {/* Bottom Action Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+                <button
+                  type="submit"
+                  disabled={holidaySaving || !holidayForm.title.trim() || !holidayForm.date}
+                  className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20"
+                >
+                  {holidaySaving ? "Adding…" : "Add Holiday"}
+                </button>
                 <button
                   type="button"
+                  disabled={holidaySaving}
                   onClick={() => setShowHolidayModal(false)}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-slate-700 font-bold transition cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                 >
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={holidaySaving}
-                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold transition disabled:opacity-50 shadow-md shadow-sky-500/20 cursor-pointer"
-                >
-                  {holidaySaving ? "Adding Holiday…" : "Add Holiday"}
-                </button>
               </div>
-
             </form>
           </div>
         </div>

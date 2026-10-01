@@ -398,6 +398,13 @@ export async function GET(req) {
         review_feedback_by: feedbackLeadId,
         review_feedback_at: feedbackAt,
         review_feedback_lead: reviewFeedbackLead,
+        reviewed_by: t.reviewed_by || t.approved_by || feedbackLeadId || null,
+        approved_by: t.approved_by || t.reviewed_by || null,
+        reviewed_by_name: t.reviewed_by_name || t.approved_by_name || (t.reviewed_by ? empMap.get(t.reviewed_by)?.full_name : null) || (t.approved_by ? empMap.get(t.approved_by)?.full_name : null) || null,
+        approved_by_name: t.approved_by_name || t.reviewed_by_name || (t.approved_by ? empMap.get(t.approved_by)?.full_name : null) || null,
+        reviewed_at: t.reviewed_at || t.approved_at || (normalizedStatus === "COMPLETED" ? t.completed_at || t.updated_at : null),
+        approved_at: t.approved_at || t.reviewed_at || (normalizedStatus === "COMPLETED" ? t.completed_at || t.updated_at : null),
+        reviewer: (t.reviewed_by ? empMap.get(t.reviewed_by) : t.approved_by ? empMap.get(t.approved_by) : null) || null,
       };
     });
 

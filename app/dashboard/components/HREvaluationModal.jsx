@@ -111,29 +111,29 @@ export default function HREvaluationModal({
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 backdrop-blur-xs overflow-y-auto animate-fadeIn">
       <div
-        className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-auto animate-scaleIn"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-6 py-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-xl font-bold text-white shadow-inner">
+        <div className="px-6 py-4 bg-slate-50/60 border-b border-slate-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sm font-bold text-[#1f6fb2] shadow-2xs">
               {emp.avatar_url ? (
-                <img src={emp.avatar_url} alt={emp.full_name} className="w-full h-full object-cover rounded-2xl" />
+                <img src={emp.avatar_url} alt={emp.full_name} className="w-full h-full object-cover rounded-xl" />
               ) : (
                 emp.full_name?.charAt(0) || "E"
               )}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-white tracking-tight">{emp.full_name}</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                <h2 className="text-base font-bold text-slate-900 tracking-tight">{emp.full_name}</h2>
+                <span className="px-2.5 py-0.5 rounded-lg text-xs font-semibold bg-sky-50 text-[#1f6fb2] border border-sky-200/80 font-mono">
                   {month} Review
                 </span>
               </div>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-slate-500">
                 {emp.designation || "Team Member"} • {emp.department || "General"}
               </p>
             </div>
@@ -141,11 +141,10 @@ export default function HREvaluationModal({
 
           <button
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition"
+            className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer shadow-2xs"
+            title="Close"
           >
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            ✕
           </button>
         </div>
 
@@ -154,18 +153,18 @@ export default function HREvaluationModal({
           {/* Left Column: 3-Pillar Factual Metrics (5 Cols) */}
           <div className="lg:col-span-5 space-y-4">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1f6fb2] mb-2.5">
                 3 Factual Pillars (80% Weight)
               </h3>
 
               {/* Pillar 1: Daily Attendance */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2 mb-3">
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2 mb-3 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
                     <span className="text-xs font-bold text-slate-700">1. Daily Attendance</span>
                   </div>
-                  <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                  <span className="text-xs font-bold text-[#1f6fb2] bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200 font-mono">
                     {scores.attendanceScore} / 40 pts
                   </span>
                 </div>
@@ -176,13 +175,13 @@ export default function HREvaluationModal({
               </div>
 
               {/* Pillar 2: Working Hours */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2 mb-3">
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2 mb-3 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-sky-500"></span>
                     <span className="text-xs font-bold text-slate-700">2. Working Hours</span>
                   </div>
-                  <span className="text-xs font-bold text-sky-600 bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200">
+                  <span className="text-xs font-bold text-[#1f6fb2] bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200 font-mono">
                     {scores.hoursScore} / 40 pts
                   </span>
                 </div>
@@ -195,7 +194,7 @@ export default function HREvaluationModal({
                     <span>Monthly Target:</span>
                     <span className="font-semibold text-slate-800">{metrics.expected_monthly_hours} hrs</span>
                   </div>
-                  <div className="flex justify-between text-indigo-600 font-semibold">
+                  <div className="flex justify-between text-[#1f6fb2] font-semibold">
                     <span>Completion Rate:</span>
                     <span>{metrics.completion_rate}%</span>
                   </div>
@@ -203,13 +202,13 @@ export default function HREvaluationModal({
               </div>
 
               {/* Pillar 3: Leaves & Discipline */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2 mb-3">
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2 mb-3 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-purple-500"></span>
+                    <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
                     <span className="text-xs font-bold text-slate-700">3. Leave & Discipline</span>
                   </div>
-                  <span className="text-xs font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-200">
+                  <span className="text-xs font-bold text-[#1f6fb2] bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-200 font-mono">
                     {scores.leaveScore} / 20 pts
                   </span>
                 </div>
@@ -221,18 +220,18 @@ export default function HREvaluationModal({
             </div>
 
             {/* Live Calculated Score Card */}
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-slate-100 border border-indigo-100 text-center space-y-2">
+            <div className="p-4 rounded-xl bg-sky-50/60 border border-sky-200/80 text-center space-y-2">
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                 Live Projected Monthly Score
               </div>
               <div className="flex items-center justify-center gap-2">
-                <span className="text-4xl font-black text-indigo-950 tracking-tight">
+                <span className="text-4xl font-black text-[#1f6fb2] tracking-tight font-mono">
                   {livePreview.finalScore}
                 </span>
                 <span className="text-sm font-bold text-slate-400">/ 100</span>
               </div>
-              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ring-2 ring-offset-1 transition-all">
-                <span className={`px-2 py-0.5 rounded-full border ${getBadgeStyle(livePreview.performanceBadge)}`}>
+              <div className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold transition-all">
+                <span className={`px-2.5 py-0.5 rounded-lg border ${getBadgeStyle(livePreview.performanceBadge)}`}>
                   {livePreview.performanceBadge}
                 </span>
               </div>
@@ -252,7 +251,7 @@ export default function HREvaluationModal({
               )}
 
               {/* HR Rating Slider (1.0 to 10.0) */}
-              <div className="p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 space-y-2">
+              <div className="p-4 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2 shadow-2xs">
                 <div className="flex items-center justify-between">
                   <div>
                     <label className="text-xs font-bold text-slate-800">
@@ -260,7 +259,7 @@ export default function HREvaluationModal({
                     </label>
                     <p className="text-[11px] text-slate-500">Rate work discipline, teamwork & overall contribution</p>
                   </div>
-                  <div className="px-3 py-1 bg-indigo-600 text-white rounded-xl text-sm font-black shadow-xs">
+                  <div className="px-3 py-1 bg-sky-50 text-[#1f6fb2] border border-sky-200/80 rounded-xl text-xs font-bold font-mono shadow-2xs">
                     {Number(hrRating).toFixed(1)} / 10.0
                   </div>
                 </div>
@@ -272,7 +271,7 @@ export default function HREvaluationModal({
                   step="0.5"
                   value={hrRating}
                   onChange={(e) => setHrRating(parseFloat(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1f6fb2]"
                 />
 
                 <div className="flex justify-between text-[10px] font-semibold text-slate-400">
@@ -294,7 +293,7 @@ export default function HREvaluationModal({
                   value={hrFeedback}
                   onChange={(e) => setHrFeedback(e.target.value)}
                   placeholder="E.g., Consistently on time, completed expected working hours without delay, proactive team communication..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs"
                   required
                 />
               </div>
@@ -307,7 +306,7 @@ export default function HREvaluationModal({
                   value={strengths}
                   onChange={(e) => setStrengths(e.target.value)}
                   placeholder="E.g., Punctuality, Full hours compliance, High attendance..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition placeholder:text-slate-400"
                 />
               </div>
 
@@ -319,7 +318,7 @@ export default function HREvaluationModal({
                   value={areasForImprovement}
                   onChange={(e) => setAreasForImprovement(e.target.value)}
                   placeholder="E.g., Minimize late check-ins, maintain continuous shift hours..."
-                  className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition placeholder:text-slate-400"
                 />
               </div>
             </div>
@@ -330,32 +329,21 @@ export default function HREvaluationModal({
                 type="button"
                 onClick={onClose}
                 disabled={saving}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={saving || isEvaluated}
-                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold transition shadow-md shadow-indigo-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs shadow-[#1f6fb2]/20"
               >
                 {saving ? (
-                  <>
-                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-                    </svg>
-                    <span>Saving Evaluation...</span>
-                  </>
+                  <span>Saving Evaluation...</span>
                 ) : isEvaluated ? (
                   <span>✓ Already Evaluated</span>
                 ) : (
-                  <>
-                    <span>Submit & Store Evaluation</span>
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </>
+                  <span>Submit & Store Evaluation</span>
                 )}
               </button>
             </div>

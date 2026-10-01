@@ -260,27 +260,24 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved, ini
       className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
     >
       <div
-        className="relative w-full max-w-2xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn"
+        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header format */}
-        <div className="px-6 pt-5 pb-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-base">
-            <span className="font-bold text-slate-900">Evaluate:</span>
-            <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
-              Monthly Evaluation
-            </span>
-            <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-              {evaluatedCount}/{employees.length} Reviewed
+        {/* Top Header */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+          <div className="flex items-center gap-1.5 font-sans">
+            <span className="font-bold text-slate-900 text-sm sm:text-base">Evaluate:</span>
+            <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+              Manager Monthly Evaluation
             </span>
           </div>
 
-          {/* Red square close button */}
+          {/* Close button */}
           <button
             type="button"
             disabled={isSubmitting}
             onClick={onClose}
-            className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+            className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             title="Close"
           >
             ✕
@@ -288,86 +285,75 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved, ini
         </div>
 
         {/* Form Body layout */}
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4 max-h-[82vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           {formError && (
-            <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
               {formError}
             </div>
           )}
           {formSuccess && (
-            <div className="p-2.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
+            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
               {formSuccess}
             </div>
           )}
 
-          {/* Row: Month Selection */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-              <span className="border-b-2 border-rose-500 pb-0.5">Evaluation Month</span>
-            </label>
-            <div className="flex-1">
-              <select
-                value={selectedMonth}
-                onChange={(e) => handleMonthChange(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors cursor-pointer"
-              >
-                {monthOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {/* Section 1: Selection */}
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Evaluation Target
+            </span>
 
-          {/* Row: Employee Selector */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-              <span className="border-b-2 border-rose-500 pb-0.5">Select Employee</span>
-            </label>
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-2">
+            {/* Row: Month Selection */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                Evaluation Month
+              </label>
+              <div className="flex-1">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => handleMonthChange(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition cursor-pointer"
+                >
+                  {monthOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Row: Employee Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                Select Employee
+              </label>
+              <div className="flex-1">
                 <select
                   required
                   value={selectedEmployeeId}
                   onChange={(e) => handleSelectEmployeeById(e.target.value)}
-                  className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors cursor-pointer"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition cursor-pointer"
                 >
                   <option value="">
-                    {loading ? "Loading..." : "-- Select Employee --"}
+                    {loading ? "Loading staff..." : "-- Select Employee --"}
                   </option>
                   {employees.map((item) => {
                     const emp = item.employee || {};
+                    const isEval = item.isEvaluated;
                     return (
                       <option key={emp.id} value={emp.id}>
-                        {emp.full_name}
+                        {emp.full_name} ({emp.designation || "Staff"} · {emp.department || "General"}) {isEval ? `[${item.evaluation?.finalScore}/100]` : "[Pending]"}
                       </option>
                     );
                   })}
                 </select>
-
-                {/* Quick Prev / Next Buttons */}
-                <button
-                  type="button"
-                  disabled={currentIndex <= 0 || isSubmitting}
-                  onClick={handlePrevEmployee}
-                  className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium transition cursor-pointer disabled:opacity-40 shrink-0"
-                  title="Previous Employee"
-                >
-                  ◀
-                </button>
-                <button
-                  type="button"
-                  disabled={currentIndex < 0 || currentIndex >= employees.length - 1 || isSubmitting}
-                  onClick={handleNextEmployee}
-                  className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium transition cursor-pointer disabled:opacity-40 shrink-0"
-                  title="Next Employee"
-                >
-                  ▶
-                </button>
               </div>
             </div>
           </div>
+
+          {/* Small separation divider */}
+          <div className="border-t border-slate-100" />
 
           {/* If No Employee Selected */}
           {!activeEmpItem && !loading && (
@@ -379,172 +365,176 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved, ini
           {/* Active Employee Details & Calculation */}
           {activeEmpItem && (
             <>
-              {/* Section Divider: Task Execution Analysis */}
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-3">
-                Task &amp; Deadline Execution Analysis (40 pts)
-              </div>
+              {/* Section 2: Task Execution Analysis */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Task &amp; Deadline Execution Analysis (40 pts)
+                </span>
 
-              {/* Performance Analysis Fields (Disabled / Readonly Popup Form Style) */}
-              <div className="space-y-3 pt-1">
                 {/* Row 1: Task Completion */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                  <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                    <span className="border-b-2 border-blue-600 pb-0.5">Task Completion</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Task Completion
                   </label>
-                  <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm bg-slate-50/80 px-2.5 py-1.5 rounded cursor-not-allowed">
-                    <span className="text-xs text-slate-700 font-medium">
+                  <div className="flex-1 flex items-center justify-between border border-slate-200 text-xs bg-slate-50/80 px-3.5 py-2 rounded-xl shadow-2xs cursor-not-allowed">
+                    <span className="text-slate-700 font-medium">
                       {activeMetrics.completed_tasks || 0} / {activeMetrics.total_tasks || 0} Tasks Completed ({activeScores.completionRate || 100}% delivery rate)
                     </span>
-                    <span className="text-xs font-bold text-blue-700 font-mono">
+                    <span className="font-bold text-[#1f6fb2] font-mono">
                       {(Number(activeScores.taskCompletionScore) || 0).toFixed(1)} / 25 pts
                     </span>
                   </div>
                 </div>
 
                 {/* Row 2: Deadline Punctuality */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                  <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                    <span className="border-b-2 border-blue-600 pb-0.5">Deadline Punctuality</span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Deadline Punctuality
                   </label>
-                  <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm bg-slate-50/80 px-2.5 py-1.5 rounded cursor-not-allowed">
-                    <span className="text-xs text-slate-700 font-medium">
+                  <div className="flex-1 flex items-center justify-between border border-slate-200 text-xs bg-slate-50/80 px-3.5 py-2 rounded-xl shadow-2xs cursor-not-allowed">
+                    <span className="text-slate-700 font-medium">
                       {activeMetrics.on_time_tasks || 0} On-Time {Number(activeMetrics.delayed_tasks) > 0 ? `(⚠️ ${activeMetrics.delayed_tasks} delayed · ${activeMetrics.total_delay_days}d total delay)` : "(✓ 100% on-schedule)"}
                     </span>
-                    <span className="text-xs font-bold text-blue-700 font-mono">
+                    <span className="font-bold text-[#1f6fb2] font-mono">
                       {(Number(activeScores.deadlinePunctualityScore) || 0).toFixed(1)} / 15 pts
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Section Divider: Team Lead Qualitative & Skills Review */}
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-3">
-                Team Lead Qualitative &amp; Skills Review (60 pts)
-              </div>
+              {/* Small separation divider */}
+              <div className="border-t border-slate-100" />
 
-              {/* Notice when already evaluated */}
-              {activeEmpItem?.isEvaluated && (
-                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between animate-fadeIn">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-emerald-600 text-sm">✓</span>
-                    <span>
-                      <strong>Finalized:</strong> Manager evaluation for <strong>{activeEmp.full_name || "this employee"}</strong> has already been submitted for this month ({activeEmpItem?.evaluation?.finalScore} pts). Evaluations can only be submitted once per month.
+              {/* Section 3: Manager Qualitative & Skills Review */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Manager Qualitative &amp; Skills Review (60 pts)
+                </span>
+
+                {/* Notice when already evaluated */}
+                {activeEmpItem?.isEvaluated && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between animate-fadeIn">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-emerald-600 text-sm">✓</span>
+                      <span>
+                        <strong>Finalized:</strong> Manager evaluation for <strong>{activeEmp.full_name || "this employee"}</strong> has already been submitted for this month ({activeEmpItem?.evaluation?.finalScore} pts). Evaluations can only be submitted once per month.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Row 1: Learning Skills (1 - 10) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Learning Skills
+                  </label>
+                  <div className="flex-1 flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="10.0"
+                      step="0.5"
+                      value={learningRating}
+                      disabled={isSubmitting || activeEmpItem?.isEvaluated}
+                      onChange={(e) => setLearningRating(parseFloat(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1f6fb2] disabled:opacity-50"
+                    />
+                    <span className="w-24 text-center font-bold text-xs bg-sky-50 text-[#1f6fb2] py-1.5 px-2.5 rounded-xl border border-sky-200/80 shrink-0 font-mono">
+                      {Number(learningRating).toFixed(1)} ({livePreview.learningScore} / 20)
                     </span>
                   </div>
                 </div>
-              )}
 
-              {/* Row 1: Learning Skills (1 - 10) */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  <span className="border-b-2 border-blue-600 pb-0.5">Learning Skills</span>
-                </label>
-                <div className="flex-1 flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="1.0"
-                    max="10.0"
-                    step="0.5"
-                    value={learningRating}
-                    disabled={isSubmitting || activeEmpItem?.isEvaluated}
-                    onChange={(e) => setLearningRating(parseFloat(e.target.value))}
-                    className="flex-1 h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
-                  />
-                  <span className="w-24 text-center font-bold text-xs bg-blue-50 text-blue-700 py-1 px-2 rounded border border-blue-200 shrink-0 font-mono">
-                    ⭐ {Number(learningRating).toFixed(1)} ({livePreview.learningScore} / 20)
-                  </span>
+                {/* Row 2: Innovation (1 - 10) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Innovation
+                  </label>
+                  <div className="flex-1 flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="10.0"
+                      step="0.5"
+                      value={innovationRating}
+                      disabled={isSubmitting || activeEmpItem?.isEvaluated}
+                      onChange={(e) => setInnovationRating(parseFloat(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1f6fb2] disabled:opacity-50"
+                    />
+                    <span className="w-24 text-center font-bold text-xs bg-sky-50 text-[#1f6fb2] py-1.5 px-2.5 rounded-xl border border-sky-200/80 shrink-0 font-mono">
+                      {Number(innovationRating).toFixed(1)} ({livePreview.innovationScore} / 20)
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Row 2: Innovation (1 - 10) */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  <span className="border-b-2 border-blue-600 pb-0.5">Innovation</span>
-                </label>
-                <div className="flex-1 flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="1.0"
-                    max="10.0"
-                    step="0.5"
-                    value={innovationRating}
-                    disabled={isSubmitting || activeEmpItem?.isEvaluated}
-                    onChange={(e) => setInnovationRating(parseFloat(e.target.value))}
-                    className="flex-1 h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
-                  />
-                  <span className="w-24 text-center font-bold text-xs bg-blue-50 text-blue-700 py-1 px-2 rounded border border-blue-200 shrink-0 font-mono">
-                    ⭐ {Number(innovationRating).toFixed(1)} ({livePreview.innovationScore} / 20)
-                  </span>
+                {/* Row 3: Team Collaboration (1 - 10) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Team Collaboration
+                  </label>
+                  <div className="flex-1 flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="10.0"
+                      step="0.5"
+                      value={collaborationRating}
+                      disabled={isSubmitting || activeEmpItem?.isEvaluated}
+                      onChange={(e) => setCollaborationRating(parseFloat(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1f6fb2] disabled:opacity-50"
+                    />
+                    <span className="w-24 text-center font-bold text-xs bg-sky-50 text-[#1f6fb2] py-1.5 px-2.5 rounded-xl border border-sky-200/80 shrink-0 font-mono">
+                      {Number(collaborationRating).toFixed(1)} ({livePreview.collaborationScore} / 20)
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              {/* Row 3: Team Collaboration (1 - 10) */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  <span className="border-b-2 border-blue-600 pb-0.5">Team Collaboration</span>
-                </label>
-                <div className="flex-1 flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="1.0"
-                    max="10.0"
-                    step="0.5"
-                    value={collaborationRating}
-                    disabled={isSubmitting || activeEmpItem?.isEvaluated}
-                    onChange={(e) => setCollaborationRating(parseFloat(e.target.value))}
-                    className="flex-1 h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
-                  />
-                  <span className="w-24 text-center font-bold text-xs bg-blue-50 text-blue-700 py-1 px-2 rounded border border-blue-200 shrink-0 font-mono">
-                    ⭐ {Number(collaborationRating).toFixed(1)} ({livePreview.collaborationScore} / 20)
-                  </span>
+                {/* Row 4: Feedback Remarks */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0 pt-1">
+                    Feedback Remarks
+                  </label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={3}
+                      required
+                      disabled={isSubmitting || activeEmpItem?.isEvaluated}
+                      placeholder="Enter qualitative feedback remarks on technical output, problem solving, innovation & collaboration..."
+                      value={tlFeedback}
+                      onChange={(e) => setTlFeedback(e.target.value)}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Row 4: Feedback Remarks */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-2">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-                  <span className="border-b-2 border-rose-500 pb-0.5">Feedback Remarks</span>
-                </label>
-                <div className="flex-1">
-                  <textarea
-                    rows={3}
-                    required
-                    disabled={isSubmitting || activeEmpItem?.isEvaluated}
-                    placeholder="Enter qualitative feedback remarks on technical output, problem solving, innovation & collaboration..."
-                    value={tlFeedback}
-                    onChange={(e) => setTlFeedback(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                  />
-                </div>
-              </div>
-
-              {/* Live Preview Score Banner */}
-              <div className="p-3 rounded bg-blue-50/80 border border-blue-200 flex items-center justify-between text-xs animate-fadeIn">
-                <div>
-                  <span className="text-slate-600 font-medium">Monthly Performance Score:</span>
-                  <span className="ml-2 font-black text-blue-700 font-mono text-sm">
-                    {(Number(livePreview.finalScore) || 0).toFixed(1)} / 100
-                  </span>
-                  <span className="ml-2 text-[10px] text-slate-500">
-                    (Auto {activeScores.autoTaskScore || 40} + Skills {livePreview.manualSkillsScore})
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Badge:</span>
-                  <span className="px-2.5 py-0.5 rounded font-bold text-white bg-blue-600 text-[11px] shadow-2xs">
-                    {livePreview.performanceBadge}
-                  </span>
+                {/* Live Preview Score Banner */}
+                <div className="p-3.5 rounded-xl bg-sky-50/60 border border-sky-200/80 flex items-center justify-between text-xs animate-fadeIn">
+                  <div>
+                    <span className="text-slate-600 font-medium">Monthly Performance Score:</span>
+                    <span className="ml-2 font-black text-[#1f6fb2] font-mono text-sm">
+                      {(Number(livePreview.finalScore) || 0).toFixed(1)} / 100
+                    </span>
+                    <span className="ml-2 text-[10px] text-slate-500">
+                      (Auto {activeScores.autoTaskScore || 40} + Skills {livePreview.manualSkillsScore})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 font-medium">Badge:</span>
+                    <span className="px-3 py-1 rounded-lg font-bold text-white bg-brand-gradient text-[11px] shadow-xs shadow-[#1f6fb2]/20">
+                      {livePreview.performanceBadge}
+                    </span>
+                  </div>
                 </div>
               </div>
             </>
           )}
 
           {/* Bottom Action Buttons */}
-          <div className="pt-6 pb-2 flex items-center gap-3">
+          <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
             <button
               type="submit"
               disabled={isSubmitting || !selectedEmployeeId || !tlFeedback.trim() || activeEmpItem?.isEvaluated}
-              className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+              className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs shadow-[#1f6fb2]/20"
             >
               {activeEmpItem?.isEvaluated ? "✓ Already Evaluated" : isSubmitting ? "Saving…" : "Save Evaluation"}
             </button>
@@ -552,7 +542,7 @@ export default function TLMonthlyEvaluationModal({ isOpen, onClose, onSaved, ini
               type="button"
               disabled={isSubmitting}
               onClick={onClose}
-              className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             >
               Cancel
             </button>

@@ -55,13 +55,28 @@ export async function GET(req, { params }) {
       return NextResponse.json({ message: "Task not found." }, { status: 404 });
     }
 
-    const cleanRole = (role || "").toLowerCase();
-    const isOwnerOrAdmin = cleanRole === "admin";
-    const isCreatorManager = cleanRole === "manager" && (project?.created_by === employeeProfile?.id || project?.department?.toLowerCase() === employeeProfile?.department?.toLowerCase());
-    const isAssignedLead = cleanRole === "team_lead" && project?.team_lead_id === employeeProfile?.id;
-    const isAssignedEmployee = task.assigned_to === employeeProfile?.id;
+    const cleanRole = (role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+    const isManager = cleanRole.includes("manager") || cleanRole.includes("supervisor");
+    const isProjectOwnerOrCreator = project?.created_by === employeeProfile?.id || project?.owner_id === employeeProfile?.id;
+    const isLead = cleanRole.includes("lead") || project?.team_lead_id === employeeProfile?.id;
+    const isDeptManager = isManager && project?.department && employeeProfile?.department && project.department.toLowerCase() === employeeProfile.department.toLowerCase();
 
-    if (!isOwnerOrAdmin && !isCreatorManager && !isAssignedLead && !isAssignedEmployee) {
+    const myIdentities = new Set();
+    if (employeeProfile?.id) myIdentities.add(employeeProfile.id);
+    if (user?.id) myIdentities.add(user.id);
+    if (employeeProfile?.auth_user_id) myIdentities.add(employeeProfile.auth_user_id);
+    if (employeeProfile?.user_id) myIdentities.add(employeeProfile.user_id);
+
+    const isAssigned = Boolean(
+      (task.assigned_to && myIdentities.has(task.assigned_to)) ||
+      (task.planned_assignee_id && myIdentities.has(task.planned_assignee_id))
+    );
+    const isSquadMember = Array.isArray(project?.team_members) && project.team_members.some((mId) => myIdentities.has(mId));
+
+    const canView = isOwnerOrAdmin || isDeptManager || isProjectOwnerOrCreator || isLead || isManager || isAssigned || isSquadMember;
+
+    if (!canView) {
       return NextResponse.json({ message: "Access denied." }, { status: 403 });
     }
 

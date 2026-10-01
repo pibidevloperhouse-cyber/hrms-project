@@ -107,7 +107,7 @@ export default function DepartmentSummary({ employees = [], onManageDepartments 
                   {/* Progress Bar */}
                   <div className="w-full bg-slate-200/70 rounded-full h-1.5 overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-sky-600 transition-all duration-500"
+                      className="h-full rounded-full bg-brand-gradient transition-all duration-500"
                       style={{ width: `${Math.max(dept.percentage, 4)}%` }}
                     />
                   </div>

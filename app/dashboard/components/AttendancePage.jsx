@@ -69,7 +69,7 @@ export default function AttendancePage({ userRole }) {
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
 
   // Live wall-clock for idle (not checked-in) state
-  const [liveTime, setLiveTime] = useState(() => new Date());
+  const [liveTime, setLiveTime] = useState(() => (typeof window !== "undefined" ? new Date() : null));
 
   // Lunch break state
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -106,6 +106,22 @@ export default function AttendancePage({ userRole }) {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState({ error: "", success: "" });
+  const [infoPopup, setInfoPopup] = useState(null);
+
+  // 5-second auto-dismiss for transient info popup
+  useEffect(() => {
+    if (!infoPopup) return;
+    const t = setTimeout(() => setInfoPopup(null), 5000);
+    return () => clearTimeout(t);
+  }, [infoPopup]);
+
+  // Live wall-clock ticker for idle state
+  useEffect(() => {
+    const clockInterval = setInterval(() => {
+      setLiveTime(new Date());
+    }, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
 
 
   // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
@@ -264,8 +280,6 @@ export default function AttendancePage({ userRole }) {
     if (!checkedIn) {
       workSecondsRef.current = 0;
       breakSecondsRef.current = 0;
-      setElapsedSeconds(0);
-      setCurrentBreakSeconds(0);
       return;
     }
 
@@ -351,10 +365,25 @@ export default function AttendancePage({ userRole }) {
         setEarlyReason("");
         setIsLop(false);
         setElapsedSeconds(0);
+        const formattedCheckIn = new Date(data.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         setNotice({
           error: "",
-          success: `Check-in recorded at ${new Date(data.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} — Shift timer started.`,
+          success: `Check-in recorded at ${formattedCheckIn} — Shift timer started.`,
         });
+
+        if (data.isLate) {
+          setInfoPopup({
+            type: "warning",
+            title: "⏰ Late Check-In Recorded",
+            message: `You checked in at ${data.actualCheckInTime || formattedCheckIn}, which is ${data.delayDuration || "delayed"} after the scheduled start time (${data.scheduledStartTime || "09:30 AM"}).`,
+          });
+        } else {
+          setInfoPopup({
+            type: "success",
+            title: "🟢 Shift Started Successfully",
+            message: `Check-in recorded at ${formattedCheckIn}. Have a productive day!`,
+          });
+        }
         if (typeof window !== "undefined") window.dispatchEvent(new Event("attendance-updated"));
         await fetchAttendanceStatus(true);
       }
@@ -566,11 +595,9 @@ export default function AttendancePage({ userRole }) {
   const isHR = ["ADMIN", "hr_manager", "hr_executive", "manager", "team_lead"].includes(userRole);
   const canViewMonthlySummary = ["ADMIN", "hr_manager", "hr_executive"].includes(userRole);
 
-  useEffect(() => {
-    if (!canViewMonthlySummary && activeViewTab === "monthly-summary") {
-      setActiveViewTab(isAdmin ? "team-tracker" : "punch-clock");
-    }
-  }, [canViewMonthlySummary, activeViewTab, isAdmin]);
+  const effectiveViewTab = (!canViewMonthlySummary && activeViewTab === "monthly-summary")
+    ? (isAdmin ? "team-tracker" : "punch-clock")
+    : activeViewTab;
 
   const runtimeDecimal = (elapsedSeconds / 3600).toFixed(2);
   const currentCumulativeHours = Number(
@@ -629,9 +656,6 @@ export default function AttendancePage({ userRole }) {
         {/* Master Header */}
         <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-              <ClockIcon className="w-4 h-4" />
-            </div>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
               Attendance &amp; Working Hours
             </h2>
@@ -657,8 +681,8 @@ export default function AttendancePage({ userRole }) {
                   setActiveViewTab("punch-clock");
                   e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
                 }}
-                className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${activeViewTab === "punch-clock"
-                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${effectiveViewTab === "punch-clock"
+                  ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20 scale-[1.01]"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
                   }`}
               >
@@ -673,8 +697,8 @@ export default function AttendancePage({ userRole }) {
                 setActiveViewTab("team-tracker");
                 e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
               }}
-              className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${activeViewTab === "team-tracker"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+              className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${effectiveViewTab === "team-tracker"
+                ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20 scale-[1.01]"
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
                 }`}
             >
@@ -689,8 +713,8 @@ export default function AttendancePage({ userRole }) {
                   setActiveViewTab("monthly-summary");
                   e?.currentTarget?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
                 }}
-                className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${activeViewTab === "monthly-summary"
-                  ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${effectiveViewTab === "monthly-summary"
+                  ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20 scale-[1.01]"
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
                   }`}
               >
@@ -702,25 +726,22 @@ export default function AttendancePage({ userRole }) {
         )}
 
         {/* TAB 1: PUNCH CLOCK & SHIFT LOGS (FOR EMPLOYEES & HR ONLY) */}
-        {!isAdmin && (!isHR || activeViewTab === "punch-clock") && (
+        {!isAdmin && (!isHR || effectiveViewTab === "punch-clock") && (
           <div className="space-y-6 animate-fadeIn">
             {/* Shift & Break Console Inner Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                  <TimerIcon className="w-4 h-4" />
-                </div>
                 <h3 className="text-sm sm:text-base font-bold text-slate-900">
                   Shift &amp; Break Console
                 </h3>
               </div>
           <span
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold uppercase border ${isOnBreak
-              ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase border ${isOnBreak
+              ? "bg-slate-100 text-slate-700 border-slate-200"
               : checkedIn
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : hasCompletedToday && approvalStatus === "PENDING"
-                  ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
                   : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
                     ? "bg-rose-50 text-rose-700 border-rose-200"
                     : hasCompletedToday
@@ -729,15 +750,9 @@ export default function AttendancePage({ userRole }) {
               }`}
           >
             {isOnBreak ? (
-              <>
-                <CoffeeIcon className="w-3.5 h-3.5" />
-                <span>LUNCH BREAK (PAUSED)</span>
-              </>
+              <span>LUNCH BREAK</span>
             ) : checkedIn ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>ON DUTY (ACTIVE)</span>
-              </>
+              <span>ON DUTY</span>
             ) : hasCompletedToday && approvalStatus === "PENDING" ? (
               <>
                 <TimerIcon className="w-3.5 h-3.5" />
@@ -774,52 +789,40 @@ export default function AttendancePage({ userRole }) {
             {(() => {
               let digits = { h: "00", m: "00", s: "00" };
               let modeLabel = "Ready to Clock In";
-              let modeIconNode = <ClockIcon className="w-3.5 h-3.5 text-slate-500" />;
+              let modeIconNode = null;
               let statusBadgeClass = "bg-slate-100 text-slate-700 border-slate-200";
-              let secondColor = "text-sky-600";
-              let containerTheme = "from-slate-50/80 via-white to-slate-50/40 border-slate-200/90";
-              let tileBorder = "border-slate-200/80 bg-white";
-              let tileShadow = "shadow-xs";
 
               if (isOnBreak) {
                 digits = getDigitsHMS(currentBreakSeconds);
-                modeLabel = "Lunch Break (Shift Paused)";
-                modeIconNode = <CoffeeIcon className="w-3.5 h-3.5 text-amber-700" />;
-                statusBadgeClass = "bg-amber-50 text-amber-800 border-amber-200 animate-pulse";
-                secondColor = "text-amber-600";
-                containerTheme = "from-amber-50/80 via-white to-amber-50/30 border-amber-200";
-                tileBorder = "border-amber-200 bg-white";
+                modeLabel = "Lunch Break";
+                modeIconNode = null;
+                statusBadgeClass = "bg-slate-100 text-slate-700 border-slate-200";
               } else if (checkedIn) {
                 digits = getDigitsHMS(elapsedSeconds);
-                modeLabel = "Active Shift in Progress";
-                modeIconNode = <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />;
-                statusBadgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200 animate-pulse";
-                secondColor = "text-emerald-600";
-                containerTheme = "from-emerald-50/60 via-white to-sky-50/40 border-emerald-200";
-                tileBorder = "border-emerald-200/80 bg-white";
+                modeLabel = "On Duty";
+                modeIconNode = null;
+                statusBadgeClass = "bg-emerald-50 text-emerald-800 border-emerald-200";
               } else if (hasCompletedToday) {
                 digits = getDigitsHMS(Math.round(totalWorkingHoursToday * 3600));
-                modeLabel = isLop || approvalStatus === "REJECTED" ? "Shift Closed (Loss of Pay)" : approvalStatus === "PENDING" ? "Shift Closed (Awaiting HR)" : "Shift Completed For Today";
+                modeLabel = isLop || approvalStatus === "REJECTED" ? "Shift Closed (Loss of Pay)" : approvalStatus === "PENDING" ? "Shift Closed (Awaiting HR)" : "Shift Completed";
                 modeIconNode = isLop || approvalStatus === "REJECTED" ? <XCircleIcon className="w-3.5 h-3.5 text-rose-700" /> : approvalStatus === "PENDING" ? <TimerIcon className="w-3.5 h-3.5 text-amber-700" /> : <CheckCircleIcon className="w-3.5 h-3.5 text-sky-700" />;
                 statusBadgeClass = isLop || approvalStatus === "REJECTED" ? "bg-rose-50 text-rose-800 border-rose-200" : approvalStatus === "PENDING" ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-sky-50 text-sky-800 border-sky-200";
-                secondColor = isLop || approvalStatus === "REJECTED" ? "text-rose-600" : approvalStatus === "PENDING" ? "text-amber-600" : "text-sky-600";
-                containerTheme = isLop || approvalStatus === "REJECTED" ? "from-rose-50/70 via-white to-rose-50/30 border-rose-200" : "from-sky-50/70 via-white to-sky-50/30 border-sky-200";
-                tileBorder = isLop || approvalStatus === "REJECTED" ? "border-rose-200 bg-white" : "border-sky-200 bg-white";
               } else {
+                const now = liveTime || new Date();
                 digits = {
-                  h: String(liveTime.getHours()).padStart(2, "0"),
-                  m: String(liveTime.getMinutes()).padStart(2, "0"),
-                  s: String(liveTime.getSeconds()).padStart(2, "0"),
+                  h: String(now.getHours()).padStart(2, "0"),
+                  m: String(now.getMinutes()).padStart(2, "0"),
+                  s: String(now.getSeconds()).padStart(2, "0"),
                 };
               }
 
               return (
-                <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${containerTheme} border p-5 sm:p-6 shadow-2xs space-y-5 transition-all duration-300`}>
+                <div className="relative overflow-hidden rounded-2xl bg-slate-50/60 border border-slate-200/80 p-5 sm:p-6 shadow-2xs space-y-5 transition-all duration-300">
                   {/* Console Header Bar */}
                   <div className="flex items-center justify-between gap-3 relative z-10">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold tracking-wider text-slate-500 uppercase">
-                        {checkedIn ? "Live Shift Counter" : hasCompletedToday ? "Shift Summary" : "Current Local Time"}
+                        {checkedIn ? "Shift Timer" : hasCompletedToday ? "Shift Summary" : "Current Time"}
                       </span>
                     </div>
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold tracking-wide border shadow-2xs ${statusBadgeClass}`}>
@@ -831,7 +834,7 @@ export default function AttendancePage({ userRole }) {
                   {/* Segmented Digital Clock Readout */}
                   <div className="flex items-center justify-center gap-2 sm:gap-4 py-3 relative z-10">
                     {/* Hours Box */}
-                    <div className={`${tileBorder} border rounded-2xl px-5 py-4 sm:px-8 sm:py-5 text-center min-w-[80px] sm:min-w-[110px] ${tileShadow}`}>
+                    <div className="border border-slate-200/80 bg-white rounded-2xl px-5 py-4 sm:px-8 sm:py-5 text-center min-w-[80px] sm:min-w-[110px] shadow-2xs">
                       <div className="font-mono text-3xl sm:text-5xl font-black tracking-tight text-slate-900 tabular-nums">
                         {digits.h}
                       </div>
@@ -841,12 +844,12 @@ export default function AttendancePage({ userRole }) {
                     </div>
 
                     {/* Colon Separator */}
-                    <div className="font-mono text-2xl sm:text-4xl font-bold text-slate-400 pb-4 animate-pulse">
+                    <div className="font-mono text-2xl sm:text-4xl font-bold text-slate-300 pb-4">
                       :
                     </div>
 
                     {/* Minutes Box */}
-                    <div className={`${tileBorder} border rounded-2xl px-5 py-4 sm:px-8 sm:py-5 text-center min-w-[80px] sm:min-w-[110px] ${tileShadow}`}>
+                    <div className="border border-slate-200/80 bg-white rounded-2xl px-5 py-4 sm:px-8 sm:py-5 text-center min-w-[80px] sm:min-w-[110px] shadow-2xs">
                       <div className="font-mono text-3xl sm:text-5xl font-black tracking-tight text-slate-900 tabular-nums">
                         {digits.m}
                       </div>
@@ -856,13 +859,13 @@ export default function AttendancePage({ userRole }) {
                     </div>
 
                     {/* Colon Separator */}
-                    <div className="font-mono text-2xl sm:text-4xl font-bold text-slate-400 pb-4 animate-pulse">
+                    <div className="font-mono text-2xl sm:text-4xl font-bold text-slate-300 pb-4">
                       :
                     </div>
 
                     {/* Seconds Box */}
-                    <div className={`${tileBorder} border rounded-2xl px-5 py-4 sm:px-8 sm:py-5 text-center min-w-[80px] sm:min-w-[110px] ${tileShadow}`}>
-                      <div className={`font-mono text-3xl sm:text-5xl font-black tracking-tight tabular-nums ${secondColor}`}>
+                    <div className="border border-slate-200/80 bg-white rounded-2xl px-5 py-4 sm:px-8 sm:py-5 text-center min-w-[80px] sm:min-w-[110px] shadow-2xs">
+                      <div className="font-mono text-3xl sm:text-5xl font-black tracking-tight text-slate-900 tabular-nums">
                         {digits.s}
                       </div>
                       <div className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">
@@ -889,35 +892,20 @@ export default function AttendancePage({ userRole }) {
                   </div>
 
                   {/* Slim Linear Progress Bar */}
-                  <div className="space-y-1.5 pt-1 relative z-10">
-                    <div className="w-full h-2.5 bg-slate-200/70 rounded-full overflow-hidden border border-slate-200/60">
+                  <div className="pt-1 relative z-10">
+                    <div className="w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-1000 ease-out ${
                           isOnBreak
-                            ? "bg-amber-400"
+                            ? "bg-slate-400"
                             : checkedIn
-                              ? "bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500"
+                              ? "bg-brand-gradient"
                               : hasCompletedToday
                                 ? isLop || approvalStatus === "REJECTED" ? "bg-rose-500" : "bg-sky-600"
                                 : "bg-slate-300"
                         }`}
                         style={{ width: `${checkedIn || hasCompletedToday ? progressPercentInt : 0}%` }}
                       />
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-500">
-                      <span>
-                        {checkedIn
-                          ? `Net Logged: ${runtimeDecimal} hrs (${progressPercentInt}%)`
-                          : hasCompletedToday
-                            ? `Total Logged: ${totalWorkingHoursToday.toFixed(2)} hrs`
-                            : "Timer begins on Shift Check-In"}
-                      </span>
-                      {totalBreakSeconds > 0 && (
-                        <span className="text-amber-700 font-semibold">
-                          Lunch: {formatSecondsToHHMMSS(totalBreakSeconds)}
-                        </span>
-                      )}
-                      <span>{dailyTargetHours}h Standard</span>
                     </div>
                   </div>
                 </div>
@@ -952,13 +940,47 @@ export default function AttendancePage({ userRole }) {
               </div>
             )}
 
+            {/* 5-Second Transient Information Popup */}
+            {infoPopup && (
+              <div className={`p-3.5 rounded-xl border text-xs flex items-start justify-between gap-3 shadow-md relative overflow-hidden ${
+                infoPopup.type === "warning"
+                  ? "bg-amber-50 border-amber-300 text-amber-900"
+                  : "bg-emerald-50 border-emerald-300 text-emerald-900"
+              }`}>
+                <div className="flex items-start gap-2.5">
+                  <span className="text-base shrink-0 mt-0.5">
+                    {infoPopup.type === "warning" ? "⏰" : "✅"}
+                  </span>
+                  <div>
+                    <p className="font-bold text-xs">{infoPopup.title}</p>
+                    <p className="text-[11px] mt-0.5 opacity-90 leading-relaxed">{infoPopup.message}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setInfoPopup(null)}
+                  className="text-xs opacity-60 hover:opacity-100 cursor-pointer p-0.5 font-bold shrink-0"
+                  title="Close"
+                >
+                  ✕
+                </button>
+                {/* 5-Second progress bar */}
+                <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5">
+                  <div
+                    className={`h-full ${infoPopup.type === "warning" ? "bg-amber-500" : "bg-emerald-500"}`}
+                    style={{ width: "100%", animation: "shrinkProgress 5s linear forwards" }}
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Feedback Notices */}
             {notice.error && (
               <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs text-center font-medium">
                 {notice.error}
               </div>
             )}
-            {notice.success && (
+            {notice.success && !infoPopup && (
               <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs text-center font-medium">
                 {notice.success}
               </div>
@@ -969,12 +991,12 @@ export default function AttendancePage({ userRole }) {
               {checkedIn ? (
                 <div className="space-y-3">
                   {isOnBreak ? (
-                    /* Resuming Shift from Lunch Break (Light Aqua Teal Theme) */
+                    /* Resuming Shift from Lunch Break */
                     <button
                       type="button"
                       onClick={() => handleToggleBreak("END")}
                       disabled={actionLoading}
-                      className="w-full py-4 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="w-full py-3.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs sm:text-sm font-semibold transition-all duration-200 shadow-xs shadow-[#1f6fb2]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
                       {actionLoading ? (
                         <>
@@ -983,7 +1005,7 @@ export default function AttendancePage({ userRole }) {
                         </>
                       ) : (
                         <>
-                          <PlayIcon className="w-5 h-5 shrink-0" />
+                          <PlayIcon className="w-4 h-4 shrink-0" />
                           <span className="tracking-wide">Finish Lunch Break &amp; Resume Shift</span>
                         </>
                       )}
@@ -991,15 +1013,15 @@ export default function AttendancePage({ userRole }) {
                   ) : (hasCompletedBreak || totalBreakSeconds > 0) ? (
                     /* Break completed today, only Check Out available */
                     <div className="space-y-2.5">
-                      <div className="py-2.5 px-3 rounded-xl bg-teal-50/80 border border-teal-200 text-teal-800 text-xs font-semibold text-center flex items-center justify-center gap-2">
-                        <CheckCircleIcon className="w-4 h-4 text-teal-600 shrink-0" />
+                      <div className="py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-200/80 text-slate-700 text-xs font-semibold text-center flex items-center justify-center gap-2">
+                        <CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />
                         <span>Lunch break logged ({formatSecondsToHHMMSS(totalBreakSeconds)}) · Single daily break policy</span>
                       </div>
                       <button
                         type="button"
                         onClick={initiateCheckOut}
                         disabled={actionLoading}
-                        className="w-full py-4 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                        className="w-full py-3.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs sm:text-sm font-semibold transition-all duration-200 shadow-xs shadow-[#1f6fb2]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                       >
                         {actionLoading ? (
                           <>
@@ -1008,7 +1030,7 @@ export default function AttendancePage({ userRole }) {
                           </>
                         ) : (
                           <>
-                            <LogOutIcon className="w-5 h-5 shrink-0" />
+                            <LogOutIcon className="w-4 h-4 shrink-0" />
                             <span className="tracking-wide">Check Out</span>
                           </>
                         )}
@@ -1021,9 +1043,8 @@ export default function AttendancePage({ userRole }) {
                         type="button"
                         onClick={() => handleToggleBreak("START")}
                         disabled={actionLoading || hasCompletedBreak || totalBreakSeconds > 0}
-                        className="py-4 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                        className="py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/80 text-xs sm:text-sm font-semibold transition-all duration-200 shadow-2xs flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                       >
-                        <CoffeeIcon className="w-5 h-5 shrink-0" />
                         <span className="tracking-wide">Start Lunch Break</span>
                       </button>
 
@@ -1031,9 +1052,9 @@ export default function AttendancePage({ userRole }) {
                         type="button"
                         onClick={initiateCheckOut}
                         disabled={actionLoading}
-                        className="py-4 rounded-xl bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white text-sm font-bold transition-all duration-200 shadow-md shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                        className="py-3.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs sm:text-sm font-semibold transition-all duration-200 shadow-xs shadow-[#1f6fb2]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                       >
-                        <LogOutIcon className="w-5 h-5 shrink-0" />
+                        <LogOutIcon className="w-4 h-4 shrink-0" />
                         <span className="tracking-wide">Check Out</span>
                       </button>
                     </div>
@@ -1061,14 +1082,14 @@ export default function AttendancePage({ userRole }) {
                   type="button"
                   onClick={handleCheckIn}
                   disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-                  className={`w-full rounded-xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-3 relative overflow-hidden group ${
+                  className={`w-full rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2.5 relative overflow-hidden group ${
                     isHoliday
-                      ? "py-4 bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
+                      ? "py-3.5 bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                       : isNonWorkingDay
-                        ? "py-4 bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
+                        ? "py-3.5 bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
                         : isOnLeaveToday
-                          ? "py-4 bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
-                          : "py-4 bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white shadow-md shadow-cyan-500/20 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
+                          ? "py-3.5 bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
+                          : "py-3.5 bg-brand-gradient hover:opacity-95 text-white shadow-xs shadow-[#1f6fb2]/20 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
                   }`}
                 >
                   {!isHoliday && !isNonWorkingDay && !isOnLeaveToday && (
@@ -1076,28 +1097,28 @@ export default function AttendancePage({ userRole }) {
                   )}
                   {actionLoading ? (
                     <>
-                      <span className="w-5 h-5 border-2 border-white/60 border-t-white rounded-full animate-spin shrink-0" />
+                      <span className="w-4 h-4 border-2 border-white/60 border-t-white rounded-full animate-spin shrink-0" />
                       <span className="tracking-wide">Starting your shift…</span>
                     </>
                   ) : isHoliday ? (
                     <>
-                      <SunIcon className="w-5 h-5 text-purple-700 shrink-0" />
+                      <SunIcon className="w-4 h-4 text-purple-700 shrink-0" />
                       <span>Company Holiday — Check-In Closed</span>
                     </>
                   ) : isNonWorkingDay ? (
                     <>
-                      <CalendarIcon className="w-5 h-5 text-amber-700 shrink-0" />
+                      <CalendarIcon className="w-4 h-4 text-amber-700 shrink-0" />
                       <span>Off Day ({todayDayName}) — No Shift Today</span>
                     </>
                   ) : isOnLeaveToday ? (
                     <>
-                      <PlaneIcon className="w-5 h-5 text-cyan-700 shrink-0" />
+                      <PlaneIcon className="w-4 h-4 text-cyan-700 shrink-0" />
                       <span>On Approved Leave Today</span>
                     </>
                   ) : (
                     <>
-                      <LogInIcon className="w-5 h-5 text-white shrink-0" />
-                      <span className="tracking-wide text-base">Start My Shift</span>
+                      <LogInIcon className="w-4 h-4 text-white shrink-0" />
+                      <span className="tracking-wide">Start My Shift</span>
                     </>
                   )}
                 </button>
@@ -1110,9 +1131,6 @@ export default function AttendancePage({ userRole }) {
             <div className="border-t border-slate-100 pt-6 space-y-4">
               <div className="flex items-center justify-between pb-1">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                    <FileTextIcon className="w-4 h-4" />
-                  </div>
                   <h3 className="text-sm font-bold text-slate-900">
                     Today&apos;s Shift Record
                   </h3>
@@ -1164,18 +1182,18 @@ export default function AttendancePage({ userRole }) {
                               {new Date(log.check_in).toLocaleTimeString()}
                             </td>
                             <td className="py-3.5 px-4 font-mono text-slate-600">
-                              {log.check_out ? new Date(log.check_out).toLocaleTimeString() : log.status === "ON_BREAK" ? <span className="text-amber-700 font-bold animate-pulse flex items-center gap-1"><CoffeeIcon className="w-3 h-3" /> On Lunch Break (Paused)</span> : <span className="text-emerald-700 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Active Shift</span>}
+                              {log.check_out ? new Date(log.check_out).toLocaleTimeString() : log.status === "ON_BREAK" ? <span className="text-slate-600 font-medium">On Lunch Break</span> : <span className="text-slate-500 font-medium">—</span>}
                             </td>
-                            <td className="py-3.5 px-4 font-mono text-amber-700">
+                            <td className="py-3.5 px-4 font-mono text-slate-700">
                               {formatDurationText(displayBreakSec)}
                             </td>
-                            <td className="py-3.5 px-4 font-mono font-bold text-emerald-700">
+                            <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
                               {displayWorkHours} hrs
                             </td>
                             <td className="py-3.5 px-4">
                               <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${log.status === "ON_BREAK"
-                                  ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${log.status === "ON_BREAK"
+                                  ? "bg-slate-100 text-slate-700 border-slate-200"
                                   : log.status === "CHECKED_IN"
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                     : log.status === "PENDING_APPROVAL"
@@ -1185,32 +1203,15 @@ export default function AttendancePage({ userRole }) {
                                         : "bg-sky-50 text-sky-700 border-sky-200"
                                   }`}
                               >
-                                {log.status === "ON_BREAK" ? (
-                                  <>
-                                    <CoffeeIcon className="w-3 h-3" />
-                                    <span>ON LUNCH BREAK</span>
-                                  </>
-                                ) : log.status === "CHECKED_IN" ? (
-                                  <>
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                    <span>ON DUTY</span>
-                                  </>
-                                ) : log.status === "PENDING_APPROVAL" ? (
-                                  <>
-                                    <TimerIcon className="w-3 h-3" />
-                                    <span>PENDING HR (&lt;8h)</span>
-                                  </>
-                                ) : log.status === "REJECTED_LOP" ? (
-                                  <>
-                                    <XCircleIcon className="w-3 h-3" />
-                                    <span>LOSS OF PAY</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <CheckCircleIcon className="w-3 h-3" />
-                                    <span>COMPLETED</span>
-                                  </>
-                                )}
+                                {log.status === "ON_BREAK"
+                                  ? "ON LUNCH BREAK"
+                                  : log.status === "CHECKED_IN"
+                                    ? "ON DUTY"
+                                    : log.status === "PENDING_APPROVAL"
+                                      ? "PENDING HR"
+                                      : log.status === "REJECTED_LOP"
+                                        ? "LOSS OF PAY"
+                                        : "COMPLETED"}
                               </span>
                             </td>
                           </tr>
@@ -1225,16 +1226,16 @@ export default function AttendancePage({ userRole }) {
         )}
 
         {/* TAB 2: TEAM ATTENDANCE TRACKER */}
-        {isHR && activeViewTab === "team-tracker" && (
+        {isHR && effectiveViewTab === "team-tracker" && (
           <div className="animate-fadeIn">
-            <HRAttendanceTracker embedded={true} />
+            <HRAttendanceTracker embedded={true} userRole={userRole} />
           </div>
         )}
 
         {/* TAB 3: EMPLOYEE MONTHLY SUMMARY */}
-        {canViewMonthlySummary && activeViewTab === "monthly-summary" && (
+        {canViewMonthlySummary && effectiveViewTab === "monthly-summary" && (
           <div className="animate-fadeIn">
-            <EmployeeMonthlySummaryTable embedded={true} />
+            <EmployeeMonthlySummaryTable embedded={true} userRole={userRole} />
           </div>
         )}
       </div>

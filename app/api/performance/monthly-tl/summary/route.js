@@ -31,7 +31,6 @@ export async function GET(req) {
     const isOwnerOrAdmin =
       userRoleStr.includes("admin") ||
       userRoleStr.includes("owner") ||
-      userRoleStr.includes("hr") ||
       Boolean(isOwner || employeeProfile?.is_owner);
     const isLeadOrAdmin =
       isOwnerOrAdmin ||
@@ -43,7 +42,7 @@ export async function GET(req) {
       userDesignation.includes("head");
 
     if (!isLeadOrAdmin) {
-      return NextResponse.json({ message: "Access denied. Team Lead / Manager role required." }, { status: 403 });
+      return NextResponse.json({ message: "Access denied. Team Lead / Manager role required to access task evaluations." }, { status: 403 });
     }
 
     const userDepartment = (employeeProfile?.department || "").trim();

@@ -9,7 +9,7 @@ import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
  * Calculates real-time monthly working hours, overtime (+OT), time delay (-Delay),
  * working days, and absent days for each employee and company-wide.
  * Generates automated HR evaluation badges and smart recommendations.
- * Persists evaluated summary records into public.monthly_analysis_summary table.
+ * Persists evaluated summary records into public.employee_monthly_summary table.
  */
 export async function GET(req) {
   try {
@@ -95,8 +95,8 @@ export async function GET(req) {
     let elapsedExpectedWorkDays = 0;
 
     for (let day = 1; day <= daysInMonthCount; day++) {
-      const dt = new Date(year, month - 1, day);
-      const dayName = dt.toLocaleDateString("en-US", { weekday: "long" });
+      const dt = new Date(Date.UTC(year, month - 1, day));
+      const dayName = dt.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
       if (workDays.includes(dayName)) {
         expectedWorkDaysInMonth += 1;
         if (!isCurrentMonth || day <= currentDayOfMonth) {
@@ -107,10 +107,10 @@ export async function GET(req) {
 
     const expectedMonthlyHours = Number((expectedWorkDaysInMonth * dailyTargetHours).toFixed(1));
 
-    // 2. Fetch All Company Employees
+    // 2. Fetch All Company Employees with joining date
     const { data: allEmpList } = await adminSupabase
       .from("employees")
-      .select("id, full_name, email, role, department, designation, status")
+      .select("id, full_name, email, role, department, designation, status, joining_date, created_at")
       .eq("company_id", company.id)
       .order("full_name", { ascending: true });
 
@@ -161,7 +161,7 @@ export async function GET(req) {
 
     // Count holidays falling on standard company work days
     const holidayDatesSet = new Set();
-    monthHolidays.forEach((h) => {
+    for (const h of monthHolidays) {
       if (h.date) {
         const dt = new Date(h.date + "T00:00:00Z");
         const dayName = dt.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
@@ -169,40 +169,92 @@ export async function GET(req) {
           holidayDatesSet.add(h.date);
         }
       }
-    });
+    }
 
     const companyHolidaysCount = holidayDatesSet.size;
 
-    // Deduct HR Company Holidays from Expected Work Days & Hours (Holidays do not require working hours!)
+    // Deduct HR Company Holidays from Expected Work Days & Hours
     const netExpectedWorkDaysInMonth = Math.max(0, expectedWorkDaysInMonth - companyHolidaysCount);
     const netElapsedExpectedWorkDays = Math.max(0, elapsedExpectedWorkDays - companyHolidaysCount);
     const netExpectedMonthlyHours = Number((netExpectedWorkDaysInMonth * dailyTargetHours).toFixed(1));
 
     // Group logs by employee_id
     const logsByEmployee = {};
-    logs.forEach((log) => {
+    for (const log of logs) {
       if (!logsByEmployee[log.employee_id]) {
         logsByEmployee[log.employee_id] = [];
       }
       logsByEmployee[log.employee_id].push(log);
-    });
+    }
 
     // Group approved leaves by employee_id
     const leavesByEmployee = {};
-    monthLeaves.forEach((lv) => {
+    for (const lv of monthLeaves) {
       if (!leavesByEmployee[lv.employee_id]) {
         leavesByEmployee[lv.employee_id] = [];
       }
       leavesByEmployee[lv.employee_id].push(lv);
-    });
+    }
 
     // 4. Calculate Summary for ALL Employees & Prepare Database Upsert Payload
     const staffSummaryTable = [];
     const dbUpsertPayload = [];
 
-    employees.forEach((emp) => {
+    for (const emp of employees) {
       const empLogs = logsByEmployee[emp.id] || [];
       const empLeaves = leavesByEmployee[emp.id] || [];
+
+      // Build a set of approved leave date strings for this employee
+      const empLeaveDatesSet = new Set();
+      const empLeaveDetailsMap = new Map();
+
+      for (const lv of empLeaves) {
+        const sDateStr = lv.start_date || lv.leave_date;
+        const eDateStr = lv.end_date || sDateStr;
+        if (!sDateStr) continue;
+        const cur = new Date(sDateStr + "T00:00:00Z");
+        const end = new Date((eDateStr || sDateStr) + "T00:00:00Z");
+        while (cur <= end) {
+          const dStr = cur.toISOString().split("T")[0];
+          if (dStr >= startMonthDateStr && dStr <= endMonthDateStr) {
+            empLeaveDatesSet.add(dStr);
+            if (!empLeaveDetailsMap.has(dStr)) {
+              empLeaveDetailsMap.set(dStr, lv);
+            }
+          }
+          cur.setUTCDate(cur.getUTCDate() + 1);
+        }
+      }
+
+      // Determine employee-specific start date (handling mid-month joining dates)
+      const empJoining = emp.joining_date || emp.created_at || null;
+      const empJoiningDateStr = empJoining ? new Date(empJoining).toISOString().split("T")[0] : null;
+
+      let empElapsedWorkingDays = 0;
+      let empGrossWorkDaysInMonth = 0;
+      let approvedLeaveDays = 0;
+
+      for (let day = 1; day <= daysInMonthCount; day++) {
+        const pad = (n) => String(n).padStart(2, "0");
+        const dateStr = `${year}-${pad(month)}-${pad(day)}`;
+        const dt = new Date(Date.UTC(year, month - 1, day));
+        const dayName = dt.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+
+        const isWorkDay = workDays.includes(dayName);
+        const isHoliday = holidayDatesSet.has(dateStr);
+        const isEmployed = !empJoiningDateStr || dateStr >= empJoiningDateStr;
+
+        if (isWorkDay && !isHoliday && isEmployed) {
+          empGrossWorkDaysInMonth += 1;
+          const isElapsed = !isCurrentMonth || day <= currentDayOfMonth;
+          if (isElapsed) {
+            empElapsedWorkingDays += 1;
+          }
+          if (empLeaveDatesSet.has(dateStr)) {
+            approvedLeaveDays += 1;
+          }
+        }
+      }
 
       const uniqueWorkedDates = new Set();
       let totalEmpWorkingHours = 0;
@@ -210,13 +262,13 @@ export async function GET(req) {
       let totalEmpTimeDelay = 0;
       let totalLopShortageHours = 0;
 
-      empLogs.forEach((log) => {
+      for (const log of empLogs) {
         let hoursNum = Number(log.working_hours || 0);
         const logCheckInMs = log.check_in ? new Date(log.check_in).getTime() : 0;
         const isPastDate = logCheckInMs > 0 && logCheckInMs < startOfDay.getTime();
         const isActive = log.status === "CHECKED_IN" || log.status === "ON_BREAK";
 
-        // Auto-heal prior unclosed attendance logs from previous calendar dates (e.g. 11-08-2026)
+        // Auto-heal prior unclosed attendance logs from previous calendar dates
         if (isPastDate && (isActive || !log.check_out || hoursNum === 0)) {
           const autoEndMs = Math.min(Date.now(), logCheckInMs + 8 * 3600 * 1000);
           const autoCheckOutIso = new Date(autoEndMs).toISOString();
@@ -230,7 +282,7 @@ export async function GET(req) {
           log.status = "COMPLETED";
           log.approval_status = "APPROVED";
 
-          adminSupabase
+          await adminSupabase
             .from("attendance")
             .update({
               check_out: autoCheckOutIso,
@@ -239,8 +291,7 @@ export async function GET(req) {
               approval_status: "APPROVED",
               updated_at: new Date().toISOString(),
             })
-            .eq("id", log.id)
-            .then();
+            .eq("id", log.id);
         }
 
         const isCompleted = log.status === "COMPLETED" || log.status === "CHECKED_OUT" || log.status === "APPROVED";
@@ -286,23 +337,17 @@ export async function GET(req) {
         } else if ((isCompleted || isLop) && hoursNum < dailyTargetHours && hoursNum > 0) {
           totalEmpTimeDelay += Number((dailyTargetHours - hoursNum).toFixed(2));
         }
-      });
-
-      // Calculate approved leave days for employee
-      let approvedLeaveDays = 0;
-      empLeaves.forEach((lv) => {
-        approvedLeaveDays += Number(lv.total_days || 1.0);
-      });
+      }
 
       // HR Approved Leave Policy: Leaves reduce the employee's required working days & monthly target hours!
-      const empRequiredWorkDays = Math.max(0, netExpectedWorkDaysInMonth - approvedLeaveDays);
+      const empRequiredWorkDays = Math.max(0, empGrossWorkDaysInMonth - approvedLeaveDays);
       const empRequiredMonthlyHours = Number((empRequiredWorkDays * dailyTargetHours).toFixed(1));
       const actualShiftHoursOnly = Number(totalEmpWorkingHours.toFixed(2));
 
       // Attendance Worked Days & Net Unexcused Absent Days
       const attendanceWorkedDays = uniqueWorkedDates.size;
       const totalEffectiveWorkingDays = attendanceWorkedDays;
-      const absentDays = Math.max(0, netElapsedExpectedWorkDays - (attendanceWorkedDays + approvedLeaveDays));
+      const absentDays = Math.max(0, empElapsedWorkingDays - (attendanceWorkedDays + approvedLeaveDays));
 
       const shortfallHours = Number(Math.max(0, empRequiredMonthlyHours - actualShiftHoursOnly).toFixed(2));
 
@@ -325,10 +370,10 @@ export async function GET(req) {
         if (approvedLeaveDays > 0) {
           suggestionText += ` (Required days reduced by ${approvedLeaveDays}d approved leave).`;
         }
-      } else if (absentDays >= 3) {
-        evaluationBadge = "🚨 High Absenteeism";
-        evaluationLevel = "CRITICAL";
-        suggestionText = `${absentDays} days unexcused absent. Recommend formal attendance audit.`;
+      } else if (completionRate < 60) {
+        evaluationBadge = "⚠️ Low Fulfillment";
+        evaluationLevel = "WARNING";
+        suggestionText = `Current month working hours fulfillment is ${completionRate}%.`;
       } else if (totalLopShortageHours > 0 || totalEmpTimeDelay >= 5) {
         evaluationBadge = "⚠️ Time Delay / LOP";
         evaluationLevel = "WARNING";
@@ -339,9 +384,7 @@ export async function GET(req) {
       }
 
       // Real-Time Attendance Health Score (0 - 100 Index)
-      let healthScore = Math.min(50, Math.round(completionRate * 0.5));
-      if (absentDays === 0) healthScore += 25;
-      else healthScore += Math.max(0, 25 - (absentDays * 8));
+      let healthScore = Math.min(75, Math.round(completionRate * 0.75));
 
       if (totalEmpTimeDelay < 2 && totalLopShortageHours === 0) healthScore += 25;
       else healthScore += Math.max(0, 25 - Math.round(totalEmpTimeDelay * 2) - Math.round(totalLopShortageHours * 3));
@@ -411,11 +454,11 @@ export async function GET(req) {
         suggestion_text: suggestionText,
         last_evaluated_at: new Date().toISOString(),
       });
-    });
+    }
 
     // Compute Department Capacity Benchmarks
     const departmentMap = {};
-    staffSummaryTable.forEach((emp) => {
+    for (const emp of staffSummaryTable) {
       const dept = emp.department || "General";
       if (!departmentMap[dept]) {
         departmentMap[dept] = {
@@ -428,7 +471,7 @@ export async function GET(req) {
       departmentMap[dept].count += 1;
       departmentMap[dept].totalWorked += emp.workedHours;
       departmentMap[dept].totalOvertime += emp.overtimeHours;
-    });
+    }
 
     const departmentBenchmarks = Object.values(departmentMap).map((d) => ({
       department: d.name,
@@ -437,7 +480,7 @@ export async function GET(req) {
       totalOvertimeHours: Number(d.totalOvertime.toFixed(1)),
     }));
 
-    // 5. Persist evaluated records into public.employee_monthly_summary table
+    // 5. Persist evaluated records into database
     if (dbUpsertPayload.length > 0) {
       try {
         await adminSupabase
@@ -462,7 +505,9 @@ export async function GET(req) {
     let totalTimeGapHours = 0;
     let totalWorkedDays = 0;
 
-    const dailyBreakdown = targetLogs.map((log) => {
+    const dailyBreakdown = [];
+
+    for (const log of targetLogs) {
       let hoursNum = Number(log.working_hours || 0);
       const logCheckInMs = log.check_in ? new Date(log.check_in).getTime() : 0;
       const isPastDate = logCheckInMs > 0 && logCheckInMs < startOfDay.getTime();
@@ -545,7 +590,7 @@ export async function GET(req) {
         dailyHrRemarks = `Shortfall deficit (-${timeGapHours}h delay)`;
       }
 
-      return {
+      dailyBreakdown.push({
         id: log.id,
         employeeId: log.employee_id,
         checkIn: log.check_in,
@@ -563,17 +608,17 @@ export async function GET(req) {
         earlyReason: log.early_reason || null,
         approvalStatus: log.approval_status || "APPROVED",
         hrRemarks: dailyHrRemarks,
-      };
-    });
+      });
+    }
 
     // Merge approved leave days into dailyBreakdown if employee was on approved leave on dates without attendance check-in
     const empLeaveList = targetEmployeeId ? (leavesByEmployee[targetEmployeeId] || []) : monthLeaves;
     const existingBreakdownDates = new Set(dailyBreakdown.map((d) => d.workDate).filter(Boolean));
 
-    empLeaveList.forEach((lv) => {
+    for (const lv of empLeaveList) {
       const sDateStr = lv.start_date || lv.leave_date;
       const eDateStr = lv.end_date || sDateStr;
-      if (!sDateStr) return;
+      if (!sDateStr) continue;
 
       const curDate = new Date(sDateStr + "T00:00:00Z");
       const endDate = new Date((eDateStr || sDateStr) + "T00:00:00Z");
@@ -589,8 +634,9 @@ export async function GET(req) {
             checkOut: null,
             workDate: dStr,
             requiredHours: 0,
-            workedHours: 0,
-            workingHours: 0,
+            workedHours: dailyTargetHours,
+            workingHours: dailyTargetHours,
+            leaveCreditHours: dailyTargetHours,
             totalBreakSeconds: 0,
             shortfallHours: 0,
             overtimeHours: 0,
@@ -599,14 +645,14 @@ export async function GET(req) {
             earlyCheckout: false,
             earlyReason: null,
             approvalStatus: "APPROVED",
-            hrRemarks: `✈️ Approved Leave (${lv.leave_type || "Casual"}) — Working Day Reduced (-1d)`,
-            leaveType: lv.leave_type || "Approved Leave",
+            hrRemarks: `✈️ Approved Leave (${lv.leave_type || "Casual"}) — Full Paid Credit (+${dailyTargetHours.toFixed(1)}h)`,
+            leaveType: lv.leave_type || "Casual",
+            leaveReason: lv.reason || null,
           });
         }
         curDate.setUTCDate(curDate.getUTCDate() + 1);
       }
-    });
-
+    }
     dailyBreakdown.sort((a, b) => new Date(b.workDate || 0).getTime() - new Date(a.workDate || 0).getTime());
 
     const targetEmpSummary = staffSummaryTable.find((s) => s.employeeId === targetEmployeeId) || {
@@ -632,7 +678,9 @@ export async function GET(req) {
       grossExpectedMonthlyHours: expectedMonthlyHours,
       companyHolidaysCount,
       summary: targetEmpSummary,
-      staffSummaryTable: canViewAll ? staffSummaryTable : [], // All staff real-time summary evaluation list for HR
+      staffSummaryTable: canViewAll
+        ? staffSummaryTable
+        : staffSummaryTable.filter((s) => s.employeeId === employeeProfile?.id), // All staff for HR, own record for regular employee
       departmentBenchmarks: canViewAll ? departmentBenchmarks : [], // Department capacity and health score benchmarks
       dailyBreakdown,
     });

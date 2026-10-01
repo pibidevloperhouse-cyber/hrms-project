@@ -61,12 +61,14 @@ export default function ProjectSprintsTab({
   // Auto-expand active sprints initially
   useEffect(() => {
     if (activeSprints.length > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setExpandedSprintIds((prev) => {
         const next = new Set(prev);
         activeSprints.forEach((s) => next.add(s.id));
         return next;
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSprints.length]);
 
   const toggleSprintExpand = (sprintId) => {
@@ -408,7 +410,7 @@ export default function ProjectSprintsTab({
         <button
           type="button"
           onClick={() => setIsModalOpen(true)}
-          className="h-8.5 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs text-xs"
+          className="h-8.5 px-3.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#1f6fb2]/20 text-xs"
         >
           <span>+</span>
           <span>Create Sprint</span>
@@ -613,7 +615,7 @@ export default function ProjectSprintsTab({
                       onClick={() => handleDurationPreset(preset.value)}
                       className={`px-2 py-0.5 rounded text-xs font-medium transition cursor-pointer border ${
                         durationWeeks === preset.value
-                          ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                          ? "bg-brand-gradient text-white border-transparent shadow-2xs"
                           : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
@@ -633,7 +635,7 @@ export default function ProjectSprintsTab({
                     type="date"
                     value={startDate}
                     onChange={(e) => handleStartDateChange(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900"
+                    className="w-full border-b border-slate-300 focus:border-[#1f6fb2] outline-none pb-1 text-sm bg-transparent text-slate-900"
                   />
                 </div>
               </div>
@@ -648,25 +650,25 @@ export default function ProjectSprintsTab({
                     type="date"
                     value={endDate}
                     onChange={(e) => handleEndDateChange(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900"
+                    className="w-full border-b border-slate-300 focus:border-[#1f6fb2] outline-none pb-1 text-sm bg-transparent text-slate-900"
                   />
                 </div>
               </div>
 
               {/* Schedule Estimation Helper */}
               {startDate && endDate && (
-                <div className="text-xs text-blue-700 py-1 flex items-center gap-1.5 font-medium">
+                <div className="text-xs text-[#1f6fb2] py-1 flex items-center gap-1.5 font-medium">
                   <span>🕒</span>
                   <span>Estimated Schedule: <strong>{formatSprintDuration(startDate, endDate)}</strong></span>
                 </div>
               )}
 
-              {/* Bottom Action Buttons: Blue Create & Clean Cancel */}
+              {/* Bottom Action Buttons: Brand Gradient Create & Clean Cancel */}
               <div className="pt-6 pb-2 flex items-center gap-3">
                 <button
                   type="submit"
                   disabled={isSubmitting || !name.trim()}
-                  className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-50 shadow-xs"
+                  className="px-4 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold text-sm transition cursor-pointer disabled:opacity-50 shadow-md shadow-[#1f6fb2]/20"
                 >
                   {isSubmitting ? "Creating…" : "Create"}
                 </button>

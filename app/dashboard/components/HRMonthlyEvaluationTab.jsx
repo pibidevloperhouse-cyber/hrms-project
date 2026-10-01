@@ -299,8 +299,7 @@ export default function HRMonthlyEvaluationTab() {
                       {/* HR Qualitative Rating */}
                       <td className="py-3.5 px-3 text-center">
                         {isEval ? (
-                          <div className="inline-flex items-center gap-1 font-bold text-indigo-600 bg-indigo-50 px-2.5 py-0.5 rounded-lg border border-indigo-200 text-xs">
-                            <span>⭐</span>
+                          <div className="inline-flex items-center gap-1 font-bold text-[#1f6fb2] bg-sky-50 px-2.5 py-0.5 rounded-lg border border-sky-200/80 text-xs font-mono">
                             <span>{Number(evalData.hrRating).toFixed(1)}/10</span>
                           </div>
                         ) : (
@@ -314,7 +313,7 @@ export default function HRMonthlyEvaluationTab() {
                       <td className="py-3.5 px-3 text-center">
                         {isEval ? (
                           <div className="space-y-0.5">
-                            <div className="font-black text-slate-900 text-sm">{evalData.finalScore}</div>
+                            <div className="font-black text-slate-900 text-sm font-mono">{evalData.finalScore}</div>
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${getBadgeStyle(evalData.performanceBadge)}`}>
                               {evalData.performanceBadge}
                             </span>
@@ -328,10 +327,10 @@ export default function HRMonthlyEvaluationTab() {
                       <td className="py-3.5 px-4 text-right">
                         <button
                           onClick={() => handleOpenEvaluation(item)}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition shadow-xs ${
+                          className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition shadow-xs cursor-pointer ${
                             isEval
-                              ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
-                              : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-200"
+                              ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 shadow-2xs"
+                              : "bg-brand-gradient hover:opacity-95 text-white shadow-[#1f6fb2]/20"
                           }`}
                         >
                           {isEval ? "View Review" : "Evaluate"}

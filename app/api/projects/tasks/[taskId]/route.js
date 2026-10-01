@@ -4,9 +4,34 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+import {
+  getTaskPermissionRole,
+  isTaskStatusTransitionAllowed,
+  normalizeTaskStatus,
+} from "@/lib/projectUtils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+function sanitizeAttachments(rawAtts) {
+  if (!Array.isArray(rawAtts)) return [];
+  return rawAtts.map((a, idx) => {
+    if (typeof a === "string") {
+      if (a.startsWith("http://") || a.startsWith("https://")) {
+        return { id: `att-${idx}`, name: `Attachment-${idx + 1}`, url: a };
+      }
+      return { id: `att-${idx}`, name: `Attachment-${idx + 1}`, url: "" };
+    }
+    const resolvedUrl = a.url || (a.dataUrl && (a.dataUrl.startsWith("http://") || a.dataUrl.startsWith("https://")) ? a.dataUrl : "");
+    return {
+      id: a.id || `att-${Date.now()}-${idx}`,
+      name: a.name || `Screenshot-${idx + 1}.png`,
+      size: a.size || "Unknown",
+      url: resolvedUrl || a.url || "",
+      type: a.type || "image/png",
+    };
+  });
+}
 
 /**
  * GET /api/projects/tasks/[taskId]
@@ -111,6 +136,43 @@ export async function GET(req, { params }) {
       epic = ep;
     }
 
+    // Enrich reviewer / approver details
+    let reviewer = null;
+    const effectiveReviewerId = task.reviewed_by || task.approved_by || task.review_feedback_by;
+    if (effectiveReviewerId) {
+      const { data: rev } = await adminSupabase
+        .from("employees")
+        .select("id, full_name, email, role, department, designation, avatar_url")
+        .eq("id", effectiveReviewerId)
+        .maybeSingle();
+      reviewer = rev;
+    }
+
+    // Fallback: If task is COMPLETED and reviewer is null, look up who approved it in task_status_history
+    if (!reviewer && task.status === "COMPLETED") {
+      try {
+        const { data: history } = await adminSupabase
+          .from("task_status_history")
+          .select("id, changed_by, old_status, new_status, comments, created_at, changed_by_employee:employees!task_status_history_changed_by_fkey(id, full_name, role, department, designation, avatar_url)")
+          .eq("task_id", taskId)
+          .order("created_at", { ascending: false });
+
+        if (Array.isArray(history)) {
+          const approvalEntry = history.find(
+            (h) =>
+              h.new_status === "COMPLETED" ||
+              (h.old_status === "REVIEW" && h.new_status === "COMPLETED") ||
+              (h.comments && h.comments.toLowerCase().includes("approved"))
+          );
+          if (approvalEntry?.changed_by_employee) {
+            reviewer = approvalEntry.changed_by_employee;
+          }
+        }
+      } catch (histLookupErr) {
+        console.warn("Reviewer history lookup error:", histLookupErr?.message);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       task: {
@@ -119,6 +181,11 @@ export async function GET(req, { params }) {
         planned_assignee: assignee,
         sprint,
         epic,
+        reviewer,
+        reviewed_by_name: task.reviewed_by_name || task.approved_by_name || reviewer?.full_name || null,
+        approved_by_name: task.approved_by_name || task.reviewed_by_name || reviewer?.full_name || null,
+        reviewed_at: task.reviewed_at || task.approved_at || (task.status === "COMPLETED" ? (task.completed_at || task.updated_at) : null),
+        approved_at: task.approved_at || task.reviewed_at || (task.status === "COMPLETED" ? (task.completed_at || task.updated_at) : null),
         is_sprint_active: Boolean(sprint && sprint.status === "ACTIVE"),
         is_in_backlog: !task.sprint_id,
       },
@@ -211,6 +278,8 @@ export async function PATCH(req, { params }) {
     const isLeadOrManagerOrAdmin = canApproveCompletion;
     const canUpdateTask = canManageTask || isAssignedEmployee;
 
+    const userRoleCategory = getTaskPermissionRole(role, employeeProfile, project);
+
     if (!canUpdateTask) {
       return NextResponse.json({ message: "Access denied. You cannot update this task." }, { status: 403 });
     }
@@ -219,17 +288,10 @@ export async function PATCH(req, { params }) {
 
     const updateData = {};
 
-    // Check optional columns that may or may not exist in database schema
-    const hasProgressColumn = Object.prototype.hasOwnProperty.call(task, "progress");
-    const hasPlannedAssigneeColumn = Object.prototype.hasOwnProperty.call(task, "planned_assignee_id");
-
-    // Enforce role permission: Assigned employee or overseeing lead/manager/admin can update the status
-    if (!canUpdateTask) {
-      return NextResponse.json(
-        { message: "Access denied. You cannot update the status of this task." },
-        { status: 403 }
-      );
-    }
+    // Check optional columns that exist in database schema for project_tasks
+    const hasCol = (col) => Object.prototype.hasOwnProperty.call(task, col);
+    const hasProgressColumn = hasCol("progress");
+    const hasPlannedAssigneeColumn = hasCol("planned_assignee_id");
 
     // Title can be updated by manager, lead, admin, creator, or assigned member
     if (body.title !== undefined) {
@@ -241,22 +303,70 @@ export async function PATCH(req, { params }) {
 
     // Status mapping & normalization (TODO, IN_PROGRESS, REVIEW, COMPLETED)
     if (body.status !== undefined) {
-      let cleanStatus = String(body.status).toUpperCase().trim();
-      if (cleanStatus === "SUBMITTED FOR REVIEW" || cleanStatus === "SUBMITTED_FOR_REVIEW") {
-        cleanStatus = "REVIEW";
-      }
+      const cleanStatus = normalizeTaskStatus(body.status);
       const validStatuses = ["TODO", "IN_PROGRESS", "REVIEW", "COMPLETED"];
       if (validStatuses.includes(cleanStatus)) {
-        // Enforce Scrum Review & Completion Rule: ONLY Project Manager, Assigned Team Lead, Project Owner, or Admin can mark a task as COMPLETED
-        if (cleanStatus === "COMPLETED" && !canApproveCompletion) {
-          return NextResponse.json(
-            {
-              message: "Deliverable Approval Required: Only the Project Manager or Assigned Team Lead can validate and mark a task as Completed after reviewing the deliverable. Please submit your work for Review.",
-              code: "COMPLETION_PERMISSION_DENIED",
-            },
-            { status: 403 }
-          );
+        // Enforce role-based status transition state machine
+        if (cleanStatus !== task.status) {
+          const isAllowed = isTaskStatusTransitionAllowed(userRoleCategory, task.status, cleanStatus);
+          if (!isAllowed) {
+            if (userRoleCategory !== "EMPLOYEE" && (task.status === "IN_PROGRESS" || task.status === "TODO") && cleanStatus === "COMPLETED") {
+              return NextResponse.json(
+                {
+                  message: "Deliverable Submission Required: In-progress tasks must be submitted for review by the assigned developer before they can be verified and marked as Completed.",
+                  code: "DELIVERABLE_SUBMISSION_REQUIRED",
+                },
+                { status: 403 }
+              );
+            }
+            if (userRoleCategory !== "EMPLOYEE" && (task.status === "IN_PROGRESS" || task.status === "TODO") && cleanStatus === "REVIEW") {
+              return NextResponse.json(
+                {
+                  message: "Deliverable Submission Required: Only the assigned developer can submit deliverables for review.",
+                  code: "DEVELOPER_SUBMISSION_REQUIRED",
+                },
+                { status: 403 }
+              );
+            }
+            if (task.status === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
+              return NextResponse.json(
+                {
+                  message: "Access Denied: Completed tasks are locked and cannot be reopened or moved by employees.",
+                  code: "TASK_COMPLETED_LOCKED",
+                },
+                { status: 403 }
+              );
+            }
+            if (task.status === "REVIEW" && userRoleCategory === "EMPLOYEE") {
+              return NextResponse.json(
+                {
+                  message: "Access Denied: Tasks under review are locked while waiting for supervisor verification.",
+                  code: "TASK_IN_REVIEW_LOCKED",
+                },
+                { status: 403 }
+              );
+            }
+            if (cleanStatus === "COMPLETED" && !canApproveCompletion) {
+              return NextResponse.json(
+                {
+                  message: "Deliverable Approval Required: Only the Project Manager or Assigned Team Lead can validate and mark a task as Completed after reviewing the deliverable. Please submit your work for Review.",
+                  code: "COMPLETION_PERMISSION_DENIED",
+                },
+                { status: 403 }
+              );
+            }
+            return NextResponse.json(
+              {
+                message: `Unauthorized status transition: Moving task from "${task.status}" to "${cleanStatus}" is not permitted for role ${userRoleCategory}.`,
+                code: "INVALID_STATUS_TRANSITION",
+              },
+              { status: 403 }
+            );
+          }
         }
+
+
+
 
         // Enforce Sprint Lifecycle Rule: Regular employees cannot move/update tasks in the Backlog or an unstarted Sprint (Scrum projects)
         const isKanban = (project?.project_type || "").toLowerCase() === "kanban";
@@ -303,21 +413,46 @@ export async function PATCH(req, { params }) {
             updateData.started_at = new Date().toISOString();
           }
         } else if (cleanStatus === "REVIEW") {
-          updateData.submitted_at = body.review_submitted_at || new Date().toISOString();
+          if (hasCol("submitted_at")) updateData.submitted_at = body.review_submitted_at || new Date().toISOString();
         } else if (cleanStatus === "COMPLETED") {
-          updateData.completed_at = new Date().toISOString();
+          const nowIso = new Date().toISOString();
+          const reviewerFullName = employeeProfile?.full_name || body.reviewed_by_name || body.approved_by_name || "Team Lead / Project Manager";
+          const reviewerEmpId = employeeProfile?.id || body.reviewed_by || body.approved_by || null;
+
+          if (hasCol("completed_at")) updateData.completed_at = nowIso;
+          if (hasCol("reviewed_at")) updateData.reviewed_at = nowIso;
+          if (hasCol("approved_at")) updateData.approved_at = nowIso;
+          if (hasCol("reviewed_by")) updateData.reviewed_by = reviewerEmpId;
+          if (hasCol("approved_by")) updateData.approved_by = reviewerEmpId;
+          if (hasCol("reviewed_by_name")) updateData.reviewed_by_name = reviewerFullName;
+          if (hasCol("approved_by_name")) updateData.approved_by_name = reviewerFullName;
+          if (hasCol("completed_by")) updateData.completed_by = reviewerEmpId;
         } else if (cleanStatus === "TODO") {
-          updateData.completed_at = null;
-          updateData.submitted_at = null;
+          if (hasCol("completed_at")) updateData.completed_at = null;
+          if (hasCol("submitted_at")) updateData.submitted_at = null;
         }
       }
     }
 
+    // Direct reviewer metadata overrides (guarded by column existence)
+    if (body.reviewed_by !== undefined && hasCol("reviewed_by")) {
+      updateData.reviewed_by = body.reviewed_by || employeeProfile?.id || null;
+    }
+    if (body.reviewed_by_name !== undefined && hasCol("reviewed_by_name")) {
+      updateData.reviewed_by_name = body.reviewed_by_name || employeeProfile?.full_name || null;
+    }
+    if (body.approved_by !== undefined && hasCol("approved_by")) {
+      updateData.approved_by = body.approved_by || employeeProfile?.id || null;
+    }
+    if (body.approved_by_name !== undefined && hasCol("approved_by_name")) {
+      updateData.approved_by_name = body.approved_by_name || employeeProfile?.full_name || null;
+    }
+
     // Review submission metadata & Team Lead suggestions feedback
-    if (body.review_feedback !== undefined) {
+    if (body.review_feedback !== undefined && hasCol("review_feedback")) {
       updateData.review_feedback = body.review_feedback ? String(body.review_feedback).trim() : null;
-      updateData.review_feedback_by = employeeProfile?.id || null;
-      updateData.review_feedback_at = new Date().toISOString();
+      if (hasCol("review_feedback_by")) updateData.review_feedback_by = employeeProfile?.id || null;
+      if (hasCol("review_feedback_at")) updateData.review_feedback_at = new Date().toISOString();
     } else if (body.comments && typeof body.comments === "string") {
       const trimmedComm = body.comments.trim();
       if (
@@ -331,25 +466,26 @@ export async function PATCH(req, { params }) {
           .replace(/\[Scope Revision Instructions\]:/g, "")
           .replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "")
           .trim();
-        updateData.review_feedback = cleanFeedback || trimmedComm;
-        updateData.review_feedback_by = employeeProfile?.id || null;
-        updateData.review_feedback_at = new Date().toISOString();
+        if (hasCol("review_feedback")) updateData.review_feedback = cleanFeedback || trimmedComm;
+        if (hasCol("review_feedback_by")) updateData.review_feedback_by = employeeProfile?.id || null;
+        if (hasCol("review_feedback_at")) updateData.review_feedback_at = new Date().toISOString();
       }
     }
 
     if (body.review_comments !== undefined || body.comments !== undefined) {
-      updateData.review_comments = body.review_comments || body.comments || null;
-      updateData.comments = body.comments || body.review_comments || null;
+      if (hasCol("review_comments")) updateData.review_comments = body.review_comments || body.comments || null;
+      if (hasCol("comments")) updateData.comments = body.comments || body.review_comments || null;
     }
-    if (body.review_attachments !== undefined || body.attachments !== undefined) {
-      updateData.review_attachments = body.review_attachments || body.attachments || [];
+    if ((body.review_attachments !== undefined || body.attachments !== undefined) && hasCol("review_attachments")) {
+      const rawAtts = body.review_attachments || body.attachments || [];
+      updateData.review_attachments = sanitizeAttachments(rawAtts);
     }
     if (updateData.status === "REVIEW") {
-      updateData.submitted_at = body.review_submitted_at || updateData.submitted_at || new Date().toISOString();
-      updateData.review_submitted_at = updateData.submitted_at;
-      updateData.review_submitted_by = employeeProfile?.id || null;
+      if (hasCol("submitted_at")) updateData.submitted_at = body.review_submitted_at || updateData.submitted_at || new Date().toISOString();
+      if (hasCol("review_submitted_at")) updateData.review_submitted_at = updateData.submitted_at;
+      if (hasCol("review_submitted_by")) updateData.review_submitted_by = employeeProfile?.id || null;
       // When re-submitting for review, clear prior pending suggestions
-      if (body.review_feedback === undefined) {
+      if (body.review_feedback === undefined && hasCol("review_feedback")) {
         updateData.review_feedback = null;
       }
     }
@@ -579,73 +715,41 @@ export async function PATCH(req, { params }) {
 
     // Resilient fallback retry loop for any schema difference
     let retryCount = 0;
-    while (updateErr && retryCount < 5) {
+    while (updateErr && retryCount < 15) {
       retryCount++;
       let stripped = false;
       const errMsg = updateErr.message || "";
 
+      // 1. Dynamic regex parsing for column missing errors
       const match =
-        errMsg.match(/column "([^"]+)" of relation "project_tasks" does not exist/i) ||
-        errMsg.match(/Could not find the '([^']+)' column of 'project_tasks'/i);
+        errMsg.match(/column "?([^"\s.]+)"? of relation "?project_tasks"? does not exist/i) ||
+        errMsg.match(/Could not find the '([^']+)' column of '?project_tasks'?/i) ||
+        errMsg.match(/column project_tasks\.([^"\s.]+) does not exist/i);
+
       if (match && match[1] && Object.prototype.hasOwnProperty.call(updateData, match[1])) {
         delete updateData[match[1]];
         stripped = true;
-      } else {
-        if (errMsg.includes("planned_assignee_id") && Object.prototype.hasOwnProperty.call(updateData, "planned_assignee_id")) {
-          delete updateData.planned_assignee_id;
-          stripped = true;
-        }
-        if (errMsg.includes("progress") && Object.prototype.hasOwnProperty.call(updateData, "progress")) {
-          delete updateData.progress;
-          stripped = true;
-        }
-        if (errMsg.includes("story_points") && Object.prototype.hasOwnProperty.call(updateData, "story_points")) {
-          delete updateData.story_points;
-          stripped = true;
-        }
-        if (errMsg.includes("task_type") && Object.prototype.hasOwnProperty.call(updateData, "task_type")) {
-          delete updateData.task_type;
-          stripped = true;
-        }
-        if ((errMsg.includes("column \"epic_id\"") || errMsg.includes("'epic_id' column")) && Object.prototype.hasOwnProperty.call(updateData, "epic_id")) {
-          delete updateData.epic_id;
-          stripped = true;
-        }
-        if ((errMsg.includes("column \"comments\"") || errMsg.includes("'comments' column")) && Object.prototype.hasOwnProperty.call(updateData, "comments")) {
-          delete updateData.comments;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_comments") || errMsg.includes("'review_comments' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_comments")) {
-          delete updateData.review_comments;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_attachments") || errMsg.includes("'review_attachments' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_attachments")) {
-          delete updateData.review_attachments;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_feedback_by") || errMsg.includes("'review_feedback_by' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_feedback_by")) {
-          delete updateData.review_feedback_by;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_feedback_at") || errMsg.includes("'review_feedback_at' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_feedback_at")) {
-          delete updateData.review_feedback_at;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_feedback") || errMsg.includes("'review_feedback' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_feedback")) {
-          delete updateData.review_feedback;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_submitted_at") || errMsg.includes("'review_submitted_at' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_submitted_at")) {
-          delete updateData.review_submitted_at;
-          stripped = true;
-        }
-        if ((errMsg.includes("review_submitted_by") || errMsg.includes("'review_submitted_by' column")) && Object.prototype.hasOwnProperty.call(updateData, "review_submitted_by")) {
-          delete updateData.review_submitted_by;
-          stripped = true;
-        }
-        if ((errMsg.includes("column \"sprint_id\"") || errMsg.includes("'sprint_id' column")) && Object.prototype.hasOwnProperty.call(updateData, "sprint_id")) {
-          delete updateData.sprint_id;
-          stripped = true;
+      }
+
+      // 2. Comprehensive fallback list for all optional columns
+      const potentialCols = [
+        "reviewed_at", "approved_at", "reviewed_by", "approved_by",
+        "reviewed_by_name", "approved_by_name", "completed_by", "completed_at",
+        "review_feedback", "review_feedback_by", "review_feedback_at",
+        "review_submitted_at", "review_submitted_by", "review_comments",
+        "review_attachments", "progress", "planned_assignee_id", "story_points",
+        "task_type", "epic_id", "comments", "sprint_id", "started_at",
+        "extension_status", "extension_requested_date", "extension_current_due_date",
+        "extension_reason", "extension_requested_at", "extension_decision_by",
+        "extension_decision_note", "extension_decision_at", "effective_due_date", "original_due_date"
+      ];
+
+      for (const col of potentialCols) {
+        if (errMsg.includes(`'${col}'`) || errMsg.includes(`"${col}"`) || errMsg.includes(` ${col} `) || errMsg.includes(`.${col}`)) {
+          if (Object.prototype.hasOwnProperty.call(updateData, col)) {
+            delete updateData[col];
+            stripped = true;
+          }
         }
       }
 
@@ -678,7 +782,7 @@ export async function PATCH(req, { params }) {
       let auditComment = body.review_comments || body.comments || null;
       if (updateData.status === "REVIEW" || task.status === "REVIEW") {
         const rawComments = body.review_comments || body.comments || "Work submitted for review by employee";
-        const rawAttachments = Array.isArray(body.review_attachments || body.attachments) ? (body.review_attachments || body.attachments) : [];
+        const rawAttachments = sanitizeAttachments(body.review_attachments || body.attachments || []);
         const payloadData = {
           comments: rawComments,
           attachments: rawAttachments,
@@ -687,11 +791,12 @@ export async function PATCH(req, { params }) {
         };
         auditComment = `<!--DELIVERABLE_PAYLOAD:${JSON.stringify(payloadData)}-->\n${rawComments}`;
       } else if (!auditComment) {
+        const actorName = employeeProfile?.full_name || body.reviewed_by_name || body.approved_by_name || (cleanRole.includes("manager") ? "Project Manager" : "Team Lead");
         auditComment =
-          isLeadOrManagerOrAdmin && task.status === "REVIEW" && updateData.status === "IN_PROGRESS"
-            ? (body.comments || "Changes requested by Team Lead")
+          isLeadOrManagerOrAdmin && task.status === "REVIEW" && (updateData.status === "IN_PROGRESS" || updateData.status === "TODO")
+            ? (body.comments || `Changes requested by ${actorName}`)
             : isLeadOrManagerOrAdmin && updateData.status === "COMPLETED"
-            ? (body.comments || "Approved and marked completed by Team Lead")
+            ? (body.comments || `Approved and marked completed by ${actorName}`)
             : null;
       }
 
@@ -921,6 +1026,13 @@ export async function PATCH(req, { params }) {
         planned_assignee_id: finalTask?.planned_assignee_id || finalTask?.assigned_to,
         assignee: assignee,
         planned_assignee: assignee,
+        reviewed_by: finalTask?.reviewed_by || (updateData.status === "COMPLETED" ? (employeeProfile?.id || body.reviewed_by) : null),
+        reviewed_by_name: finalTask?.reviewed_by_name || (updateData.status === "COMPLETED" ? (employeeProfile?.full_name || body.reviewed_by_name) : null),
+        approved_by: finalTask?.approved_by || (updateData.status === "COMPLETED" ? (employeeProfile?.id || body.approved_by) : null),
+        approved_by_name: finalTask?.approved_by_name || (updateData.status === "COMPLETED" ? (employeeProfile?.full_name || body.approved_by_name) : null),
+        reviewed_at: finalTask?.reviewed_at || (updateData.status === "COMPLETED" ? new Date().toISOString() : null),
+        approved_at: finalTask?.approved_at || (updateData.status === "COMPLETED" ? new Date().toISOString() : null),
+        reviewer: employeeProfile || null,
         review_feedback: finalTask?.review_feedback !== undefined ? finalTask.review_feedback : updateData.review_feedback || null,
         review_feedback_by: finalTask?.review_feedback_by !== undefined ? finalTask.review_feedback_by : updateData.review_feedback_by || null,
         review_feedback_at: finalTask?.review_feedback_at !== undefined ? finalTask.review_feedback_at : updateData.review_feedback_at || null,

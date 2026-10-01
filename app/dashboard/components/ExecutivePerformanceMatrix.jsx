@@ -904,20 +904,10 @@ export default function ExecutivePerformanceMatrix() {
       {/* Top Standard Card */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center border border-blue-200/60">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Executive Performance &amp; Appraisals
-              </h2>
-            </div>
-            <p className="text-xs text-slate-500">
-              Tri-pillar evaluation combining <strong>HR (30%)</strong>, <strong>Manager (40%)</strong>, and <strong>Business Owner (30% - Culture &amp; Vision)</strong>. Click <strong>View &amp; Calibrate</strong> to inspect and submit executive scores.
-            </p>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              Executive Performance &amp; Appraisals
+            </h2>
           </div>
 
           <div className="flex items-center gap-2.5">

@@ -8,6 +8,7 @@ function WizardContent() {
 
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
@@ -109,20 +110,50 @@ function WizardContent() {
     setCurrentStep((prev) => prev - 1);
   };
 
-  // Convert uploaded logo image to Data URL
-  const handleLogoUpload = (e) => {
+  // Upload logo image to public bucket 'employee-avatars'
+  const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        setErrorMessage("Logo image size should be less than 2MB.");
-        return;
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorMessage("Please select a valid image file (PNG, JPG, WebP, SVG).");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMessage("Logo image size should be less than 5MB.");
+      return;
+    }
+
+    // Instant local preview
+    const previewUrl = URL.createObjectURL(file);
+    setWizardData((prev) => ({ ...prev, logoUrl: previewUrl }));
+    setErrorMessage("");
+    setIsUploadingLogo(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("isCompanyLogo", "true");
+
+      const response = await fetch("/api/upload/avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        setErrorMessage(data.message || "Failed to upload logo.");
+        setWizardData((prev) => ({ ...prev, logoUrl: "" }));
+      } else {
+        setWizardData((prev) => ({ ...prev, logoUrl: data.url }));
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setWizardData((prev) => ({ ...prev, logoUrl: reader.result }));
-        setErrorMessage("");
-      };
-      reader.readAsDataURL(file);
+    } catch (err) {
+      console.error("Logo upload failed:", err);
+      setErrorMessage("Network error uploading logo.");
+      setWizardData((prev) => ({ ...prev, logoUrl: "" }));
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -404,14 +435,17 @@ function WizardContent() {
                       type="file"
                       accept="image/*"
                       onChange={handleLogoUpload}
+                      disabled={isUploadingLogo}
                       id="logo-upload"
                       className="hidden"
                     />
                     <label
                       htmlFor="logo-upload"
-                      className="inline-flex items-center px-4 py-2 rounded-xl bg-white border border-sky-300 text-sky-700 text-xs font-semibold hover:bg-sky-50 cursor-pointer transition shadow-sm"
+                      className={`inline-flex items-center px-4 py-2 rounded-xl bg-white border border-sky-300 text-sky-700 text-xs font-semibold hover:bg-sky-50 cursor-pointer transition shadow-sm ${
+                        isUploadingLogo ? "opacity-60 pointer-events-none" : ""
+                      }`}
                     >
-                      📁 Upload Image File
+                      {isUploadingLogo ? "⏳ Uploading..." : "📁 Upload Image File"}
                     </label>
 
                     <div className="pt-1">

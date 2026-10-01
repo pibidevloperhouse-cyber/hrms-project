@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/api/authFetch";
 
 const PROJECT_TYPES = ["Scrum", "Kanban", "Custom Agile"];
@@ -201,22 +200,22 @@ export default function CreateProjectModal({
       }}
       className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
     >
-      <div
-        className="relative w-full max-w-2xl bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden flex flex-col m-auto my-auto transition-all"
-        style={{ maxHeight: "calc(100vh - 48px)" }}
-      >
-        {/* Simple Professional Header */}
-        <div className="px-6 py-4 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Create Project</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Set up project information, methodology, dates, and team assignments.
-            </p>
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+        {/* Top Header matching exact Configure Hours format */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+          <div className="flex items-center gap-1.5 font-sans">
+            <span className="font-bold text-slate-900 text-sm sm:text-base">Create:</span>
+            <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+              New Project Workspace
+            </span>
           </div>
+
+          {/* Close button */}
           <button
             type="button"
+            disabled={isSubmitting}
             onClick={onClose}
-            className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition cursor-pointer text-sm"
+            className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             title="Close"
           >
             ✕
@@ -225,140 +224,150 @@ export default function CreateProjectModal({
 
         {/* Error Alert */}
         {formError && (
-          <div className="mx-6 mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 shrink-0">
+          <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2 shrink-0">
             <span className="font-bold">⚠️</span>
             <span>{formError}</span>
           </div>
         )}
 
-        {/* Professional Form Body */}
+        {/* Form Body */}
         <form
-          id="simple-project-form"
+          id="create-project-form"
           onSubmit={handleSubmit}
-          className="p-6 overflow-y-auto space-y-4 text-xs flex-1"
+          className="p-6 space-y-4 max-h-[80vh] overflow-y-auto"
         >
-          {/* 1. Project Name & Project Type */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 space-y-1">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Project Name <span className="text-rose-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                autoFocus
-                placeholder="e.g., HR Management System 2.0"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 placeholder-slate-400"
-              />
-            </div>
+          {/* Section 1: Project Scope & Overview */}
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Project Overview
+            </span>
 
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Project Type <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={projectType}
-                onChange={(e) => setProjectType(e.target.value)}
-                className="w-full h-9 px-2.5 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium"
-              >
-                {PROJECT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2 space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Project Name <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  autoFocus
+                  placeholder="e.g. Customer Relationship Management"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium"
+                />
+              </div>
 
-          {/* 2. Project Description */}
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-700 block">
-              Project Description
-            </label>
-            <textarea
-              rows={2}
-              placeholder="Brief description of project scope, objectives, and deliverables…"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 placeholder-slate-400 resize-none"
-            />
-          </div>
-
-          {/* 3. Assign Owner (Denotes who creates project) & Team Lead */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Assign Owner (Creator) <span className="text-rose-500">*</span>
-              </label>
-              {isAdmin ? (
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Project Type <span className="text-rose-500">*</span>
+                </label>
                 <select
-                  value={ownerId}
-                  onChange={(e) => setOwnerId(e.target.value)}
-                  className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
+                  value={projectType}
+                  onChange={(e) => setProjectType(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
                 >
-                  {eligibleOwners.map((owner) => (
-                    <option key={owner.id} value={owner.id}>
-                      {owner.full_name} ({owner.role || "Manager"})
+                  {PROJECT_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {type}
                     </option>
                   ))}
                 </select>
-              ) : (
-                <input
-                  type="text"
-                  readOnly
-                  value={`${employeeProfile?.full_name || "Current User"} (Project Owner)`}
-                  className="w-full h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-medium cursor-not-allowed"
-                />
-              )}
+              </div>
             </div>
 
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-700 block">
-                Assign Team Lead
+                Project Description
               </label>
-              <select
-                value={teamLeadId}
-                onChange={(e) => setTeamLeadId(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600"
-              >
-                {teamLeads.length === 0 ? (
-                  <option value="">No Team Leads found</option>
-                ) : (
-                  teamLeads.map((lead) => (
-                    <option key={lead.id} value={lead.id}>
-                      {lead.full_name} ({lead.department || defaultDept})
-                    </option>
-                  ))
-                )}
-              </select>
+              <textarea
+                rows={2}
+                placeholder="Brief description of product deliverables, modules, and objectives…"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium resize-none"
+              />
             </div>
           </div>
 
-          {/* 4. Project Group (Optional) & Team Members */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          {/* Separation Divider */}
+          <div className="border-t border-slate-100" />
+
+          {/* Section 2: Leadership & Team Structure */}
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Leadership &amp; Squad Assignment
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Project Owner (Creator) <span className="text-rose-500">*</span>
+                </label>
+                {isAdmin ? (
+                  <select
+                    value={ownerId}
+                    onChange={(e) => setOwnerId(e.target.value)}
+                    className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                  >
+                    {eligibleOwners.map((owner) => (
+                      <option key={owner.id} value={owner.id}>
+                        {owner.full_name} ({owner.role || "Manager"})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${employeeProfile?.full_name || "Current User"} (Project Owner)`}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs bg-slate-50 text-slate-700 font-medium cursor-not-allowed select-none shadow-2xs"
+                  />
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Assigned Team Lead
+                </label>
+                <select
+                  value={teamLeadId}
+                  onChange={(e) => setTeamLeadId(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                >
+                  {teamLeads.length === 0 ? (
+                    <option value="">No Team Leads found</option>
+                  ) : (
+                    teamLeads.map((lead) => (
+                      <option key={lead.id} value={lead.id}>
+                        {lead.full_name} ({lead.department || defaultDept})
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-slate-700 block">
                 Project Squad / Group <span className="text-slate-400 font-normal">(Optional)</span>
               </label>
               <input
                 type="text"
-                placeholder="e.g., Core Platform, Frontend Squad, Mobile"
+                placeholder="e.g. Core Platform, Mobile Squad, Frontend Team"
                 value={projectGroup}
                 onChange={(e) => setProjectGroup(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 placeholder-slate-400 shadow-2xs"
+                className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium"
               />
-              {/* Quick Group Suggestions */}
               <div className="flex flex-wrap gap-1 pt-0.5">
-                {["Frontend Squad", "Core Platform", "Mobile App", "QA & Testing", "Full Stack"].map((preset) => (
+                {["Core Platform", "Frontend Squad", "Mobile App", "QA & Testing", "Full Stack"].map((preset) => (
                   <button
                     key={preset}
                     type="button"
                     onClick={() => setProjectGroup(preset)}
-                    className={`text-[10px] px-2 py-0.5 rounded-md border transition cursor-pointer ${
+                    className={`text-[10px] px-2 py-0.5 rounded-lg border transition cursor-pointer ${
                       projectGroup === preset
-                        ? "bg-blue-50 text-blue-700 border-blue-300 font-semibold"
+                        ? "bg-[#1f6fb2]/10 text-[#1f6fb2] border-[#1f6fb2]/30 font-semibold"
                         : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
                     }`}
                   >
@@ -368,14 +377,15 @@ export default function CreateProjectModal({
               </div>
             </div>
 
+            {/* Team Members Assignment */}
             <div className="space-y-1.5 relative">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-700 block">
-                  Project Team Members <span className="text-slate-400 font-normal">(Optional)</span>
+                  Assigned Team Members <span className="text-slate-400 font-normal">(Optional)</span>
                 </label>
                 {selectedMembers.length > 0 && (
-                  <span className="text-[11px] text-blue-600 font-medium">
-                    {selectedMembers.length} member(s) assigned
+                  <span className="text-[11px] text-[#1f6fb2] font-semibold">
+                    {selectedMembers.length} member(s) selected
                   </span>
                 )}
               </div>
@@ -383,14 +393,14 @@ export default function CreateProjectModal({
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search and add employee to team…"
+                  placeholder="Search and add employees to project squad…"
                   value={memberSearch}
                   onFocus={() => setShowMemberDropdown(true)}
                   onChange={(e) => {
                     setMemberSearch(e.target.value);
                     setShowMemberDropdown(true);
                   }}
-                  className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 placeholder-slate-400 shadow-2xs"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium"
                 />
 
                 {showMemberDropdown && availableMembers.length > 0 && (
@@ -399,7 +409,7 @@ export default function CreateProjectModal({
                       className="fixed inset-0 z-10"
                       onClick={() => setShowMemberDropdown(false)}
                     />
-                    <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-40 overflow-y-auto bg-white rounded-lg border border-slate-200 shadow-lg p-1 space-y-0.5">
+                    <div className="absolute top-full left-0 right-0 z-20 mt-1 max-h-40 overflow-y-auto bg-white rounded-xl border border-slate-200 shadow-lg p-1 space-y-0.5 custom-scroll">
                       {availableMembers.map((emp) => (
                         <div
                           key={emp.id}
@@ -408,7 +418,7 @@ export default function CreateProjectModal({
                             setMemberSearch("");
                             setShowMemberDropdown(false);
                           }}
-                          className="px-2.5 py-1.5 rounded-md hover:bg-blue-50 cursor-pointer flex items-center justify-between text-xs transition"
+                          className="px-2.5 py-1.5 rounded-lg hover:bg-sky-50 cursor-pointer flex items-center justify-between text-xs transition"
                         >
                           <div className="min-w-0">
                             <span className="font-semibold text-slate-800 block truncate">{emp.full_name}</span>
@@ -425,18 +435,18 @@ export default function CreateProjectModal({
               </div>
 
               {/* Selected Members Chips */}
-              {selectedMembers.length > 0 ? (
+              {selectedMembers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-1 max-h-24 overflow-y-auto">
                   {selectedMembers.map((m) => (
                     <span
                       key={m.id}
-                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 text-[11px] border border-blue-200 font-medium"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 text-[#1f6fb2] text-[11px] border border-sky-200 font-semibold"
                     >
                       <span>{m.full_name}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveMember(m.id)}
-                        className="text-blue-400 hover:text-rose-600 font-bold ml-0.5 cursor-pointer"
+                        className="text-sky-400 hover:text-rose-600 font-bold ml-0.5 cursor-pointer"
                         title="Remove member"
                       >
                         ×
@@ -444,111 +454,114 @@ export default function CreateProjectModal({
                     </span>
                   ))}
                 </div>
-              ) : (
-                <p className="text-[10px] text-slate-400 italic">
-                  ℹ️ Only selected members &amp; lead can receive task assignments in this project.
-                </p>
               )}
             </div>
           </div>
 
-          {/* 5. Start Date & End Date */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Start Date
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-mono"
-              />
+          {/* Separation Divider */}
+          <div className="border-t border-slate-100" />
+
+          {/* Section 3: Schedule, Status & Priority */}
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Schedule &amp; Priority
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-slate-700 block">
+                    End Date
+                  </label>
+                  {durationDays && (
+                    <span className="text-[11px] font-semibold text-[#1f6fb2]">
+                      {durationDays} days duration
+                    </span>
+                  )}
+                </div>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                />
+              </div>
             </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-700 block">
-                  End Date
+                  Initial Status <span className="text-rose-500">*</span>
                 </label>
-                {durationDays && (
-                  <span className="text-[11px] font-medium text-blue-600">
-                    {durationDays} days duration
-                  </span>
-                )}
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-mono"
-              />
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Priority <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                >
+                  {PRIORITY_OPTIONS.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
-          {/* 6. Current Project Status & Priority */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Current Status <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-slate-700 block">
-                Priority <span className="text-rose-500">*</span>
-              </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full h-9 px-3 rounded-lg border border-slate-300 bg-white text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 font-medium"
-              >
-                {PRIORITY_OPTIONS.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Bottom Action Footer matching Configure Hours */}
+          <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={isSubmitting || !name.trim()}
+              className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20 flex items-center gap-1.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Creating…</span>
+                </>
+              ) : (
+                <span>Create Project</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer"
+            >
+              Cancel
+            </button>
           </div>
         </form>
-
-        {/* Simple Professional Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-medium border border-slate-300 transition cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            form="simple-project-form"
-            disabled={isSubmitting || !name.trim()}
-            className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-semibold transition cursor-pointer shadow-xs flex items-center gap-1.5"
-          >
-            {isSubmitting ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>Creating…</span>
-              </>
-            ) : (
-              <span>Create Project</span>
-            )}
-          </button>
-        </div>
       </div>
     </div>
   );

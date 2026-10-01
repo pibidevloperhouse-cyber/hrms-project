@@ -119,6 +119,8 @@ export async function GET(req, { params }) {
       if (t.assigned_to) assigneeIds.add(t.assigned_to);
       if (t.planned_assignee_id) assigneeIds.add(t.planned_assignee_id);
       if (t.review_feedback_by) assigneeIds.add(t.review_feedback_by);
+      if (t.reviewed_by) assigneeIds.add(t.reviewed_by);
+      if (t.approved_by) assigneeIds.add(t.approved_by);
       if (t.sprint_id) sprintIds.add(t.sprint_id);
       if (t.epic_id) epicIds.add(t.epic_id);
     });
@@ -349,6 +351,13 @@ export async function GET(req, { params }) {
         review_attachments: effectiveReviewAttachments,
         review_submitted_at: effectiveSubmittedAt,
         review_submitted_by: effectiveSubmittedBy,
+        reviewed_by: t.reviewed_by || t.approved_by || feedbackLeadId || null,
+        approved_by: t.approved_by || t.reviewed_by || null,
+        reviewed_by_name: t.reviewed_by_name || t.approved_by_name || (t.reviewed_by ? assigneeMap[t.reviewed_by]?.full_name : null) || (t.approved_by ? assigneeMap[t.approved_by]?.full_name : null) || null,
+        approved_by_name: t.approved_by_name || t.reviewed_by_name || (t.approved_by ? assigneeMap[t.approved_by]?.full_name : null) || null,
+        reviewed_at: t.reviewed_at || t.approved_at || (normalizedStatus === "COMPLETED" ? (t.completed_at || t.updated_at) : null),
+        approved_at: t.approved_at || t.reviewed_at || (normalizedStatus === "COMPLETED" ? (t.completed_at || t.updated_at) : null),
+        reviewer: (t.reviewed_by ? assigneeMap[t.reviewed_by] : t.approved_by ? assigneeMap[t.approved_by] : null) || null,
         project: project
           ? {
               id: project.id,

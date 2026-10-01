@@ -27,13 +27,7 @@ export async function POST(req) {
 
     const userRoleStr = String(role || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
     const userDesignation = String(employeeProfile?.designation || "").toLowerCase();
-    const isOwnerOrAdmin =
-      userRoleStr.includes("admin") ||
-      userRoleStr.includes("owner") ||
-      userRoleStr.includes("hr") ||
-      Boolean(isOwner || employeeProfile?.is_owner);
-    const isLeadOrAdmin =
-      isOwnerOrAdmin ||
+    const isLeadOrManager =
       userRoleStr.includes("manager") ||
       userRoleStr.includes("lead") ||
       userRoleStr.includes("supervisor") ||
@@ -41,14 +35,13 @@ export async function POST(req) {
       userDesignation.includes("lead") ||
       userDesignation.includes("head");
 
-    if (!isLeadOrAdmin) {
-      return NextResponse.json({ message: "Access denied. Team Lead or Manager privileges required." }, { status: 403 });
+    if (!isLeadOrManager) {
+      return NextResponse.json({ message: "Access denied. Only Managers and Team Leads can evaluate employee tasks." }, { status: 403 });
     }
 
-    const isTeamLeadOrManager = !isOwnerOrAdmin;
     const userDepartment = (employeeProfile?.department || "").trim().toLowerCase();
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const {
       employeeId,
       evaluationMonth,
@@ -63,6 +56,10 @@ export async function POST(req) {
 
     if (!employeeId || !evaluationMonth) {
       return NextResponse.json({ message: "Missing required fields: employeeId and evaluationMonth are required." }, { status: 400 });
+    }
+
+    if (employeeProfile?.id && employeeProfile.id === employeeId) {
+      return NextResponse.json({ message: "Self-evaluation is not permitted. Team Leads cannot evaluate their own profile." }, { status: 400 });
     }
 
     if (!tlFeedback || tlFeedback.trim().length === 0) {
@@ -106,39 +103,36 @@ export async function POST(req) {
     }
 
     // Check authorization to evaluate this employee:
-    // 1. Owner / Admin / HR can evaluate any employee in the company
-    // 2. Department Lead / Manager can evaluate employees in their department
-    // 3. Project Lead / Creator can evaluate members in their project squad
-    if (isTeamLeadOrManager) {
-      const targetDept = (targetEmployee.department || "").trim().toLowerCase();
-      const sameDept = Boolean(userDepartment && targetDept === userDepartment);
+    // Department Lead / Manager can evaluate employees in their department
+    // Project Lead / Creator can evaluate members in their project squad
+    const targetDept = (targetEmployee.department || "").trim().toLowerCase();
+    const sameDept = Boolean(userDepartment && targetDept === userDepartment);
 
-      let isProjectLeadForEmployee = false;
-      if (!sameDept && employeeProfile?.id) {
-        const { data: sharedProjects } = await adminSupabase
-          .from("projects")
-          .select("id, team_lead_id, created_by, owner_id, team_members")
-          .eq("company_id", company.id)
-          .or(`team_lead_id.eq.${employeeProfile.id},created_by.eq.${employeeProfile.id},owner_id.eq.${employeeProfile.id}`);
+    let isProjectLeadForEmployee = false;
+    if (!sameDept && employeeProfile?.id) {
+      const { data: sharedProjects } = await adminSupabase
+        .from("projects")
+        .select("id, team_lead_id, created_by, owner_id, team_members")
+        .eq("company_id", company.id)
+        .or(`team_lead_id.eq.${employeeProfile.id},created_by.eq.${employeeProfile.id},owner_id.eq.${employeeProfile.id}`);
 
-        if (Array.isArray(sharedProjects)) {
-          isProjectLeadForEmployee = sharedProjects.some((p) => {
-            if (Array.isArray(p.team_members)) {
-              return p.team_members.some((m) => (typeof m === "object" ? m?.id : m) === targetEmployee.id);
-            }
-            return false;
-          });
-        }
+      if (Array.isArray(sharedProjects)) {
+        isProjectLeadForEmployee = sharedProjects.some((p) => {
+          if (Array.isArray(p.team_members)) {
+            return p.team_members.some((m) => (typeof m === "object" ? m?.id : m) === targetEmployee.id);
+          }
+          return false;
+        });
       }
+    }
 
-      if (!sameDept && !isProjectLeadForEmployee && !userRoleStr.includes("manager")) {
-        return NextResponse.json(
-          {
-            message: `Access denied. You can only evaluate employees in your department (${employeeProfile?.department || "Unassigned"}) or assigned project squads.`,
-          },
-          { status: 403 }
-        );
-      }
+    if (!sameDept && !isProjectLeadForEmployee && !userRoleStr.includes("manager")) {
+      return NextResponse.json(
+        {
+          message: `Access denied. You can only evaluate employees in your department (${employeeProfile?.department || "Unassigned"}) or assigned project squads.`,
+        },
+        { status: 403 }
+      );
     }
 
     // Evaluations are strictly for employee role only (cannot evaluate team leads, managers, HR, or admins/owners)

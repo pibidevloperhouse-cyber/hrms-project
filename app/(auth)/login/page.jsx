@@ -288,13 +288,13 @@ function LoginContent() {
 
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-sky-100 text-sky-600 mb-3 shadow-inner">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-gradient text-white mb-3 shadow-md shadow-[#1f6fb2]/25">
             <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
             </svg>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-sky-950">Welcome Back</h1>
-          <p className="text-sm text-sky-700/80 mt-1.5">Sign in to your company dashboard</p>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">Welcome Back</h1>
+          <p className="text-sm text-slate-500 mt-1.5">Sign in to your company dashboard</p>
         </div>
 
         {/* Error Alert */}
@@ -328,7 +328,7 @@ function LoginContent() {
 
           {/* Email or Username */}
           <div>
-            <label htmlFor="login-email" className="block text-xs font-semibold uppercase tracking-wider text-sky-900 mb-1.5">Work Email or Username *</label>
+            <label htmlFor="login-email" className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">Work Email or Username *</label>
             <input
               id="login-email"
               type="text"
@@ -338,13 +338,13 @@ function LoginContent() {
               autoComplete="username"
               placeholder="user@company.com or username"
               suppressHydrationWarning
-              className="w-full px-4 py-3 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 text-sm placeholder-sky-400/70 focus:bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 outline-none transition duration-150"
+              className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:bg-white focus:border-[#1f6fb2] focus:ring-4 focus:ring-[#1f6fb2]/10 outline-none transition duration-150"
             />
           </div>
 
           {/* Password */}
           <div>
-            <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-sky-900 mb-1.5">Password *</label>
+            <label htmlFor="login-password" className="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1.5">Password *</label>
             <div className="relative">
               <input
                 id="login-password"
@@ -355,13 +355,13 @@ function LoginContent() {
                 autoComplete="current-password"
                 placeholder="••••••••"
                 suppressHydrationWarning
-                className="w-full pl-4 pr-12 py-3 rounded-xl bg-sky-50/50 border border-sky-200 text-slate-800 text-sm placeholder-sky-400/70 focus:bg-white focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10 outline-none transition duration-150"
+                className="w-full pl-4 pr-12 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-sm placeholder-slate-400 focus:bg-white focus:border-[#1f6fb2] focus:ring-4 focus:ring-[#1f6fb2]/10 outline-none transition duration-150"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 suppressHydrationWarning
-                className="absolute right-3 top-3.5 text-xs font-semibold text-sky-600 hover:text-sky-800"
+                className="absolute right-3 top-3.5 text-xs font-semibold text-[#1f6fb2] hover:text-[#2ec4b6]"
               >
                 {showPassword ? "Hide" : "Show"}
               </button>
@@ -373,7 +373,7 @@ function LoginContent() {
             type="submit"
             disabled={isSubmitting}
             suppressHydrationWarning
-            className="w-full mt-6 py-3.5 px-4 rounded-xl bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-semibold text-sm transition duration-150 shadow-lg shadow-sky-500/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            className="w-full mt-6 py-3.5 px-4 rounded-xl bg-brand-gradient hover:opacity-95 active:opacity-90 text-white font-semibold text-sm transition duration-150 shadow-lg shadow-[#1f6fb2]/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 cursor-pointer"
           >
             {isSubmitting ? (
               <>
@@ -390,9 +390,9 @@ function LoginContent() {
         </form>
 
         {/* Register Link */}
-        <div className="mt-8 text-center pt-6 border-t border-sky-100 text-xs text-sky-800">
+        <div className="mt-8 text-center pt-6 border-t border-slate-100 text-xs text-slate-600">
           Don&apos;t have a company account yet?{" "}
-          <Link href="/register-company" className="font-bold text-sky-600 hover:text-sky-800 hover:underline">
+          <Link href="/register-company" className="font-bold text-[#1f6fb2] hover:text-[#2ec4b6] hover:underline">
             Register Company
           </Link>
         </div>

@@ -127,7 +127,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const isTeamLead = cleanRole.includes("lead") || designation.includes("lead");
   const isEmployee = !isManager && !isTeamLead && !isAdmin && !cleanRole.includes("hr");
   const canCreate = isManager || isAdmin;
-  const canEvaluate = isManager || isTeamLead || isAdmin || cleanRole.includes("hr");
+  const canEvaluate = isManager || isTeamLead;
 
   const [showTLMonthlyEvalModal, setShowTLMonthlyEvalModal] = useState(false);
   const [selectedEmpForTLEval, setSelectedEmpForTLEval] = useState(null);
@@ -1407,51 +1407,39 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     <div className="space-y-6 animate-fadeIn">
       {/* Top Banner & Header */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60 shrink-0">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                {isEmployee
-                  ? "My Assigned Deliverables"
-                  : isTeamLead
-                  ? "My Assigned Deliverables & Projects"
-                  : isManager
-                  ? `${employeeProfile?.department || "Department"} Project Management`
-                  : "Company Project Deliverables"}
-              </h2>
-              {!isEmployee && (
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {isManager && "Create, configure, and assign department deliverables directly to Team Leads."}
-                  {isTeamLead && "Monitor and process project subtasks, assign work to department employees, and track progress."}
-                  {isAdmin && "Company-wide project tracking, deliverables, and team leadership assignments."}
-                </p>
-              )}
-            </div>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              {isEmployee
+                ? "My Assigned Deliverables"
+                : isTeamLead
+                ? "My Assigned Deliverables & Projects"
+                : isManager
+                ? `${employeeProfile?.department || "Department"} Project Management`
+                : "Company Project Deliverables"}
+            </h2>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
             {!isEmployee && (
-              <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
+              <div className="inline-flex items-center bg-slate-100/90 p-1 rounded-2xl border border-slate-200/80 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => setActiveViewMode("projects")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeViewMode === "projects"
-                      ? "bg-white text-slate-900 shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-brand-gradient text-white shadow-sm shadow-[#1f6fb2]/20"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
                   }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                   </svg>
                   <span>Deliverables &amp; Projects</span>
                   {scopedProjects.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-slate-100 text-slate-700 font-bold font-mono border border-slate-200">
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
+                      activeViewMode === "projects" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}>
                       {scopedProjects.length}
                     </span>
                   )}
@@ -1459,10 +1447,10 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 <button
                   type="button"
                   onClick={() => setActiveViewMode("analytics")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     activeViewMode === "analytics"
-                      ? "bg-white text-blue-700 shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-brand-gradient text-white shadow-sm shadow-[#1f6fb2]/20"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
                   }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -1470,7 +1458,9 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                   </svg>
                   <span>Individual Member Performance</span>
                   {departmentEmployees.length > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-blue-100 text-blue-800 font-bold font-mono">
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
+                      activeViewMode === "analytics" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
+                    }`}>
                       {departmentEmployees.length}
                     </span>
                   )}
@@ -1478,29 +1468,31 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
               </div>
             )}
 
-            {canCreate && (
+            <div className="flex items-center gap-2 shrink-0">
+              {canCreate && (
+                <button
+                  type="button"
+                  onClick={openModal}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition shadow-xs shadow-[#1f6fb2]/20 cursor-pointer active:scale-[0.98] whitespace-nowrap"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  <span>Create Project</span>
+                </button>
+              )}
+
               <button
                 type="button"
-                onClick={openModal}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-blue-600/20 cursor-pointer"
+                onClick={fetchProjects}
+                className="p-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 transition-colors shadow-2xs cursor-pointer flex items-center justify-center shrink-0"
+                title="Refresh Projects"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span>Create Project</span>
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={fetchProjects}
-              className="p-2 rounded-xl bg-white hover:bg-slate-50 border border-slate-200/80 text-slate-600 transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
-              title="Refresh Projects"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
+            </div>
           </div>
         </div>
 
@@ -1562,7 +1554,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                 <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all space-y-1">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -1589,22 +1581,14 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                   <div className="text-2xl font-extrabold text-emerald-700 font-mono">{completedCount}</div>
                   <p className="text-[10px] text-emerald-600">{completionRate}% completion rate</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-white border border-indigo-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">High Priority</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                  </div>
-                  <div className="text-2xl font-extrabold text-indigo-700 font-mono">{urgentCount}</div>
-                  <p className="text-[10px] text-indigo-600">Needs attention</p>
-                </div>
               </div>
             )}
 
             {/* Filter & Search Toolbar (Clean floating bar) */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-2.5 rounded-2xl bg-slate-100/70 border border-slate-200/70">
-              <div className="relative flex-1 w-full sm:max-w-xs">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <div className="p-2.5 rounded-2xl bg-slate-100/70 border border-slate-200/70">
+              <div className="relative w-full">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </span>
@@ -1613,108 +1597,21 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                   placeholder={
                     isEmployee
                       ? "Search deliverables…"
-                      : "Search project, lead, department…"
+                      : "Search projects, products, description…"
                   }
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-slate-200/90 rounded-xl pl-9 pr-7 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition shadow-2xs"
+                  className="w-full bg-white border border-slate-200/90 rounded-xl pl-10 pr-8 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1f6fb2]/20 focus:border-[#1f6fb2] transition shadow-2xs font-medium"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer font-bold"
                   >
                     ✕
                   </button>
                 )}
-              </div>
-
-              <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap">
-                {isEmployee && (
-                  <div className="flex items-center bg-white p-0.5 rounded-xl border border-slate-200/90 shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => setEmployeeViewLayout("board")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        employeeViewLayout === "board"
-                          ? "bg-blue-600 text-white shadow-xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                      title="Kanban Board View (Drag & Drop)"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <rect x="3" y="3" width="5" height="18" rx="1" />
-                        <rect x="10" y="3" width="5" height="12" rx="1" />
-                        <rect x="17" y="3" width="5" height="15" rx="1" />
-                      </svg>
-                      <span>Board</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEmployeeViewLayout("table")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        employeeViewLayout === "table"
-                          ? "bg-blue-600 text-white shadow-xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                      title="Table / List View"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-                      </svg>
-                      <span>List</span>
-                    </button>
-                  </div>
-                )}
-
-                {isEmployee && (
-                  <select
-                    value={sprintScopeFilter}
-                    onChange={(e) => setSprintScopeFilter(e.target.value)}
-                    className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
-                  >
-                    <option value="all">All Deliverables</option>
-                    <option value="active">Active Sprint Only</option>
-                    <option value="planned">Planned Sprints</option>
-                    <option value="backlog">Backlog Items</option>
-                  </select>
-                )}
-
-                {!isEmployee && (
-                  <>
-                    <select
-                      value={statusFilter}
-                      onChange={(e) => setStatusFilter(e.target.value)}
-                      className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
-                    >
-                      <option value="all">All Statuses</option>
-                      <option value="PLANNING">Planning</option>
-                      <option value="IN_PROGRESS">In Progress</option>
-                      <option value="COMPLETED">Completed</option>
-                      <option value="ON_HOLD">On Hold</option>
-                      <option value="CANCELLED">Cancelled</option>
-                    </select>
-
-                    <select
-                      value={priorityFilter}
-                      onChange={(e) => setPriorityFilter(e.target.value)}
-                      className="bg-white border border-slate-200/90 text-slate-800 text-xs font-semibold rounded-xl px-3 py-2 focus:outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
-                    >
-                      <option value="all">All Priorities</option>
-                      <option value="URGENT">Urgent</option>
-                      <option value="HIGH">High</option>
-                      <option value="MEDIUM">Medium</option>
-                      <option value="LOW">Low</option>
-                    </select>
-                  </>
-                )}
-
-                <span className="text-xs font-mono font-bold text-slate-600 bg-white px-3 py-2 rounded-xl border border-slate-200/90 shadow-2xs whitespace-nowrap">
-                  {isEmployee
-                    ? `${filteredMyTasks.length} tasks`
-                    : `${filteredProjects.length} of ${scopedProjects.length}`}
-                </span>
               </div>
             </div>
           </>
@@ -2569,10 +2466,9 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       setSelectedEmpForTLEval(targetId);
                       setShowTLMonthlyEvalModal(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer shadow-xs active:scale-[0.98]"
                     title="Open Monthly Performance & Feedback Evaluation Dialog for this member"
                   >
-                    <span>⭐</span>
                     <span>Monthly Evaluation</span>
                   </button>
                 )}
@@ -2783,7 +2679,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden divide-y divide-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden divide-y divide-slate-100">
             {filteredProjects.map((project) => {
               const status = STATUS_CONFIG[project.status] || STATUS_CONFIG.PLANNING;
               const isLead = isTeamLead && project.team_lead_id === employeeProfile?.id;
@@ -2793,129 +2689,47 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 (project.created_by === employeeProfile?.id ||
                   project.department?.toLowerCase().trim() ===
                     employeeProfile?.department?.toLowerCase().trim());
-              const leadName = project.teamLead?.full_name || null;
-
-              const isProjectOverdue =
-                project.end_date &&
-                new Date(project.end_date) < new Date() &&
-                project.status !== "COMPLETED";
 
               return (
                 <div
                   key={project.id}
-                  className="p-4 sm:px-5 sm:py-4.5 hover:bg-slate-50/70 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                  className="p-4 sm:px-5 sm:py-4.5 hover:bg-slate-50/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
                 >
-                  {/* Left: Project Icon, Name, Type/Group Badge, Lead/Creator, Date Range */}
-                  <div className="flex items-start sm:items-center gap-3.5 min-w-0 flex-1">
+                  {/* Left: Product Icon & Title & Description */}
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div
                       onClick={() => setActiveWorkspaceProject(project)}
-                      className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shrink-0 shadow-2xs cursor-pointer hover:bg-blue-100 transition-colors mt-0.5 sm:mt-0"
+                      className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1f6fb2] to-[#2ec4b6] text-white flex items-center justify-center shrink-0 shadow-sm shadow-[#1f6fb2]/25 cursor-pointer hover:scale-105 transition-transform"
+                      title="Open Product Workspace"
                     >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                       </svg>
                     </div>
 
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3
-                          onClick={() => setActiveWorkspaceProject(project)}
-                          className="text-sm sm:text-base font-bold text-slate-900 tracking-tight hover:text-blue-600 transition-colors truncate cursor-pointer"
-                          title="Click to open Project Workspace"
-                        >
-                          {project.name}
-                        </h3>
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <h3
+                        onClick={() => setActiveWorkspaceProject(project)}
+                        className="text-sm sm:text-base font-bold text-slate-900 tracking-tight hover:text-[#1f6fb2] transition-colors truncate cursor-pointer"
+                        title="Click to open Product Workspace"
+                      >
+                        {project.name}
+                      </h3>
 
-                        {project.project_type && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {project.project_type}
-                          </span>
-                        )}
-
-                        {project.project_group && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {project.project_group}
-                          </span>
-                        )}
-
-                        {isProjectOverdue && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                            Overdue
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Subtitle Info: Lead / Creator, Date Range, Description */}
-                      <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-                        {leadName && (
-                          <span>
-                            Lead: <strong className="text-slate-700 font-medium">{leadName}</strong>
-                          </span>
-                        )}
-                        {project.creator && !leadName && (
-                          <span>
-                            Owner: <strong className="text-slate-700 font-medium">{project.creator.full_name}</strong>
-                          </span>
-                        )}
-                        {(project.start_date || project.end_date) && (
-                          <span className="text-slate-400 flex items-center gap-1 font-mono text-[11px]">
-                            <span>
-                              {project.start_date
-                                ? new Date(project.start_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
-                                : "Start"}
-                            </span>
-                            <span>→</span>
-                            <span>
-                              {project.end_date
-                                ? new Date(project.end_date).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
-                                : "Ongoing"}
-                            </span>
-                          </span>
-                        )}
-                        {project.description && (
-                          <span className="text-slate-400 hidden lg:inline truncate max-w-md">
-                            • {project.description}
-                          </span>
-                        )}
-                      </div>
+                      {/* Product Description */}
+                      <p className="text-xs text-slate-500 truncate max-w-2xl">
+                        {project.description || "Product workspace and modular deliverables"}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Right: Status Dropdown/Badge, Workspace Button, Delete Button */}
-                  <div className="shrink-0 flex items-center gap-2.5 self-end sm:self-center">
-                    {isAdmin || isDeptManager || isCreator || isLead ? (
-                      <div className="relative inline-block">
-                        <select
-                          value={project.status}
-                          disabled={updatingProjectId === project.id}
-                          onChange={(e) => handleStatusChange(project.id, e.target.value)}
-                          className={`text-xs font-semibold rounded-lg pl-2.5 pr-7 py-1.5 border transition cursor-pointer focus:outline-none appearance-none shadow-2xs ${status.bg} ${status.color}`}
-                          title="Update Project Status"
-                        >
-                          <option value="PLANNING">Planning</option>
-                          <option value="IN_PROGRESS">In Progress</option>
-                          <option value="COMPLETED">Completed</option>
-                          <option value="ON_HOLD">On Hold</option>
-                          <option value="CANCELLED">Cancelled</option>
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1.5 text-current opacity-70">
-                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </div>
-                      </div>
-                    ) : (
-                      <span className={`text-xs font-semibold rounded-lg px-2.5 py-1.5 border inline-flex items-center gap-1.5 shadow-2xs ${status.bg} ${status.color}`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${status.dot || "bg-slate-400"}`} />
-                        <span>{status.label}</span>
-                      </span>
-                    )}
-
+                  {/* Right: Workspace Button, Delete Button */}
+                  <div className="shrink-0 flex items-center gap-2 self-end sm:self-center">
                     <button
                       type="button"
                       onClick={() => setActiveWorkspaceProject(project)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-50 hover:bg-blue-600 text-blue-700 hover:text-white border border-blue-200 transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                      title="Open Project Workspace"
+                      className="px-4 py-2 text-xs font-semibold rounded-xl bg-brand-gradient hover:opacity-95 text-white transition-all cursor-pointer flex items-center gap-1.5 shadow-xs shadow-[#1f6fb2]/20 active:scale-[0.98]"
+                      title="Open Product Workspace"
                     >
                       <span>Workspace</span>
                       <span>→</span>
@@ -2925,7 +2739,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       <button
                         type="button"
                         onClick={() => handleDelete(project.id, project.name)}
-                        className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer rounded-lg hover:bg-rose-50"
+                        className="text-slate-400 hover:text-rose-600 p-2 transition cursor-pointer rounded-lg hover:bg-rose-50"
                         title="Delete Project"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">

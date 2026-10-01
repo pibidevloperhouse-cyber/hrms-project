@@ -47,7 +47,8 @@ function formatDurationHMS(totalSeconds) {
   return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 }
 
-export default function HRAttendanceTracker({ embedded = false }) {
+export default function HRAttendanceTracker({ embedded = false, userRole = "" }) {
+  const isHRRole = String(userRole || "").toLowerCase().includes("hr");
   const [hrTab, setHrTab] = useState("daily"); // "daily" | "monthly"
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [records, setRecords] = useState([]);
@@ -69,10 +70,13 @@ export default function HRAttendanceTracker({ embedded = false }) {
   const [rejectFeedbackInput, setRejectFeedbackInput] = useState("");
   const [actionNotice, setActionNotice] = useState({ error: "", success: "" });
   const [showMonthlyEvalModal, setShowMonthlyEvalModal] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = React.useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
 
   useEffect(() => {
-    setMounted(true);
     if (typeof window !== "undefined") {
       try {
         localStorage.removeItem("hrms_summary_sent_dates");
@@ -197,13 +201,20 @@ export default function HRAttendanceTracker({ embedded = false }) {
 
   const markNotificationsAsRead = async () => {
     try {
+      const supabase = createClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = {
+        "Content-Type": "application/json",
+        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+      };
       await fetch("/api/notifications", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ markAllRead: true }),
       });
       setUnreadCount(0);
-      fetchNotifications();
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      await fetchNotifications();
     } catch (err) {
       console.error("Failed to mark notifications as read:", err);
     }
@@ -361,9 +372,6 @@ export default function HRAttendanceTracker({ embedded = false }) {
       {/* Header & Date Selector */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-            <UsersIcon className="w-4 h-4" />
-          </div>
           <h2 className="text-lg font-bold text-slate-900">
             Team Shift Tracker &amp; Approvals
           </h2>
@@ -394,7 +402,7 @@ export default function HRAttendanceTracker({ embedded = false }) {
                     ? "bg-emerald-50 text-emerald-700 border border-emerald-300 cursor-not-allowed opacity-90"
                     : activeStaffList.length > 0 || completedStaffList.length === 0
                       ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-75"
-                      : "bg-gradient-to-r from-sky-500 via-cyan-500 to-teal-400 hover:from-sky-400 hover:via-cyan-400 hover:to-teal-300 text-white shadow-md shadow-cyan-500/20 cursor-pointer active:scale-[0.98]"
+                      : "bg-brand-gradient hover:opacity-95 text-white shadow-xs shadow-[#1f6fb2]/20 cursor-pointer active:scale-[0.98]"
                     }`}
                   title={
                     isSentForSelectedDate
@@ -424,36 +432,60 @@ export default function HRAttendanceTracker({ embedded = false }) {
                   )}
                 </button>
 
-                {/* ⭐ Monthly 3-Pillar Performance & Feedback Evaluation Dialog Trigger */}
-                <button
-                  type="button"
-                  onClick={() => setShowMonthlyEvalModal(true)}
-                  className="py-2 px-3.5 rounded-xl font-bold text-xs bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white shadow-md shadow-indigo-500/20 transition flex items-center gap-1.5 cursor-pointer active:scale-[0.98]"
-                  title="Open Monthly Performance Evaluation & Feedback Dialog"
-                >
-                  <span className="text-amber-300">⭐</span>
-                  <span>Monthly Evaluation</span>
-                </button>
+                {/* Monthly 3-Pillar Performance & Feedback Evaluation Dialog Trigger (HR ONLY) */}
+                {isHRRole && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMonthlyEvalModal(true)}
+                    className="py-2 px-3.5 rounded-xl font-semibold text-xs bg-brand-gradient hover:opacity-95 text-white shadow-xs shadow-[#1f6fb2]/20 transition flex items-center gap-1.5 cursor-pointer"
+                    title="Open Monthly Performance Evaluation & Feedback Dialog"
+                  >
+                    <span>Monthly Evaluation</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* HR Unread Notifications & Reasons Banner */}
-            {unreadCount > 0 && (
-              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-3 animate-pulse shadow-2xs">
+            {/* Pending Early Check-Out Requests Requiring HR Action */}
+            {pendingEarlyCount > 0 && (
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center justify-between gap-3 shadow-2xs">
                 <div className="flex items-center gap-2.5">
                   <AlertTriangleIcon className="w-5 h-5 text-amber-700 shrink-0" />
                   <div>
                     <span className="font-bold text-amber-900 block text-xs">
-                      {unreadCount} New Check-Out Request / Reason Noted by HR
+                      ⏱️ {pendingEarlyCount} Early Check-Out Request{pendingEarlyCount > 1 ? "s" : ""} Pending Review
                     </span>
                     <span className="text-[11px] text-amber-700">
-                      {notifications.find((n) => !n.is_read)?.message || "Employee submitted early check-out request with reason."}
+                      Staff members have requested early departure. Review their reasons and approve or apply Loss of Pay (LOP).
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setStatusFilter("PENDING_APPROVAL")}
+                  className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-[11px] transition shrink-0 cursor-pointer"
+                >
+                  View Pending ({pendingEarlyCount})
+                </button>
+              </div>
+            )}
+
+            {/* HR Unread Notifications & System Notices Banner */}
+            {unreadCount > 0 && (
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 text-xs flex items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-base shrink-0">🔔</span>
+                  <div>
+                    <span className="font-bold text-slate-900 block text-xs">
+                      {notifications.find((n) => !n.is_read)?.title || `${unreadCount} New HR Notice${unreadCount > 1 ? "s" : ""}`}
+                    </span>
+                    <span className="text-[11px] text-slate-600">
+                      {notifications.find((n) => !n.is_read)?.message || "You have new unread notifications."}
                     </span>
                   </div>
                 </div>
                 <button
                   onClick={markNotificationsAsRead}
-                  className="px-3 py-1.5 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-[11px] transition shrink-0 cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-bold text-[11px] transition shrink-0 cursor-pointer"
                 >
                   Mark as Read &amp; Noted
                 </button>
@@ -478,48 +510,31 @@ export default function HRAttendanceTracker({ embedded = false }) {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
               {/* Card 1: Total Staff */}
               <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Staff</span>
-                  <UsersIcon className="w-3.5 h-3.5 text-slate-400" />
-                </div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Staff</span>
                 <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{summary.totalStaff}</div>
               </div>
 
               {/* Card 2: On Duty */}
               <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">On Duty</span>
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-200/60">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Live
-                  </span>
-                </div>
-                <div className="text-xl sm:text-2xl font-bold text-emerald-700 font-mono">{summary.checkedInCount}</div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">On Duty</span>
+                <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{summary.checkedInCount}</div>
               </div>
 
               {/* Card 3: Off Duty */}
               <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Off Duty</span>
-                  <ClockIcon className="w-3.5 h-3.5 text-slate-400" />
-                </div>
-                <div className="text-xl sm:text-2xl font-bold text-slate-700 font-mono">{summary.notCheckedInCount}</div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Off Duty</span>
+                <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{summary.notCheckedInCount}</div>
               </div>
 
               {/* Card 4: Pending Early Requests */}
               <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Pending Requests</span>
-                  <TimerIcon className="w-3.5 h-3.5 text-amber-500" />
-                </div>
-                <div className="text-xl sm:text-2xl font-bold text-amber-700 font-mono">{pendingEarlyCount}</div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Pending Requests</span>
+                <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{pendingEarlyCount}</div>
               </div>
 
               {/* Card 5: Completed Shifts */}
               <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-2 hover:border-slate-300 transition-all shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Completed Shifts</span>
-                  <CheckCircleIcon className="w-3.5 h-3.5 text-sky-500" />
-                </div>
+                <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Completed Shifts</span>
                 <div className="text-xl sm:text-2xl font-bold text-slate-900 font-mono">{summary.checkedOutCount}</div>
               </div>
             </div>
@@ -603,7 +618,7 @@ export default function HRAttendanceTracker({ embedded = false }) {
                           {/* Check In / Out */}
                           <td className="py-3.5 px-4 font-mono text-xs">
                             <div className="text-slate-800">In: {emp.status === "COMPANY_HOLIDAY" ? <span className="text-purple-700 font-sans font-bold">Company Holiday</span> : emp.status === "ON_LEAVE" ? <span className="text-cyan-700 font-sans font-bold">Approved Leave</span> : formatTimeString(emp.checkIn)}</div>
-                            <div className="text-slate-500">Out: {emp.status === "CHECKED_IN" ? <span className="text-emerald-600 font-bold animate-pulse">Active</span> : emp.status === "COMPANY_HOLIDAY" ? <span className="text-purple-700 font-sans font-bold">Company Holiday</span> : emp.status === "ON_LEAVE" ? <span className="text-cyan-700 font-sans font-bold">Approved Leave</span> : formatTimeString(emp.checkOut)}</div>
+                            <div className="text-slate-500">Out: {emp.checkOut ? formatTimeString(emp.checkOut) : "—"}</div>
                           </td>
 
                           {/* Working Hours */}
@@ -612,23 +627,8 @@ export default function HRAttendanceTracker({ embedded = false }) {
                               <span className="font-bold text-slate-400">00h 00m 00s</span>
                             ) : (
                               <div>
-                                <div className={`font-bold flex items-center gap-1.5 ${emp.status === "ON_BREAK"
-                                  ? "text-amber-700"
-                                  : emp.status === "COMPANY_HOLIDAY"
-                                    ? "text-purple-700"
-                                    : emp.status === "ON_LEAVE"
-                                      ? "text-cyan-700"
-                                      : emp.earlyCheckout
-                                        ? "text-amber-700"
-                                        : "text-emerald-700"
-                                  }`}>
+                                <div className="font-bold text-slate-900">
                                   <span>{formatDurationHMS(emp.netWorkingSeconds || Math.round(emp.workingHours * 3600))}</span>
-                                  {emp.status === "CHECKED_IN" && (
-                                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-ping" title="Live Shift Running Timer" />
-                                  )}
-                                  {emp.status === "ON_BREAK" && (
-                                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Shift Paused on Lunch Break" />
-                                  )}
                                 </div>
                                 <span className="text-[10px] text-slate-500 block font-sans">
                                   ({(Number(emp.workingHours) || 0).toFixed(2)} hrs)
@@ -636,25 +636,22 @@ export default function HRAttendanceTracker({ embedded = false }) {
                               </div>
                             )}
                             {emp.status === "ON_BREAK" && (
-                              <span className="block text-[9px] font-sans text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
-                                <CoffeeIcon className="w-2.5 h-2.5" />
-                                <span>Shift Paused (Lunch Break)</span>
+                              <span className="block text-[9px] font-sans text-slate-500 font-medium mt-0.5">
+                                Shift Paused (Lunch Break)
                               </span>
                             )}
                             {emp.status === "COMPANY_HOLIDAY" && (
-                              <span className="block text-[9px] font-sans text-purple-700 font-semibold flex items-center gap-1 mt-0.5">
-                                <SunIcon className="w-2.5 h-2.5" />
-                                <span>Holiday Credit</span>
+                              <span className="block text-[9px] font-sans text-purple-700 font-medium mt-0.5">
+                                Holiday Credit
                               </span>
                             )}
                             {emp.status === "ON_LEAVE" && (
-                              <span className="block text-[9px] font-sans text-cyan-700 font-semibold flex items-center gap-1 mt-0.5">
-                                <PlaneIcon className="w-2.5 h-2.5" />
-                                <span>Leave Credit</span>
+                              <span className="block text-[9px] font-sans text-cyan-700 font-medium mt-0.5">
+                                Leave Credit
                               </span>
                             )}
                             {emp.earlyCheckout && emp.status !== "NOT_CHECKED_IN" && emp.status !== "CHECKED_IN" && emp.status !== "ON_BREAK" && emp.status !== "ON_LEAVE" && emp.status !== "COMPANY_HOLIDAY" && (
-                              <span className="block text-[9px] font-sans text-amber-700 font-semibold">Under company shift standard</span>
+                              <span className="block text-[9px] font-sans text-amber-700 font-medium">Under company shift standard</span>
                             )}
                           </td>
 
@@ -678,8 +675,8 @@ export default function HRAttendanceTracker({ embedded = false }) {
                           {/* Status Badge */}
                           <td className="py-3.5 px-4">
                             <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${emp.status === "ON_BREAK"
-                                ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${emp.status === "ON_BREAK"
+                                ? "bg-slate-100 text-slate-700 border-slate-200"
                                 : emp.status === "CHECKED_IN"
                                   ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                                   : emp.status === "ON_LEAVE"
@@ -687,7 +684,7 @@ export default function HRAttendanceTracker({ embedded = false }) {
                                     : emp.status === "COMPANY_HOLIDAY"
                                       ? "bg-purple-50 text-purple-700 border-purple-200"
                                       : isPendingHR
-                                        ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                                        ? "bg-amber-50 text-amber-700 border-amber-200"
                                         : isRejectedLop
                                           ? "bg-rose-50 text-rose-700 border-rose-200"
                                           : emp.status === "NOT_CHECKED_IN"
@@ -695,47 +692,21 @@ export default function HRAttendanceTracker({ embedded = false }) {
                                             : "bg-sky-50 text-sky-700 border-sky-200"
                                 }`}
                             >
-                              {emp.status === "ON_BREAK" ? (
-                                <>
-                                  <CoffeeIcon className="w-3 h-3" />
-                                  <span>ON LUNCH BREAK</span>
-                                </>
-                              ) : emp.status === "CHECKED_IN" ? (
-                                <>
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                  <span>ON DUTY</span>
-                                </>
-                              ) : emp.status === "ON_LEAVE" ? (
-                                <>
-                                  <PlaneIcon className="w-3 h-3" />
-                                  <span>ON APPROVED LEAVE{emp.leaveType ? ` (${emp.leaveType})` : ""}</span>
-                                </>
-                              ) : emp.status === "COMPANY_HOLIDAY" ? (
-                                <>
-                                  <SunIcon className="w-3 h-3" />
-                                  <span>COMPANY HOLIDAY{emp.holidayTitle ? ` (${emp.holidayTitle})` : ""}</span>
-                                </>
-                              ) : isPendingHR ? (
-                                <>
-                                  <TimerIcon className="w-3 h-3" />
-                                  <span>PENDING HR APPROVAL</span>
-                                </>
-                              ) : isRejectedLop ? (
-                                <>
-                                  <XCircleIcon className="w-3 h-3" />
-                                  <span>REJECTED (LOSS OF PAY / LOP)</span>
-                                </>
-                              ) : emp.status === "NOT_CHECKED_IN" ? (
-                                <>
-                                  <ClockIcon className="w-3 h-3" />
-                                  <span>OFF DUTY</span>
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircleIcon className="w-3 h-3" />
-                                  <span>APPROVED (COMPLETED)</span>
-                                </>
-                              )}
+                              {emp.status === "ON_BREAK"
+                                ? "ON LUNCH BREAK"
+                                : emp.status === "CHECKED_IN"
+                                  ? "ON DUTY"
+                                  : emp.status === "ON_LEAVE"
+                                    ? `ON APPROVED LEAVE${emp.leaveType ? ` (${emp.leaveType})` : ""}`
+                                    : emp.status === "COMPANY_HOLIDAY"
+                                      ? `COMPANY HOLIDAY${emp.holidayTitle ? ` (${emp.holidayTitle})` : ""}`
+                                      : isPendingHR
+                                        ? "PENDING HR APPROVAL"
+                                        : isRejectedLop
+                                          ? "LOSS OF PAY (LOP)"
+                                          : emp.status === "NOT_CHECKED_IN"
+                                            ? "OFF DUTY"
+                                            : "APPROVED (COMPLETED)"}
                             </span>
                           </td>
 
@@ -756,9 +727,9 @@ export default function HRAttendanceTracker({ embedded = false }) {
                                 </button>
                               </div>
                             ) : isRejectedLop ? (
-                              <span className="text-rose-700 font-bold text-[10px] uppercase">LOP Applied</span>
-                            ) : emp.status !== "NOT_CHECKED_IN" && emp.status !== "CHECKED_IN" ? (
-                              <span className="text-emerald-700 font-bold text-[10px] uppercase">Approved</span>
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 uppercase">LOP Applied</span>
+                            ) : emp.status !== "NOT_CHECKED_IN" && emp.status !== "CHECKED_IN" && emp.status !== "ON_BREAK" ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">Approved</span>
                             ) : (
                               <span className="text-slate-400">—</span>
                             )}
@@ -956,7 +927,7 @@ export default function HRAttendanceTracker({ embedded = false }) {
 
         {/* Pane 2: Employee Monthly Summary */}
         <div className={hrTab === "monthly" ? "w-full animate-fadeIn" : "hidden"}>
-          <EmployeeMonthlySummaryTable />
+          <EmployeeMonthlySummaryTable userRole={userRole} />
         </div>
       </div>
 

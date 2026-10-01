@@ -641,11 +641,6 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
               Company Documents &amp; Payslips
             </h2>
@@ -677,7 +672,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                 }));
                 setShowUploadModal(true);
               }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-sky-600/20 cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition-colors shadow-xs shadow-[#1f6fb2]/20 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
@@ -690,7 +685,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                 fetchEmployees();
                 fetchDocuments(false);
               }}
-              className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+              className="p-2 rounded-xl bg-white hover:bg-slate-50 text-slate-600 border border-slate-200/80 text-xs font-semibold transition-colors shadow-2xs cursor-pointer flex items-center justify-center"
               title="Refresh Documents"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -710,7 +705,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
             }}
             className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
               viewTab === "directory"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20 scale-[1.01]"
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
             }`}
           >
@@ -728,7 +723,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
             }}
             className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
               viewTab === "repository"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
+                ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20 scale-[1.01]"
                 : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
             }`}
           >
@@ -743,26 +738,22 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Registered Staff</span>
-            <div className="text-xl font-bold text-slate-900">{employees.length}</div>
-            <span className="text-[11px] text-slate-500">Active personnel</span>
+            <div className="text-xl font-bold text-slate-900 font-mono">{employees.length}</div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Total Documents</span>
-            <div className="text-xl font-bold text-slate-900">{documents.length}</div>
-            <span className="text-[11px] text-slate-500 font-mono">{formatBytes(totalVaultBytes)}</span>
+            <div className="text-xl font-bold text-slate-900 font-mono">{documents.length}</div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Personal Records</span>
-            <div className="text-xl font-bold text-slate-900">{personalInfoCount}</div>
-            <span className="text-[11px] text-slate-500">Verified credentials</span>
+            <div className="text-xl font-bold text-slate-900 font-mono">{personalInfoCount}</div>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Salary Payslips</span>
-            <div className="text-xl font-bold text-slate-900">{salaryPayslipCount}</div>
-            <span className="text-[11px] text-slate-500">Payroll statements</span>
+            <div className="text-xl font-bold text-slate-900 font-mono">{salaryPayslipCount}</div>
           </div>
         </div>
 
@@ -786,12 +777,9 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
         <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
             <div>
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <h3 className="text-base font-bold text-slate-900">
                 Company Staff Directory
               </h3>
-              <p className="text-xs text-slate-500">
-                View all company employees and track document coverage across your team.
-              </p>
             </div>
 
             {/* Search Box */}
@@ -806,12 +794,12 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                 placeholder="Search staff name, email, department..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500 transition shadow-2xs"
+                className="w-full bg-white border border-slate-200/80 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none transition shadow-2xs"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
                 >
                   ✕
                 </button>
@@ -856,8 +844,19 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                           {/* Employee info */}
                           <td className="py-3.5 px-5">
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200/80 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                                {initial}
+                              <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200/80 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
+                                {emp.avatar_url ? (
+                                  <img
+                                    src={emp.avatar_url}
+                                    alt={emp.full_name || "Employee"}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  initial
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <div className="font-semibold text-slate-900 text-xs truncate max-w-xs">{emp.full_name}</div>
@@ -872,21 +871,21 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                             {emp.department || "General"}
                           </span>
                           <div className="text-[11px] text-slate-500 capitalize mt-1 font-medium">
-                            {emp.designation || emp.role || "Staff"}
+                            {emp.designation || emp.role?.replace(/_/g, " ") || "Staff"}
                           </div>
                         </td>
 
                         {/* Uploaded Files Summary */}
                         <td className="py-4 px-5 text-center whitespace-nowrap">
                           {docSum.totalDocs > 0 ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/80 shadow-2xs">
                               <svg className="w-3.5 h-3.5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.25">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                               <span>{docSum.totalDocs} {docSum.totalDocs === 1 ? "File" : "Files"} Uploaded</span>
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-50 text-slate-400 border border-slate-200/70">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-medium bg-slate-50 text-slate-400 border border-slate-200/70">
                               <svg className="w-3.5 h-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                               </svg>
@@ -900,7 +899,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => openUploadForEmployee(emp.id)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold shadow-xs shadow-[#1f6fb2]/20 transition cursor-pointer"
                             >
                               <svg className="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2.25">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
@@ -914,7 +913,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                                 setSelectedDocType("ALL");
                                 setViewTab("repository");
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-medium transition cursor-pointer shadow-2xs"
                             >
                               <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
@@ -946,7 +945,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
               <select
                 value={selectedEmployeeId}
                 onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                className="w-full md:w-52 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer font-medium shadow-2xs"
+                className="w-full md:w-52 bg-white border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none cursor-pointer font-medium shadow-2xs transition"
               >
                 <option value="ALL">All Staff Members ({employees.length})</option>
                 {employees.map((emp) => (
@@ -963,7 +962,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
               <select
                 value={selectedDocType}
                 onChange={(e) => handleDocTypeChange(e.target.value)}
-                className="w-full md:w-52 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500 cursor-pointer font-medium shadow-2xs"
+                className="w-full md:w-52 bg-white border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none cursor-pointer font-medium shadow-2xs transition"
               >
                 <option value="ALL">All Categories</option>
                 <option value="PERSONAL_INFORMATION">Personal Records (All)</option>
@@ -986,12 +985,12 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by title, employee name, or notes..."
-                className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-sky-500 transition shadow-2xs"
+                className="w-full bg-white border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none transition shadow-2xs"
               />
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
                 >
                   ✕
                 </button>
@@ -1021,7 +1020,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                       setSelectedYear(yr);
                       if (selectedMonth === null) setSelectedMonth(0);
                     }}
-                    className="bg-white border border-slate-200 text-slate-800 text-xs font-bold rounded-lg px-2.5 py-1 focus:outline-none focus:border-sky-500 shadow-2xs"
+                    className="bg-white border border-slate-200 focus:border-[#1f6fb2] text-slate-800 text-xs font-bold rounded-xl px-3 py-1.5 focus:outline-none shadow-2xs cursor-pointer"
                   >
                     {[calYear - 2, calYear - 1, calYear, calYear + 1].map((yr) => (
                       <option key={yr} value={yr}>
@@ -1035,9 +1034,9 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                       setSelectedMonth(null);
                       setSelectedYear(null);
                     }}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-2xs ${
                       selectedMonth === null && selectedYear === null
-                        ? "bg-sky-600 text-white shadow-2xs"
+                        ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20"
                         : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
                   >
@@ -1059,9 +1058,9 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                         setSelectedMonth(mIdx);
                         if (selectedYear === null) setSelectedYear(calYear);
                       }}
-                      className={`py-1.5 px-1 rounded-lg text-xs font-medium text-center transition-all cursor-pointer relative ${
+                      className={`py-1.5 px-1 rounded-xl text-xs font-medium text-center transition-all cursor-pointer relative ${
                         isSelected
-                          ? "bg-sky-600 text-white font-bold shadow-2xs"
+                          ? "bg-brand-gradient text-white font-bold shadow-xs shadow-[#1f6fb2]/20"
                           : isCurrent
                           ? "bg-sky-50 border border-sky-200 text-sky-700 font-bold"
                           : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
@@ -1069,7 +1068,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                     >
                       <span>{mName}</span>
                       {isCurrent && !isSelected && (
-                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-sky-500 rounded-full ring-1 ring-white" />
+                        <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-[#1f6fb2] rounded-full ring-1 ring-white" />
                       )}
                     </button>
                   );
@@ -1268,26 +1267,22 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
         </div>
       )}
 
-      {/* --- DOCUMENT VIEWER MODAL (FOR HR) --- */}
+      {/* --- DOCUMENT VIEWER MODAL (MATCHING CONFIGURE HOURS POPUP THEME) --- */}
       {previewDoc && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-fadeIn">
-          <div className="bg-white rounded-3xl shadow-2xl border border-sky-100 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-sky-100 bg-sky-50/40">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center text-lg font-bold">
-                  {getFileFormatDetails(previewDoc.fileType, previewDoc.documentType, previewDoc.documentName).icon}
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-base">
-                    {previewDoc.documentName}
-                  </h3>
-                  <div className="flex items-center gap-2 text-[11px] text-slate-500">
-                    <span>Assigned to: <strong>{previewDoc.employeeName}</strong></span>
-                    <span>•</span>
-                    <span className="font-mono">{formatBytes(previewDoc.fileSize)}</span>
-                  </div>
-                </div>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPreviewDoc(null);
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn max-h-[90vh]">
+            {/* Top Header matching Configure Hours */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60 shrink-0">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">View:</span>
+                <span className="text-[#1f6fb2] font-bold text-sm sm:text-base truncate max-w-md">
+                  {previewDoc.documentName}
+                </span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -1295,16 +1290,16 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                   href={previewDoc.downloadUrl || previewDoc.signedUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition flex items-center gap-1.5 shadow-2xs"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                   </svg>
-                  <span>Open in New Tab</span>
+                  <span>Open Tab</span>
                 </a>
                 <button
                   onClick={() => handleDownloadDocument(previewDoc)}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-xs shadow-[#1f6fb2]/20 cursor-pointer"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
@@ -1312,9 +1307,10 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                   <span>Save</span>
                 </button>
                 <button
+                  type="button"
                   onClick={() => setPreviewDoc(null)}
-                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold transition cursor-pointer ml-1"
-                  title="Close Viewer"
+                  className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer shadow-2xs ml-1"
+                  title="Close"
                 >
                   ✕
                 </button>
@@ -1326,26 +1322,26 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
               {previewDoc.fileType?.includes("pdf") || previewDoc.documentName?.endsWith(".pdf") ? (
                 <iframe
                   src={previewDoc.signedUrl || previewDoc.downloadUrl}
-                  className="w-full h-[65vh] rounded-2xl border border-slate-200 shadow-inner bg-white"
+                  className="w-full h-[65vh] rounded-xl border border-slate-200 shadow-inner bg-white"
                   title={previewDoc.documentName}
                 />
               ) : previewDoc.fileType?.includes("image") || /\.(png|jpe?g|webp|gif)$/i.test(previewDoc.documentName || "") ? (
-                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-md max-h-[65vh] overflow-auto flex items-center justify-center">
+                <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-md max-h-[65vh] overflow-auto flex items-center justify-center">
                   <img
                     src={previewDoc.signedUrl || previewDoc.downloadUrl}
                     alt={previewDoc.documentName}
-                    className="max-h-[60vh] object-contain rounded-xl"
+                    className="max-h-[60vh] object-contain rounded-lg"
                   />
                 </div>
               ) : (
-                <div className="text-center p-8 bg-white rounded-3xl border border-sky-100 max-w-md shadow-lg space-y-4">
-                  <div className="w-16 h-16 rounded-2xl bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center mx-auto shadow-2xs">
-                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <div className="text-center p-8 bg-white rounded-2xl border border-slate-200 max-w-md shadow-lg space-y-4">
+                  <div className="w-14 h-14 rounded-2xl bg-sky-50 text-sky-600 border border-sky-200 flex items-center justify-center mx-auto shadow-2xs">
+                    <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                   </div>
                   <div>
-                    <h4 className="font-extrabold text-slate-900 text-base">{previewDoc.documentName}</h4>
+                    <h4 className="font-bold text-slate-900 text-sm">{previewDoc.documentName}</h4>
                     <p className="text-xs text-slate-500 mt-1">
                       Direct preview is available for PDFs and images. For Word or text files, open in new tab or download to view.
                     </p>
@@ -1360,7 +1356,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
                       href={previewDoc.downloadUrl || previewDoc.signedUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition"
+                      className="px-4 py-2 bg-brand-gradient hover:opacity-95 text-white rounded-xl text-xs font-semibold transition shadow-xs shadow-[#1f6fb2]/20"
                     >
                       Open File in Browser
                     </a>
@@ -1372,31 +1368,30 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
         </div>
       )}
 
-      {/* --- UPLOAD DOCUMENT MODAL --- */}
+      {/* --- UPLOAD DOCUMENT MODAL (MATCHING CONFIGURE HOURS POPUP THEME) --- */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden my-auto animate-scaleUp">
-            {/* Modal Header */}
-            <div className="bg-slate-50/90 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg shrink-0 border border-sky-100 shadow-2xs">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 leading-tight">
-                    Upload Document to Employee Workspace
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Securely archive salary payslips or official HR records
-                  </p>
-                </div>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !uploading) setShowUploadModal(false);
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header matching exact Configure Hours format */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">Upload:</span>
+                <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+                  Employee Document
+                </span>
               </div>
+
+              {/* Close button */}
               <button
                 type="button"
+                disabled={uploading}
                 onClick={() => setShowUploadModal(false)}
-                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition text-sm font-bold cursor-pointer"
+                className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                 title="Close"
               >
                 ✕
@@ -1405,7 +1400,7 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
 
             {/* Error Notification */}
             {modalNotice.error && (
-              <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between">
+              <div className="mx-6 mt-4 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span>⚠️</span>
                   <span>{modalNotice.error}</span>
@@ -1420,372 +1415,365 @@ export default function EmployeeDocumentManager({ initialEmployees = [] }) {
               </div>
             )}
 
-            <form onSubmit={handleUploadSubmit} className="p-6 space-y-4 text-xs">
-              {/* Select Employee */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Target Employee <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  required
-                  value={uploadForm.employeeId}
-                  onChange={(e) => {
-                    const empId = e.target.value;
-                    const empObj = employees.find((emp) => emp.id === empId);
-                    const empName = empObj?.full_name || "Employee";
-                    const jDateStr = empObj?.joining_date || empObj?.created_at || "";
-                    const recMonths = getRecommendedPayslipMonths(jDateStr);
-                    const defaultMonth = recMonths[0]?.value || "";
+            {/* Form Body */}
+            <form onSubmit={handleUploadSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Section 1: Target Employee & Category */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Target &amp; Category
+                </span>
 
-                    setUploadForm((prev) => ({
-                      ...prev,
-                      employeeId: empId,
-                      payslipMonth: prev.category === "SALARY_PAYSLIP" ? defaultMonth : prev.payslipMonth,
-                      documentName: prev.category === "SALARY_PAYSLIP"
-                        ? `${defaultMonth} - ${empName}`
-                        : (prev.subType ? `${prev.subType.replace(/_/g, " ")} - ${empName}` : prev.documentName),
-                    }));
-                  }}
-                  className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
-                >
-                  <option value="" disabled>-- Select Employee --</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.full_name} ({emp.department || "General"}) · {emp.email}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Document Category Selection */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Document Category
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
-                      const empName = selectedEmp?.full_name || "Employee";
-                      const jDateStr = selectedEmp?.joining_date || selectedEmp?.created_at || "";
-                      const recMonths = getRecommendedPayslipMonths(jDateStr);
-                      const defaultMonth = recMonths[0]?.value || "";
-
-                      setUploadForm((prev) => ({
-                        ...prev,
-                        category: "SALARY_PAYSLIP",
-                        subType: "",
-                        documentType: "SALARY_PAYSLIP",
-                        payslipMonth: prev.payslipMonth || defaultMonth,
-                        documentName: `${prev.payslipMonth || defaultMonth} - ${empName}`,
-                      }));
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                      uploadForm.category === "SALARY_PAYSLIP"
-                        ? "border-sky-500 bg-sky-50/60 shadow-xs ring-1 ring-sky-500/30"
-                        : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-base">💳</span>
-                      {uploadForm.category === "SALARY_PAYSLIP" && (
-                        <span className="w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[9px] font-bold">
-                          ✓
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2">
-                      <div className={`text-xs font-bold ${uploadForm.category === "SALARY_PAYSLIP" ? "text-sky-950" : "text-slate-800"}`}>
-                        Salary Payslip
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
-                        Payroll slips & compensation sheets
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
-                      const empName = selectedEmp?.full_name || "Employee";
-                      const sub = uploadForm.subType || "OFFER_LETTER";
-
-                      setUploadForm((prev) => ({
-                        ...prev,
-                        category: "PERSONAL_INFORMATION",
-                        subType: sub,
-                        documentType: sub,
-                        payslipMonth: "",
-                        documentName: prev.documentName && !prev.documentName.includes(" - ") ? prev.documentName : `${sub.replace(/_/g, " ")} - ${empName}`,
-                      }));
-                    }}
-                    className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between cursor-pointer ${
-                      uploadForm.category === "PERSONAL_INFORMATION"
-                        ? "border-sky-500 bg-sky-50/60 shadow-xs ring-1 ring-sky-500/30"
-                        : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60 hover:border-slate-300"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-base">👤</span>
-                      {uploadForm.category === "PERSONAL_INFORMATION" && (
-                        <span className="w-4 h-4 rounded-full bg-sky-600 text-white flex items-center justify-center text-[9px] font-bold">
-                          ✓
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2">
-                      <div className={`text-xs font-bold ${uploadForm.category === "PERSONAL_INFORMATION" ? "text-sky-950" : "text-slate-800"}`}>
-                        Personal & HR Records
-                      </div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">
-                        Offer letters, KYC & certificates
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Recommended Month Selection for Salary Payslip */}
-              {uploadForm.category === "SALARY_PAYSLIP" && (() => {
-                const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
-                const empName = selectedEmp?.full_name || "Employee";
-                const jDateStr = selectedEmp?.joining_date || selectedEmp?.created_at || "";
-                const recMonths = getRecommendedPayslipMonths(jDateStr);
-                const formattedJDate = jDateStr ? new Date(jDateStr).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : null;
-                const currentMonthValue = uploadForm.payslipMonth || (recMonths[0]?.value || "");
-
-                return (
-                  <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                        <span>Pay Period (Month & Year)</span>
-                      </label>
-                      {formattedJDate && (
-                        <span className="text-[10px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded-md border border-slate-200">
-                          Joined: {formattedJDate}
-                        </span>
-                      )}
-                    </div>
+                {/* Target Employee */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Target Employee <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex-1">
                     <select
-                      value={currentMonthValue}
+                      required
+                      value={uploadForm.employeeId}
                       onChange={(e) => {
-                        const chosenMonth = e.target.value;
+                        const empId = e.target.value;
+                        const empObj = employees.find((emp) => emp.id === empId);
+                        const empName = empObj?.full_name || "Employee";
+                        const jDateStr = empObj?.joining_date || empObj?.created_at || "";
+                        const recMonths = getRecommendedPayslipMonths(jDateStr);
+                        const defaultMonth = recMonths[0]?.value || "";
+
                         setUploadForm((prev) => ({
                           ...prev,
-                          payslipMonth: chosenMonth,
-                          documentName: `${chosenMonth} - ${empName}`,
+                          employeeId: empId,
+                          payslipMonth: prev.category === "SALARY_PAYSLIP" ? defaultMonth : prev.payslipMonth,
+                          documentName: prev.category === "SALARY_PAYSLIP"
+                            ? `${defaultMonth} - ${empName}`
+                            : (prev.subType ? `${prev.subType.replace(/_/g, " ")} - ${empName}` : prev.documentName),
                         }));
                       }}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs"
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 cursor-pointer outline-none shadow-2xs transition font-sans"
                     >
-                      {recMonths.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
+                      <option value="" disabled>-- Select Employee --</option>
+                      {employees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.full_name} ({emp.department || "General"}) · {emp.email}
                         </option>
                       ))}
                     </select>
-                    <p className="text-[10px] text-slate-500">
-                      File display title auto-formats to: <span className="font-semibold text-slate-700">{currentMonthValue} - {empName}</span>
-                    </p>
-                  </div>
-                );
-              })()}
-
-              {/* Sub-Type Selection for Personal & Official Information */}
-              {uploadForm.category === "PERSONAL_INFORMATION" && (
-                <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-2">
-                  <label className="text-xs font-bold text-slate-800 block">
-                    Document Specification
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {[
-                      { id: "OFFER_LETTER", icon: "📜", label: "Offer Letter", desc: "Employment offer" },
-                      { id: "PERSONAL_DETAILS", icon: "👤", label: "Personal Details", desc: "KYC & identity" },
-                      { id: "EXPERIENCE_CERTIFICATE", icon: "🎓", label: "Experience Certificate", desc: "Experience / relieving" },
-                    ].map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
-                          const empName = selectedEmp?.full_name || "Employee";
-                          setUploadForm((prev) => ({
-                            ...prev,
-                            subType: item.id,
-                            documentType: item.id,
-                            documentName: prev.documentName && !prev.documentName.includes(" - ") ? prev.documentName : `${item.label} - ${empName}`,
-                          }));
-                        }}
-                        className={`p-2.5 rounded-lg border text-left transition-all cursor-pointer ${
-                          uploadForm.subType === item.id
-                            ? "border-sky-500 bg-sky-50 text-sky-950 shadow-2xs ring-1 ring-sky-500/20"
-                            : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 text-xs font-bold">
-                          <span>{item.icon}</span>
-                          <span>{item.label}</span>
-                        </div>
-                        <div className="text-[9px] text-slate-400 mt-0.5">
-                          {item.desc}
-                        </div>
-                      </button>
-                    ))}
                   </div>
                 </div>
-              )}
 
-              {/* File Attachment & Drag Drop Zone */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Document File <span className="text-rose-500">*</span>
-                </label>
+                {/* Document Category Selection */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 pt-1">
+                    Category
+                  </label>
+                  <div className="flex-1 grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                        const empName = selectedEmp?.full_name || "Employee";
+                        const jDateStr = selectedEmp?.joining_date || selectedEmp?.created_at || "";
+                        const recMonths = getRecommendedPayslipMonths(jDateStr);
+                        const defaultMonth = recMonths[0]?.value || "";
 
-                {!uploadForm.file ? (
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDragging(false);
-                      const droppedFile = e.dataTransfer?.files?.[0];
-                      if (droppedFile) {
-                        handleFileSelect({ target: { files: [droppedFile] } });
-                      }
-                    }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border-2 border-dashed rounded-xl p-5 text-center transition-all cursor-pointer group ${
-                      isDragging
-                        ? "border-sky-500 bg-sky-50/80 scale-[0.99]"
-                        : "border-slate-200 hover:border-sky-400 bg-slate-50/60 hover:bg-sky-50/30"
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                      accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
-                      className="hidden"
-                    />
-                    <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-sky-100/80 group-hover:bg-sky-100 text-sky-600 flex items-center justify-center text-lg transition shadow-2xs">
-                      <svg className="w-5 h-5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="1.75">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-semibold text-slate-700">
-                      <span className="text-sky-600 font-bold hover:underline">Click to browse</span> or drag and drop file here
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      PDF, Word (DOCX/DOC), PNG, JPG or WebP (max 15 MB)
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-lg bg-sky-100 text-sky-700 font-extrabold text-[10px] flex items-center justify-center shrink-0 border border-sky-200 uppercase">
-                        {uploadForm.file.name.split('.').pop() || "FILE"}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 truncate" title={uploadForm.file.name}>
-                          {uploadForm.file.name}
-                        </p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
-                          <span>{formatBytes(uploadForm.file.size)}</span>
-                          <span>•</span>
-                          <span className="text-emerald-600 font-semibold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                            Ready to upload
-                          </span>
+                        setUploadForm((prev) => ({
+                          ...prev,
+                          category: "SALARY_PAYSLIP",
+                          subType: "",
+                          documentType: "SALARY_PAYSLIP",
+                          payslipMonth: prev.payslipMonth || defaultMonth,
+                          documentName: `${prev.payslipMonth || defaultMonth} - ${empName}`,
+                        }));
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                        uploadForm.category === "SALARY_PAYSLIP"
+                          ? "bg-sky-50/80 border-[#1f6fb2] text-slate-900 ring-1 ring-[#1f6fb2]/30 shadow-2xs"
+                          : "bg-slate-50/60 hover:bg-slate-100/60 border-slate-200 text-slate-600"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">💳</span>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">Salary Payslip</div>
+                          <div className="text-[10px] text-slate-500">Monthly payroll slip</div>
                         </div>
                       </div>
+                      {uploadForm.category === "SALARY_PAYSLIP" && (
+                        <span className="w-4 h-4 rounded-full bg-[#1f6fb2] text-white flex items-center justify-center text-[9px] font-bold">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                        const empName = selectedEmp?.full_name || "Employee";
+                        const sub = uploadForm.subType || "OFFER_LETTER";
+
+                        setUploadForm((prev) => ({
+                          ...prev,
+                          category: "PERSONAL_INFORMATION",
+                          subType: sub,
+                          documentType: sub,
+                          payslipMonth: "",
+                          documentName: prev.documentName && !prev.documentName.includes(" - ") ? prev.documentName : `${sub.replace(/_/g, " ")} - ${empName}`,
+                        }));
+                      }}
+                      className={`p-2.5 rounded-xl border text-left transition cursor-pointer flex items-center justify-between ${
+                        uploadForm.category === "PERSONAL_INFORMATION"
+                          ? "bg-sky-50/80 border-[#1f6fb2] text-slate-900 ring-1 ring-[#1f6fb2]/30 shadow-2xs"
+                          : "bg-slate-50/60 hover:bg-slate-100/60 border-slate-200 text-slate-600"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">👤</span>
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">HR Records</div>
+                          <div className="text-[10px] text-slate-500">Offer, KYC & certificates</div>
+                        </div>
+                      </div>
+                      {uploadForm.category === "PERSONAL_INFORMATION" && (
+                        <span className="w-4 h-4 rounded-full bg-[#1f6fb2] text-white flex items-center justify-center text-[9px] font-bold">
+                          ✓
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Recommended Month Selection for Salary Payslip */}
+                {uploadForm.category === "SALARY_PAYSLIP" && (() => {
+                  const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                  const empName = selectedEmp?.full_name || "Employee";
+                  const jDateStr = selectedEmp?.joining_date || selectedEmp?.created_at || "";
+                  const recMonths = getRecommendedPayslipMonths(jDateStr);
+                  const currentMonthValue = uploadForm.payslipMonth || (recMonths[0]?.value || "");
+
+                  return (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                        Pay Period
+                      </label>
+                      <div className="flex-1">
+                        <select
+                          value={currentMonthValue}
+                          onChange={(e) => {
+                            const chosenMonth = e.target.value;
+                            setUploadForm((prev) => ({
+                              ...prev,
+                              payslipMonth: chosenMonth,
+                              documentName: `${chosenMonth} - ${empName}`,
+                            }));
+                          }}
+                          className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 cursor-pointer outline-none shadow-2xs transition"
+                        >
+                          {recMonths.map((m) => (
+                            <option key={m.value} value={m.value}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="px-2.5 py-1 text-[11px] font-semibold text-sky-700 bg-white hover:bg-sky-50 border border-sky-200 rounded-lg transition cursor-pointer"
-                      >
-                        Change
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRemoveSelectedFile}
-                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                        title="Remove file"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
+                  );
+                })()}
+
+                {/* Sub-Type Selection for Personal & Official Information */}
+                {uploadForm.category === "PERSONAL_INFORMATION" && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      Document Type
+                    </label>
+                    <div className="flex-1 flex flex-wrap gap-1.5">
+                      {[
+                        { id: "OFFER_LETTER", label: "Offer Letter" },
+                        { id: "PERSONAL_DETAILS", label: "Personal Details / KYC" },
+                        { id: "EXPERIENCE_CERTIFICATE", label: "Experience Certificate" },
+                      ].map((item) => {
+                        const isSelected = uploadForm.subType === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => {
+                              const selectedEmp = employees.find((e) => e.id === uploadForm.employeeId);
+                              const empName = selectedEmp?.full_name || "Employee";
+                              setUploadForm((prev) => ({
+                                ...prev,
+                                subType: item.id,
+                                documentType: item.id,
+                                documentName: prev.documentName && !prev.documentName.includes(" - ") ? prev.documentName : `${item.label} - ${empName}`,
+                              }));
+                            }}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                              isSelected
+                                ? "bg-brand-gradient text-white shadow-xs"
+                                : "bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200/80"
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* Custom Display Name */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Document Display Title (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. August 2026 Payslip / Offer Letter - Software Engineer"
-                  value={uploadForm.documentName}
-                  onChange={(e) => setUploadForm({ ...uploadForm, documentName: e.target.value })}
-                  className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
-                />
+              {/* Separation Divider */}
+              <div className="border-t border-slate-100" />
+
+              {/* Section 2: File Upload & Details */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  File Attachment &amp; Details
+                </span>
+
+                {/* File Attachment & Drag Drop Zone */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 pt-1">
+                    Document File <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex-1">
+                    {!uploadForm.file ? (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragging(true);
+                        }}
+                        onDragLeave={(e) => {
+                          e.preventDefault();
+                          setIsDragging(false);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDragging(false);
+                          const droppedFile = e.dataTransfer?.files?.[0];
+                          if (droppedFile) {
+                            handleFileSelect({ target: { files: [droppedFile] } });
+                          }
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`border-2 border-dashed rounded-xl p-4 text-center transition-all cursor-pointer group ${
+                          isDragging
+                            ? "border-[#1f6fb2] bg-sky-50/80"
+                            : "border-slate-200 hover:border-[#1f6fb2] bg-slate-50/60 hover:bg-sky-50/30"
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileSelect}
+                          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp"
+                          className="hidden"
+                        />
+                        <div className="w-8 h-8 mx-auto mb-1.5 rounded-lg bg-sky-50 text-[#1f6fb2] flex items-center justify-center text-sm border border-sky-200/60 shadow-2xs">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z" />
+                          </svg>
+                        </div>
+                        <p className="text-xs font-semibold text-slate-700">
+                          <span className="text-[#1f6fb2] font-bold hover:underline">Click to browse</span> or drag and drop file here
+                        </p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          PDF, Word (DOCX/DOC), PNG, JPG or WebP (max 15 MB)
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-sky-100 text-[#1f6fb2] font-extrabold text-[10px] flex items-center justify-center shrink-0 border border-sky-200 uppercase">
+                            {uploadForm.file.name.split('.').pop() || "FILE"}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-900 truncate" title={uploadForm.file.name}>
+                              {uploadForm.file.name}
+                            </p>
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
+                              <span>{formatBytes(uploadForm.file.size)}</span>
+                              <span>•</span>
+                              <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                                Ready to upload
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-2.5 py-1 text-[11px] font-semibold text-[#1f6fb2] bg-white hover:bg-sky-50 border border-slate-200 rounded-lg transition cursor-pointer shadow-2xs"
+                          >
+                            Change
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRemoveSelectedFile}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                            title="Remove file"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Custom Display Name */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Display Title
+                  </label>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      placeholder="e.g. August 2026 Payslip / Offer Letter"
+                      value={uploadForm.documentName}
+                      onChange={(e) => setUploadForm({ ...uploadForm, documentName: e.target.value })}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition"
+                    />
+                  </div>
+                </div>
+
+                {/* HR Notes / Description */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 pt-1">
+                    Remarks (Optional)
+                  </label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={2}
+                      placeholder="Internal notes or instructions for the employee..."
+                      value={uploadForm.notes}
+                      onChange={(e) => setUploadForm({ ...uploadForm, notes: e.target.value })}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs"
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* HR Notes / Description */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  HR Remarks & Instructions (Optional)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Internal notes or instructions for the employee..."
-                  value={uploadForm.notes}
-                  onChange={(e) => setUploadForm({ ...uploadForm, notes: e.target.value })}
-                  className="w-full bg-slate-50/70 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
-                />
-              </div>
-
-              {/* Submit Buttons */}
-              <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setShowUploadModal(false)}
-                  className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-
+              {/* Submit Buttons matching Configure Hours Footer */}
+              <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
                 <button
                   type="submit"
-                  disabled={uploading}
-                  className="px-5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 active:bg-sky-800 rounded-xl shadow-md shadow-sky-600/20 transition flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={uploading || !uploadForm.file || !uploadForm.employeeId}
+                  className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20"
                 >
-                  {uploading ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Uploading Document...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-                      </svg>
-                      <span>Upload Document</span>
-                    </>
-                  )}
+                  {uploading ? "Uploading…" : "Upload Document"}
+                </button>
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                >
+                  Cancel
                 </button>
               </div>
             </form>

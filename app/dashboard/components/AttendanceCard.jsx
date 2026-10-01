@@ -55,7 +55,7 @@ export default function AttendanceCard() {
   const [clockOffsetMs, setClockOffsetMs] = useState(0);
 
   // Live wall-clock for idle (not checked-in) state
-  const [liveTime, setLiveTime] = useState(() => new Date());
+  const [liveTime, setLiveTime] = useState(null);
 
   // Lunch break state
   const [isOnBreak, setIsOnBreak] = useState(false);
@@ -91,6 +91,23 @@ export default function AttendanceCard() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState({ error: "", success: "" });
+  const [infoPopup, setInfoPopup] = useState(null);
+
+  // 5-second auto-dismiss for transient info popup
+  useEffect(() => {
+    if (!infoPopup) return;
+    const t = setTimeout(() => setInfoPopup(null), 5000);
+    return () => clearTimeout(t);
+  }, [infoPopup]);
+
+  // Live wall-clock ticker for idle state
+  useEffect(() => {
+    setLiveTime(new Date());
+    const clockInterval = setInterval(() => {
+      setLiveTime(new Date());
+    }, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
 
 
   // ─── Timer refs (never stale, wall-clock timestamp anchored) ─────────────────
@@ -337,10 +354,25 @@ export default function AttendanceCard() {
         setEarlyReason("");
         setIsLop(false);
         setElapsedSeconds(0);
+        const formattedCheckIn = new Date(data.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         setNotice({
           error: "",
-          success: `Check-in recorded at ${new Date(data.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} — Shift timer started.`,
+          success: `Check-in recorded at ${formattedCheckIn} — Shift timer started.`,
         });
+
+        if (data.isLate) {
+          setInfoPopup({
+            type: "warning",
+            title: "⏰ Late Check-In Recorded",
+            message: `You checked in at ${data.actualCheckInTime || formattedCheckIn}, which is ${data.delayDuration || "delayed"} after the scheduled start time (${data.scheduledStartTime || "09:30 AM"}).`,
+          });
+        } else {
+          setInfoPopup({
+            type: "success",
+            title: "🟢 Shift Started Successfully",
+            message: `Check-in recorded at ${formattedCheckIn}. Have a productive day!`,
+          });
+        }
         if (typeof window !== "undefined") window.dispatchEvent(new Event("attendance-updated"));
         await fetchAttendanceStatus(true);
       }
@@ -570,25 +602,19 @@ export default function AttendanceCard() {
       {/* Header Bar */}
       <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-            <ClockIcon className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-900">
-              Daily Attendance
-            </h3>
-            <p className="text-[11px] text-slate-500">Overall company working standard: {dailyTargetHours.toFixed(1)} Hours</p>
-          </div>
+          <h3 className="text-sm font-bold text-slate-900">
+            Daily Attendance
+          </h3>
         </div>
 
         {/* Dynamic Status Badge matching Document Manager */}
         <span
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase border transition-colors ${isOnBreak
-              ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase border transition-colors ${isOnBreak
+              ? "bg-slate-100 text-slate-700 border-slate-200"
               : checkedIn
-                ? "bg-emerald-50 text-emerald-700 border-emerald-200 animate-pulse"
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                 : hasCompletedToday && approvalStatus === "PENDING"
-                  ? "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
                   : hasCompletedToday && (approvalStatus === "REJECTED" || isLop)
                     ? "bg-rose-50 text-rose-700 border-rose-200"
                     : hasCompletedToday
@@ -597,15 +623,9 @@ export default function AttendanceCard() {
             }`}
         >
           {isOnBreak ? (
-            <>
-              <CoffeeIcon className="w-3 h-3" />
-              <span>ON LUNCH BREAK</span>
-            </>
+            <span>ON LUNCH BREAK</span>
           ) : checkedIn ? (
-            <>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>ON DUTY</span>
-            </>
+            <span>ON DUTY</span>
           ) : hasCompletedToday && approvalStatus === "PENDING" ? (
             <>
               <TimerIcon className="w-3 h-3" />
@@ -668,8 +688,9 @@ export default function AttendanceCard() {
             const circleCircumference = 2 * Math.PI * circleRadius;
             const strokeDashoffset = circleCircumference - progressRatio * circleCircumference;
 
-            let timeDisplay = liveTime.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-            let subLabel = liveTime.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+            const now = liveTime || new Date();
+            let timeDisplay = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+            let subLabel = now.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
             let strokeColor = "stroke-sky-400";
             let textColor = "text-slate-900";
             let ringBadge = `${dailyTargetHours.toFixed(0)}h Target`;
@@ -677,8 +698,8 @@ export default function AttendanceCard() {
             if (isOnBreak) {
               timeDisplay = formatSecondsToHHMMSS(currentBreakSeconds);
               subLabel = "Lunch Break (Shift Paused)";
-              strokeColor = "stroke-teal-500";
-              textColor = "text-teal-700";
+              strokeColor = "stroke-slate-400";
+              textColor = "text-slate-900";
               ringBadge = "Break Paused";
             } else if (checkedIn) {
               timeDisplay = formatSecondsToHHMMSS(elapsedSeconds);
@@ -768,13 +789,47 @@ export default function AttendanceCard() {
             </div>
           )}
 
+          {/* 5-Second Transient Information Popup */}
+          {infoPopup && (
+            <div className={`p-3.5 rounded-xl border text-xs flex items-start justify-between gap-3 shadow-md relative overflow-hidden ${
+              infoPopup.type === "warning"
+                ? "bg-amber-50 border-amber-300 text-amber-900"
+                : "bg-emerald-50 border-emerald-300 text-emerald-900"
+            }`}>
+              <div className="flex items-start gap-2.5">
+                <span className="text-base shrink-0 mt-0.5">
+                  {infoPopup.type === "warning" ? "⏰" : "✅"}
+                </span>
+                <div>
+                  <p className="font-bold text-xs">{infoPopup.title}</p>
+                  <p className="text-[11px] mt-0.5 opacity-90 leading-relaxed">{infoPopup.message}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInfoPopup(null)}
+                className="text-xs opacity-60 hover:opacity-100 cursor-pointer p-0.5 font-bold shrink-0"
+                title="Close"
+              >
+                ✕
+              </button>
+              {/* 5-Second progress bar */}
+              <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5">
+                <div
+                  className={`h-full ${infoPopup.type === "warning" ? "bg-amber-500" : "bg-emerald-500"}`}
+                  style={{ width: "100%", animation: "shrinkProgress 5s linear forwards" }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Feedback Notice Banner */}
           {notice.error && (
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs text-center font-medium">
               {notice.error}
             </div>
           )}
-          {notice.success && (
+          {notice.success && !infoPopup && (
             <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs text-center font-medium">
               {notice.success}
             </div>
@@ -790,7 +845,7 @@ export default function AttendanceCard() {
                     type="button"
                     onClick={() => handleToggleBreak("END")}
                     disabled={actionLoading}
-                    className="w-full py-3.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                    className="w-full py-3.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition-all duration-200 shadow-xs shadow-[#1f6fb2]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                   >
                     {actionLoading ? (
                       <>
@@ -807,15 +862,15 @@ export default function AttendanceCard() {
                 ) : (hasCompletedBreak || totalBreakSeconds > 0) ? (
                   /* Break completed today, only Check Out available */
                   <div className="space-y-2">
-                    <div className="py-2 px-3 rounded-xl bg-teal-50/80 border border-teal-200 text-teal-800 text-[11px] font-semibold text-center flex items-center justify-center gap-1.5">
-                      <CheckCircleIcon className="w-3.5 h-3.5 text-teal-600 shrink-0" />
+                    <div className="py-2 px-3 rounded-xl bg-slate-50 border border-slate-200/80 text-slate-700 text-[11px] font-semibold text-center flex items-center justify-center gap-1.5">
+                      <CheckCircleIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                       <span>Lunch break logged ({formatSecondsToHHMMSS(totalBreakSeconds)})</span>
                     </div>
                     <button
                       type="button"
                       onClick={initiateCheckOut}
                       disabled={actionLoading}
-                      className="w-full py-3.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="w-full py-3.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition-all duration-200 shadow-xs shadow-[#1f6fb2]/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
                       {actionLoading ? (
                         <>
@@ -837,9 +892,8 @@ export default function AttendanceCard() {
                       type="button"
                       onClick={() => handleToggleBreak("START")}
                       disabled={actionLoading || hasCompletedBreak || totalBreakSeconds > 0}
-                      className="py-3.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-teal-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/80 text-xs font-semibold transition-all duration-200 shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
-                      <CoffeeIcon className="w-4 h-4 shrink-0" />
                       <span className="tracking-wide">Start Lunch Break</span>
                     </button>
 
@@ -847,7 +901,7 @@ export default function AttendanceCard() {
                       type="button"
                       onClick={initiateCheckOut}
                       disabled={actionLoading}
-                      className="py-3.5 rounded-xl bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 hover:from-sky-500 hover:via-blue-500 hover:to-indigo-600 text-white text-xs font-bold transition-all duration-200 shadow-md shadow-blue-500/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+                      className="py-3.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition-all duration-200 shadow-xs shadow-[#1f6fb2]/20 flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-[0.98]"
                     >
                       <LogOutIcon className="w-4 h-4 shrink-0" />
                       <span className="tracking-wide">Check Out</span>
@@ -876,14 +930,14 @@ export default function AttendanceCard() {
                 type="button"
                 onClick={handleCheckIn}
                 disabled={actionLoading || isHoliday || isOnLeaveToday || isNonWorkingDay}
-                className={`w-full rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2.5 relative overflow-hidden group ${
+                className={`w-full rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center justify-center gap-2.5 relative overflow-hidden group ${
                   isHoliday
                     ? "py-3.5 bg-purple-50 border border-purple-200 text-purple-700 cursor-not-allowed"
                     : isNonWorkingDay
                       ? "py-3.5 bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed"
                       : isOnLeaveToday
                         ? "py-3.5 bg-cyan-50 border border-cyan-200 text-cyan-700 cursor-not-allowed"
-                        : "py-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-md shadow-emerald-500/20 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
+                        : "py-3.5 bg-brand-gradient hover:opacity-95 text-white shadow-xs shadow-[#1f6fb2]/20 cursor-pointer disabled:opacity-60 active:scale-[0.98]"
                 }`}
               >
                 {!isHoliday && !isNonWorkingDay && !isOnLeaveToday && (

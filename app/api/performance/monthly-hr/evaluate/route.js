@@ -25,13 +25,14 @@ export async function POST(req) {
       return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
     }
 
-    const userRoleStr = (role || "").toLowerCase();
-    const isHR = ["admin", "hr_manager", "hr_executive", "manager", "team_lead", "owner"].includes(userRoleStr) || Boolean(employeeProfile?.is_owner);
+    const userRoleStr = String(role || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isHR = userRoleStr.includes("hr");
+
     if (!isHR) {
-      return NextResponse.json({ message: "Access denied. HR privileges required." }, { status: 403 });
+      return NextResponse.json({ message: "Access denied. Only HR roles can submit attendance & leave evaluations." }, { status: 403 });
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const {
       employeeId,
       evaluationMonth,
@@ -44,6 +45,10 @@ export async function POST(req) {
 
     if (!employeeId || !evaluationMonth) {
       return NextResponse.json({ message: "Missing required fields: employeeId and evaluationMonth are required." }, { status: 400 });
+    }
+
+    if (employeeProfile?.id && employeeProfile.id === employeeId) {
+      return NextResponse.json({ message: "Self-evaluation is not permitted. Evaluators cannot evaluate their own profile." }, { status: 400 });
     }
 
     if (!hrFeedback || hrFeedback.trim().length === 0) {

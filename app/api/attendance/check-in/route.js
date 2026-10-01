@@ -439,21 +439,8 @@ export async function POST(req) {
         console.error(`❌ Failed to send late check-in email to ${targetEmail}:`, mailErr);
       }
 
-      // In-app notification record for employee
-      try {
-        await adminSupabase.from("notifications").insert([
-          {
-            company_id: empRecord.company_id,
-            employee_id: empRecord.id,
-            title: "⏰ Late Check-In Notice",
-            message: `You checked in at ${delayInfo.checkInTime}, which is ${delayInfo.delayDuration} after the scheduled start time (${delayInfo.scheduledTime}).`,
-            is_read: false,
-            created_at: serverNowIso,
-          },
-        ]);
-      } catch {
-        // Ignore notification table errors if optional
-      }
+      // Note: Transient late check-in information is returned in the API response
+      // to display directly in a 5-second UI popup/toast, avoiding polluting the notifications table.
     }
 
     return NextResponse.json({

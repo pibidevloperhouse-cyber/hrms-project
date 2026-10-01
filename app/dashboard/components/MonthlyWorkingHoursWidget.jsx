@@ -11,34 +11,37 @@ export default function MonthlyWorkingHoursWidget() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchSummary = async (monthStr, isSilent = false) => {
-    try {
-      if (!isSilent) setLoading(true);
-      const res = await authFetch(`/api/attendance/monthly-summary?month=${monthStr}`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch (err) {
-      console.error("Failed to fetch monthly summary widget data:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchSummary(targetMonth, true);
+    let isMounted = true;
+
+    async function loadData() {
+      try {
+        const res = await authFetch(`/api/attendance/monthly-summary?month=${targetMonth}`);
+        if (res.ok && isMounted) {
+          const json = await res.json();
+          setData(json);
+        }
+      } catch (err) {
+        console.error("Failed to fetch monthly summary widget data:", err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadData();
 
     // Periodic fallback (every 2 minutes) with background pause
     const interval = setInterval(() => {
       if (typeof document !== "undefined" && document.hidden) return;
-      fetchSummary(targetMonth, true);
+      loadData();
     }, 120000);
 
-    const handleUpdate = () => fetchSummary(targetMonth, true);
+    const handleUpdate = () => loadData();
     const handleVisibility = () => {
       if (typeof document !== "undefined" && !document.hidden) {
-        fetchSummary(targetMonth, true);
+        loadData();
       }
     };
 
@@ -48,6 +51,7 @@ export default function MonthlyWorkingHoursWidget() {
     }
 
     return () => {
+      isMounted = false;
       clearInterval(interval);
       if (typeof window !== "undefined") {
         window.removeEventListener("attendance-updated", handleUpdate);

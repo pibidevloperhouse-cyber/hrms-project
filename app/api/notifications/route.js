@@ -427,11 +427,49 @@ export async function GET(req) {
 
 /**
  * POST /api/notifications
- * Acknowledges UI mark-as-read requests without DB writes.
+ * Marks persistent notifications as read in the Supabase database.
  */
 export async function POST(req) {
   try {
-    return NextResponse.json({ success: true, message: "Notifications acknowledged." });
+    const supabaseServer = await createClient();
+    const user = await getAuthUser(req, supabaseServer);
+
+    if (!user) {
+      return NextResponse.json({ message: "Unauthorized", unauthorized: true }, { status: 401 });
+    }
+
+    const adminSupabase = createAdminClient();
+    const empRecord = await resolveEmployeeFast(adminSupabase, user);
+
+    if (!empRecord) {
+      return NextResponse.json({ success: true, message: "No employee record found." });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { markAllRead, notificationId } = body;
+
+    if (notificationId) {
+      const cleanId = String(notificationId).replace(/^db-/, "");
+      await adminSupabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", cleanId)
+        .eq("company_id", empRecord.company_id);
+    } else if (markAllRead) {
+      const isPrivileged = ["ADMIN", "hr_manager", "hr_executive"].includes(empRecord.role);
+      let query = adminSupabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("company_id", empRecord.company_id);
+
+      if (!isPrivileged) {
+        query = query.or(`employee_id.eq.${empRecord.id},employee_id.is.null`);
+      }
+
+      await query;
+    }
+
+    return NextResponse.json({ success: true, message: "Notifications marked as read successfully." });
   } catch (error) {
     console.error("POST /api/notifications error:", error);
     return NextResponse.json({ message: error.message || "Failed to update notifications." }, { status: 500 });

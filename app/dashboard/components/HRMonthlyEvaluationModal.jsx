@@ -15,7 +15,7 @@ import { computeFinalMonthlyEvaluation } from "@/lib/monthlyEvaluationUtils";
  * - HR Rating (1-10) and Feedback Remarks
  * - Blue Save Evaluation and Cancel action buttons
  */
-export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
+export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved, initialEmployeeId = null }) {
   const [mounted, setMounted] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const now = new Date();
@@ -23,7 +23,7 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
   });
   const [loading, setLoading] = useState(true);
   const [summaryData, setSummaryData] = useState(null);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(initialEmployeeId || "");
 
   // HR Form Inputs (Only Rating + Feedback)
   const [hrRating, setHrRating] = useState(8.0);
@@ -35,6 +35,13 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Sync initialEmployeeId when changed or modal opened
+  useEffect(() => {
+    if (initialEmployeeId) {
+      setSelectedEmployeeId(initialEmployeeId);
+    }
+  }, [initialEmployeeId]);
 
   // Lock body scroll on modal open
   useEffect(() => {
@@ -100,9 +107,10 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
 
   useEffect(() => {
     if (isOpen) {
-      fetchMonthlySummary(selectedMonth);
+      const target = initialEmployeeId || selectedEmployeeId;
+      fetchMonthlySummary(selectedMonth, target);
     }
-  }, [isOpen, selectedMonth]);
+  }, [isOpen, selectedMonth, initialEmployeeId]);
 
   const handleMonthChange = (newMonth) => {
     setSelectedMonth(newMonth);
@@ -223,29 +231,24 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
       className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
     >
       <div
-        className="relative w-full max-w-2xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn"
+        className="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Header format */}
-        <div className="px-6 pt-5 pb-3 flex items-center justify-between">
-          <div className="flex items-center gap-3 text-base">
-            <span className="font-bold text-slate-900">
-              Evaluate:
-            </span>
-            <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
+        {/* Top Header */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+          <div className="flex items-center gap-1.5 font-sans">
+            <span className="font-bold text-slate-900 text-sm sm:text-base">Evaluate:</span>
+            <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
               Monthly Performance
-            </span>
-            <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-              {evaluatedCount}/{employees.length} Reviewed
             </span>
           </div>
 
-          {/* Red square close button */}
+          {/* Close button */}
           <button
             type="button"
             disabled={isSubmitting}
             onClick={onClose}
-            className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+            className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             title="Close"
           >
             ✕
@@ -253,54 +256,55 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
         </div>
 
         {/* Form Body layout */}
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4 max-h-[82vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
           {formError && (
-            <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
               {formError}
             </div>
           )}
           {formSuccess && (
-            <div className="p-2.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
+            <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-medium">
               {formSuccess}
             </div>
           )}
 
-          {/* Row: Month Selection */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-              <span className="border-b-2 border-rose-500 pb-0.5">
-                Evaluation Month
-              </span>
-            </label>
-            <div className="flex-1">
-              <select
-                value={selectedMonth}
-                onChange={(e) => handleMonthChange(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors cursor-pointer"
-              >
-                {monthOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {/* Section 1: Selection */}
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Evaluation Target
+            </span>
 
-          {/* Row: Employee Selector */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-              <span className="border-b-2 border-rose-500 pb-0.5">
+            {/* Row: Month Selection */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                Evaluation Month
+              </label>
+              <div className="flex-1">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => handleMonthChange(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition cursor-pointer"
+                >
+                  {monthOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Row: Employee Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
                 Select Employee
-              </span>
-            </label>
-            <div className="flex-1 space-y-1">
-              <div className="flex items-center gap-2">
+              </label>
+              <div className="flex-1">
                 <select
                   required
                   value={selectedEmployeeId}
                   onChange={(e) => handleSelectEmployeeById(e.target.value)}
-                  className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors cursor-pointer"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition cursor-pointer"
                 >
                   <option value="">
                     {loading ? "Loading staff..." : `-- Choose Employee (${employees.length} available) --`}
@@ -310,34 +314,17 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
                     const isEval = item.isEvaluated;
                     return (
                       <option key={emp.id} value={emp.id}>
-                        {emp.full_name} ({emp.designation || "Staff"} · {emp.department || "General"}) {isEval ? `[⭐ ${item.evaluation?.finalScore}/100]` : "[Pending]"}
+                        {emp.full_name} ({emp.designation || "Staff"} · {emp.department || "General"}) {isEval ? `[${item.evaluation?.finalScore}/100]` : "[Pending]"}
                       </option>
                     );
                   })}
                 </select>
-
-                {/* Quick Prev / Next Buttons */}
-                <button
-                  type="button"
-                  disabled={currentIndex <= 0 || isSubmitting}
-                  onClick={handlePrevEmployee}
-                  className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium transition cursor-pointer disabled:opacity-40 shrink-0"
-                  title="Previous Employee"
-                >
-                  ◀
-                </button>
-                <button
-                  type="button"
-                  disabled={currentIndex < 0 || currentIndex >= employees.length - 1 || isSubmitting}
-                  onClick={handleNextEmployee}
-                  className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-700 text-xs font-medium transition cursor-pointer disabled:opacity-40 shrink-0"
-                  title="Next Employee"
-                >
-                  ▶
-                </button>
               </div>
             </div>
           </div>
+
+          {/* Small separation divider */}
+          <div className="border-t border-slate-100" />
 
           {/* If No Employee Selected */}
           {!activeEmpItem && !loading && (
@@ -349,150 +336,144 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
           {/* Active Employee Details & 3-Pillar Calculation */}
           {activeEmpItem && (
             <>
-              {/* Section Divider: Performance Analysis */}
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-3">
-                Performance Analysis
-              </div>
+              {/* Section 2: Performance Analysis */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Performance Analysis (3 Factual Pillars)
+                </span>
 
-              {/* Performance Analysis Fields (Disabled / Readonly Popup Form Style) */}
-              <div className="space-y-3 pt-1">
                 {/* Row 1: Daily Attendance */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                  <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                    <span className="border-b-2 border-blue-600 pb-0.5">
-                      Daily Attendance
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Daily Attendance
                   </label>
-                  <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm bg-slate-50/80 px-2.5 py-1.5 rounded cursor-not-allowed">
-                    <span className="text-xs text-slate-700 font-medium">
+                  <div className="flex-1 flex items-center justify-between border border-slate-200 text-xs bg-slate-50/80 px-3.5 py-2 rounded-xl shadow-2xs cursor-not-allowed">
+                    <span className="text-slate-700 font-medium">
                       {activeMetrics.present_days || 0} / {activeMetrics.required_working_days || activeMetrics.total_working_days || 0} Days Attended {Number(activeMetrics.time_delay_hours) > 0 ? `(⏱ -${(Number(activeMetrics.time_delay_hours) || 0).toFixed(1)}h delay)` : "(✓ Punctual)"}
                     </span>
-                    <span className="text-xs font-bold text-blue-700 font-mono">
+                    <span className="font-bold text-[#1f6fb2] font-mono">
                       {(Number(activeScores.attendanceScore) || 0).toFixed(1)} / 40 pts
                     </span>
                   </div>
                 </div>
 
                 {/* Row 2: Working Hours */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                  <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                    <span className="border-b-2 border-blue-600 pb-0.5">
-                      Working Hours
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Working Hours
                   </label>
-                  <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm bg-slate-50/80 px-2.5 py-1.5 rounded cursor-not-allowed">
-                    <span className="text-xs text-slate-700 font-medium">
+                  <div className="flex-1 flex items-center justify-between border border-slate-200 text-xs bg-slate-50/80 px-3.5 py-2 rounded-xl shadow-2xs cursor-not-allowed">
+                    <span className="text-slate-700 font-medium">
                       {(Number(activeMetrics.actual_working_hours) || 0).toFixed(1)}h / {(Number(activeMetrics.required_monthly_hours) || Number(activeMetrics.expected_monthly_hours) || 0).toFixed(0)}h Target ({activeMetrics.completion_rate || 0}% achieved)
                     </span>
-                    <span className="text-xs font-bold text-blue-700 font-mono">
+                    <span className="font-bold text-[#1f6fb2] font-mono">
                       {(Number(activeScores.hoursScore) || 0).toFixed(1)} / 40 pts
                     </span>
                   </div>
                 </div>
 
                 {/* Row 3: Leave Discipline */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                  <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                    <span className="border-b-2 border-blue-600 pb-0.5">
-                      Leave Discipline
-                    </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    Leave Discipline
                   </label>
-                  <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm bg-slate-50/80 px-2.5 py-1.5 rounded cursor-not-allowed">
-                    <span className="text-xs text-slate-700 font-medium">
+                  <div className="flex-1 flex items-center justify-between border border-slate-200 text-xs bg-slate-50/80 px-3.5 py-2 rounded-xl shadow-2xs cursor-not-allowed">
+                    <span className="text-slate-700 font-medium">
                       {activeMetrics.approved_leave_days || 0}d Approved Leave {Number(activeMetrics.absent_days) > 0 ? `(-${activeMetrics.absent_days}d absent)` : "(✓ 0 unapproved absences)"}
                     </span>
-                    <span className="text-xs font-bold text-blue-700 font-mono">
+                    <span className="font-bold text-[#1f6fb2] font-mono">
                       {(Number(activeScores.leaveScore) || 0).toFixed(1)} / 20 pts
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Section Divider: HR Qualitative Review */}
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-3">
-                HR Qualitative Review &amp; Remarks
-              </div>
+              {/* Small separation divider */}
+              <div className="border-t border-slate-100" />
 
-              {/* Notice when already evaluated */}
-              {activeEmpItem?.isEvaluated && (
-                <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between animate-fadeIn">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-emerald-600 text-sm">✓</span>
-                    <span>
-                      <strong>Finalized:</strong> HR evaluation for <strong>{activeEmp.full_name || "this employee"}</strong> has already been submitted for this month ({activeEmpItem?.evaluation?.finalScore} pts). Evaluations can only be submitted once per month.
+              {/* Section 3: HR Qualitative Review */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  HR Qualitative Review &amp; Remarks
+                </span>
+
+                {/* Notice when already evaluated */}
+                {activeEmpItem?.isEvaluated && (
+                  <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center justify-between animate-fadeIn">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-emerald-600 text-sm">✓</span>
+                      <span>
+                        <strong>Finalized:</strong> HR evaluation for <strong>{activeEmp.full_name || "this employee"}</strong> has already been submitted for this month ({activeEmpItem?.evaluation?.finalScore} pts). Evaluations can only be submitted once per month.
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Row: HR Rating (1 - 10) */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0">
+                    HR Rating (1-10)
+                  </label>
+                  <div className="flex-1 flex items-center gap-3">
+                    <input
+                      type="range"
+                      min="1.0"
+                      max="10.0"
+                      step="0.5"
+                      value={hrRating}
+                      disabled={isSubmitting || activeEmpItem?.isEvaluated}
+                      onChange={(e) => setHrRating(parseFloat(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#1f6fb2] disabled:opacity-50"
+                    />
+                    <span className="w-16 text-center font-bold text-xs bg-sky-50 text-[#1f6fb2] py-1.5 px-2.5 rounded-xl border border-sky-200/80 shrink-0 font-mono">
+                      {Number(hrRating).toFixed(1)} / 10
                     </span>
                   </div>
                 </div>
-              )}
 
-              {/* Row: HR Rating (1 - 10) */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  <span className="border-b-2 border-blue-600 pb-0.5">
-                    HR Rating (1-10)
-                  </span>
-                </label>
-                <div className="flex-1 flex items-center gap-3">
-                  <input
-                    type="range"
-                    min="1.0"
-                    max="10.0"
-                    step="0.5"
-                    value={hrRating}
-                    disabled={isSubmitting || activeEmpItem?.isEvaluated}
-                    onChange={(e) => setHrRating(parseFloat(e.target.value))}
-                    className="flex-1 h-1.5 bg-slate-200 rounded appearance-none cursor-pointer accent-blue-600 disabled:opacity-50"
-                  />
-                  <span className="w-16 text-center font-bold text-xs bg-blue-50 text-blue-700 py-1 px-2 rounded border border-blue-200 shrink-0 font-mono">
-                    ⭐ {Number(hrRating).toFixed(1)} / 10
-                  </span>
-                </div>
-              </div>
-
-              {/* Row: Feedback Remarks */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-2">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-                  <span className="border-b-2 border-rose-500 pb-0.5">
+                {/* Row: Feedback Remarks */}
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 shrink-0 pt-1">
                     Feedback Remarks
-                  </span>
-                </label>
-                <div className="flex-1">
-                  <textarea
-                    rows={3}
-                    required
-                    disabled={isSubmitting || activeEmpItem?.isEvaluated}
-                    placeholder="Enter qualitative feedback remarks on employee attendance consistency, hours & punctuality..."
-                    value={hrFeedback}
-                    onChange={(e) => setHrFeedback(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400 disabled:opacity-60 disabled:cursor-not-allowed"
-                  />
+                  </label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={3}
+                      required
+                      disabled={isSubmitting || activeEmpItem?.isEvaluated}
+                      placeholder="Enter qualitative feedback remarks on employee attendance consistency, hours & punctuality..."
+                      value={hrFeedback}
+                      onChange={(e) => setHrFeedback(e.target.value)}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs disabled:opacity-60 disabled:cursor-not-allowed"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Live Preview Score Banner */}
-              <div className="p-3 rounded bg-blue-50/80 border border-blue-200 flex items-center justify-between text-xs animate-fadeIn">
-                <div>
-                  <span className="text-slate-600 font-medium">Monthly Performance Score:</span>
-                  <span className="ml-2 font-black text-blue-700 font-mono text-sm">
-                    {(Number(livePreview.finalScore) || 0).toFixed(1)} / 100
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Badge:</span>
-                  <span className="px-2.5 py-0.5 rounded font-bold text-white bg-blue-600 text-[11px] shadow-2xs">
-                    {livePreview.performanceBadge}
-                  </span>
+                {/* Live Preview Score Banner */}
+                <div className="p-3.5 rounded-xl bg-sky-50/60 border border-sky-200/80 flex items-center justify-between text-xs animate-fadeIn">
+                  <div>
+                    <span className="text-slate-600 font-medium">Monthly Performance Score:</span>
+                    <span className="ml-2 font-black text-[#1f6fb2] font-mono text-sm">
+                      {(Number(livePreview.finalScore) || 0).toFixed(1)} / 100
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500 font-medium">Badge:</span>
+                    <span className="px-3 py-1 rounded-lg font-bold text-white bg-brand-gradient text-[11px] shadow-xs shadow-[#1f6fb2]/20">
+                      {livePreview.performanceBadge}
+                    </span>
+                  </div>
                 </div>
               </div>
             </>
           )}
 
           {/* Bottom Action Buttons */}
-          <div className="pt-6 pb-2 flex items-center gap-3">
+          <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
             <button
               type="submit"
               disabled={isSubmitting || !selectedEmployeeId || !hrFeedback.trim() || activeEmpItem?.isEvaluated}
-              className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+              className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs shadow-[#1f6fb2]/20"
             >
               {activeEmpItem?.isEvaluated ? "✓ Already Evaluated" : isSubmitting ? "Saving…" : "Save Evaluation"}
             </button>
@@ -500,7 +481,7 @@ export default function HRMonthlyEvaluationModal({ isOpen, onClose, onSaved }) {
               type="button"
               disabled={isSubmitting}
               onClick={onClose}
-              className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             >
               Cancel
             </button>

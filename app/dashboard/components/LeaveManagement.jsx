@@ -377,78 +377,45 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
   const isAdmin = userRole === "ADMIN";
   const isHRUser = userRole === "hr_manager" || userRole === "hr_executive";
 
-  const getStatusBadge = (status, applicantRole) => {
-    const isApplicantHR = applicantRole === "hr_manager" || applicantRole === "hr_executive";
-
+  const getStatusBadge = (status) => {
     switch (status) {
       case "APPROVED":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            <span>Approved {isApplicantHR ? "(by Owner)" : "(by HR)"}</span>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            Approved
           </span>
         );
       case "REJECTED":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
-            <span>Rejected {isApplicantHR ? "(by Owner)" : "(by HR)"}</span>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+            Rejected
           </span>
         );
       case "CANCELLED":
         return (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-            <span>Cancelled</span>
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200">
+            Cancelled
           </span>
         );
       default:
-        return isApplicantHR ? (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 animate-pulse"></span>
-            <span>Pending Owner Review</span>
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-            <span>Pending HR Review</span>
+        return (
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+            Pending
           </span>
         );
     }
   };
 
-  const monthNames = [
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December"
-  ];
-
   return (
     <div className="space-y-6">
       {/* Header Banner & Messages */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div className="space-y-1">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Leave Management</h1>
-            {isHR && (
-              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                HR Portal
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-slate-500">
-            Submit leave requests, review employee applications, and track your monthly quota.
-          </p>
-        </div>
+        <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">Leave Management</h1>
 
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsApplyModalOpen(true)}
-            className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-xs shadow-sky-600/20 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-2 bg-brand-gradient hover:opacity-95 text-white font-semibold px-4 py-2 rounded-xl text-xs shadow-md shadow-[#1f6fb2]/20 transition cursor-pointer"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.25">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -486,61 +453,29 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
       )}
 
       {/* Leave Balance Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         {/* Card 1: Monthly Allowance */}
         <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Monthly Allowance</span>
-            <div className="w-7 h-7 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
           </div>
-          <div className="text-xl font-bold text-slate-900">3.0 <span className="text-xs font-normal text-slate-500">Days</span></div>
-          <p className="text-[11px] text-slate-500">Standard quota for {monthNames[selectedMonth - 1]}</p>
+          <div className="text-xl font-bold text-slate-900 font-mono">3.0 <span className="text-xs font-normal text-slate-500">Days</span></div>
         </div>
 
         {/* Card 2: Used Days */}
         <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Days Consumed</span>
-            <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
           </div>
-          <div className="text-xl font-bold text-amber-700">{balance.used.toFixed(1)} <span className="text-xs font-normal text-slate-500">Days</span></div>
-          <p className="text-[11px] text-slate-500">Approved &amp; pending this month</p>
+          <div className="text-xl font-bold text-slate-900 font-mono">{balance.used.toFixed(1)} <span className="text-xs font-normal text-slate-500">Days</span></div>
         </div>
 
         {/* Card 3: Available Balance */}
         <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Available Balance</span>
-            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
           </div>
-          <div className="text-xl font-bold text-emerald-700">{balance.available.toFixed(1)} <span className="text-xs font-normal text-slate-500">Days</span></div>
-          <p className="text-[11px] text-slate-500">Remaining allowance for current month</p>
-        </div>
-
-        {/* Card 4: Monthly Refresh Info */}
-        <div className="bg-white border border-slate-200/80 p-4 rounded-xl space-y-1 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Allowance Rule</span>
-            <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </div>
-          </div>
-          <div className="text-base font-bold text-slate-900">Auto Refreshed</div>
-          <p className="text-[11px] text-slate-500">Resets to 3.0 days on 1st of month</p>
+          <div className="text-xl font-bold text-slate-900 font-mono">{balance.available.toFixed(1)} <span className="text-xs font-normal text-slate-500">Days</span></div>
         </div>
       </div>
 
@@ -644,7 +579,6 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                   <th className="py-3 px-4">Days</th>
                   <th className="py-3 px-4">Reason</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">HR Feedback Note</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
@@ -656,29 +590,28 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                     <tr key={l.id} className="hover:bg-slate-50/70 transition-colors">
                       <td className="py-3.5 px-4 font-medium text-slate-900">
                         <div className="flex items-center gap-2.5">
-                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase border shadow-2xs ${
-                            isApplicantHR
-                              ? "bg-purple-50 text-purple-700 border-purple-200"
-                              : "bg-sky-50 text-sky-700 border-sky-200"
-                          }`}>
-                            {l.employees?.full_name ? l.employees.full_name.charAt(0) : "E"}
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs uppercase border border-slate-200 bg-slate-50 text-[#1f6fb2] shadow-2xs overflow-hidden">
+                            {l.employees?.avatar_url ? (
+                              <img
+                                src={l.employees.avatar_url}
+                                alt={l.employees?.full_name || "Employee"}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                            ) : (
+                              l.employees?.full_name ? l.employees.full_name.charAt(0) : "E"
+                            )}
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-semibold text-slate-900 text-xs">{l.employees?.full_name || "Employee"}</p>
-                              {isApplicantHR && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 uppercase">
-                                  HR
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[11px] text-slate-400 font-mono">{l.employees?.email || ""}</p>
+                            <p className="font-semibold text-slate-900 text-xs">{l.employees?.full_name || "Employee"}</p>
                           </div>
                         </div>
                       </td>
 
                       <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-700">
+                        <span className="px-2.5 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-xs font-medium text-slate-700">
                           {l.leave_type}
                         </span>
                       </td>
@@ -689,7 +622,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                         <span className="text-slate-800 font-semibold">{l.end_date}</span>
                       </td>
 
-                      <td className="py-4 px-4 font-bold text-sky-700">
+                      <td className="py-4 px-4 font-bold text-slate-900 font-mono">
                         {l.total_days} {l.total_days === 1 ? "day" : "days"}
                       </td>
 
@@ -697,20 +630,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                         {l.reason}
                       </td>
 
-                      <td className="py-4 px-4">{getStatusBadge(l.status, l.employees?.role)}</td>
-
-                      <td className="py-4 px-4 max-w-xs">
-                        {l.hr_feedback ? (
-                          <div className="p-2 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-800">
-                            <p className="font-semibold text-[10px] text-sky-700 uppercase tracking-wider">
-                              {isApplicantHR ? "Note from Owner:" : "Note from HR:"}
-                            </p>
-                            <p className="italic mt-0.5">{l.hr_feedback}</p>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-slate-400 italic">—</span>
-                        )}
-                      </td>
+                      <td className="py-4 px-4">{getStatusBadge(l.status)}</td>
 
                       <td className="py-4 px-4 text-right">
                         {isHR && l.status === "PENDING" && activeTab === "hr-inbox" ? (
@@ -728,7 +648,7 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
                                 setSelectedLeaveForAction(l);
                                 setHrFeedback("");
                               }}
-                              className="bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs px-3 py-1.5 rounded-lg shadow-2xs transition-all cursor-pointer"
+                              className="bg-brand-gradient hover:opacity-95 text-white font-medium text-xs px-3 py-1.5 rounded-lg shadow-xs shadow-[#1f6fb2]/20 transition cursor-pointer"
                             >
                               Review &amp; Action
                             </button>
@@ -753,175 +673,188 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
         </div>
       </div>
 
-      {/* --- APPLY LEAVE MODAL --- */}
+      {/* --- MODAL 1: APPLY FOR LEAVE (MATCHING CONFIGURE HOURS POPUP THEME) --- */}
       {isApplyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-          <div className="bg-white border border-slate-200 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-bold text-slate-900">Submit Leave Request</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Available Monthly Balance: <span className="font-bold text-emerald-700">{balance.available} Days</span>
-                </p>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !submitting) setIsApplyModalOpen(false);
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header matching exact Configure Hours format */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">Apply:</span>
+                <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+                  Leave Request
+                </span>
               </div>
+
+              {/* Close button */}
               <button
+                type="button"
+                disabled={submitting}
                 onClick={() => setIsApplyModalOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-base p-1 cursor-pointer"
+                className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                title="Close"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSubmitLeaveRequest} className="p-5 space-y-4">
-              {/* Company Work Calendar Notice */}
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between text-xs text-slate-700">
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <span className="text-base shrink-0">🏢</span>
-                  <div className="min-w-0">
-                    <span className="font-bold text-slate-900 block text-[11px] uppercase tracking-wider">
-                      Company Work Schedule
-                    </span>
-                    <span className="text-slate-600 text-[11px] truncate block">
-                      Working Days: <strong className="text-sky-700 font-semibold">{workDays.join(", ")}</strong> ({workDays.length} days / week)
-                    </span>
+            {/* Form Body */}
+            <form onSubmit={handleSubmitLeaveRequest} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              {/* Section 1: Leave Duration & Schedule */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Leave Details &amp; Period
+                </span>
+
+                {/* Leave Type */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                    Leave Type
+                  </label>
+                  <div className="flex-1">
+                    <select
+                      value={leaveForm.leave_type}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 cursor-pointer outline-none shadow-2xs transition"
+                    >
+                      <option value="Casual">Casual Leave</option>
+                      <option value="Sick">Sick Leave</option>
+                      <option value="Annual">Annual Leave</option>
+                      <option value="Emergency">Emergency Leave</option>
+                      <option value="Unpaid">Unpaid Leave</option>
+                    </select>
                   </div>
                 </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200 shrink-0">
-                  Calendar Synced
-                </span>
-              </div>
 
-              {isHRUser && (
-                <div className="p-3 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />
-                  <span>As HR Personnel, your request will be routed directly to the <strong>Company Owner</strong> for approval.</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Leave Type
-                </label>
-                <select
-                  value={leaveForm.leave_type}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, leave_type: e.target.value })}
-                  className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs"
-                >
-                  <option value="Casual">Casual Leave</option>
-                  <option value="Sick">Sick Leave</option>
-                  <option value="Annual">Annual Leave</option>
-                  <option value="Emergency">Emergency Leave</option>
-                  <option value="Unpaid">Unpaid Leave</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                {/* Start Date */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
                     Start Date
                   </label>
-                  <input
-                    type="date"
-                    min={new Date().toISOString().split("T")[0]}
-                    value={leaveForm.start_date}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
-                    className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs font-mono"
-                    required
-                  />
+                  <div className="flex-1">
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split("T")[0]}
+                      value={leaveForm.start_date}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, start_date: e.target.value })}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+
+                {/* End Date */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700">
                     End Date
                   </label>
-                  <input
-                    type="date"
-                    min={leaveForm.start_date || new Date().toISOString().split("T")[0]}
-                    value={leaveForm.end_date}
-                    onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
-                    className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs font-mono"
-                    required
-                  />
+                  <div className="flex-1">
+                    <input
+                      type="date"
+                      min={leaveForm.start_date || new Date().toISOString().split("T")[0]}
+                      value={leaveForm.end_date}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, end_date: e.target.value })}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 font-mono outline-none shadow-2xs transition"
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* Auto Calculated Balance & Quota Card */}
+                <div className={`p-3.5 rounded-xl border text-xs flex items-center justify-between ${
+                  isFormValid
+                    ? "bg-slate-50 border-slate-200 text-slate-800"
+                    : "bg-rose-50 border-rose-200 text-rose-700"
+                }`}>
+                  <div className="space-y-1">
+                    <p className="font-bold text-xs text-slate-900">
+                      Net Working Leave Deducted: {calculatedDays} {calculatedDays === 1 ? "Working Day" : "Working Days"}
+                    </p>
+                    
+                    {isFormValid && (totalOffDays > 0 || totalHolidays > 0) && (
+                      <p className="text-[11px] text-amber-800 font-semibold flex items-center gap-1.5">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
+                        <span>
+                          Excluded {totalOffDays > 0 ? `${totalOffDays} off-day(s)` : ""}{totalOffDays > 0 && totalHolidays > 0 ? " & " : ""}{totalHolidays > 0 ? `${totalHolidays} holiday(s)` : ""} (non-working days)
+                        </span>
+                      </p>
+                    )}
+
+                    {!isFormValid && (
+                      <p className="mt-1 font-medium text-rose-700 leading-relaxed">{formValidationError}</p>
+                    )}
+                    
+                    {isFormValid && (
+                      <p className="mt-0.5 text-[11px] text-slate-500">
+                        Monthly quota balance: <strong className="text-emerald-700 font-bold">{balance.available} Days</strong> remaining
+                      </p>
+                    )}
+                  </div>
+                  {isFormValid ? (
+                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 ml-2">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <div className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 ml-2">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className={`p-3.5 rounded-xl border text-xs flex items-center justify-between ${
-                isFormValid
-                  ? "bg-slate-50 border-slate-200 text-slate-800"
-                  : "bg-rose-50 border-rose-200 text-rose-700"
-              }`}>
-                <div className="space-y-1">
-                  <p className="font-bold text-xs text-slate-900">
-                    Net Working Leave Deducted: {calculatedDays} {calculatedDays === 1 ? "Working Day" : "Working Days"}
-                  </p>
-                  
-                  {isFormValid && (totalOffDays > 0 || totalHolidays > 0) && (
-                    <p className="text-[11px] text-amber-800 font-semibold flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                      <span>
-                        Excluded {totalOffDays > 0 ? `${totalOffDays} off-day(s)` : ""}{totalOffDays > 0 && totalHolidays > 0 ? " & " : ""}{totalHolidays > 0 ? `${totalHolidays} holiday(s)` : ""} (0 leave charged for non-working days)
-                      </span>
-                    </p>
-                  )}
+              {/* Separation Divider */}
+              <div className="border-t border-slate-100" />
 
-                  {!isFormValid && (
-                    <p className="mt-1 font-medium text-rose-700 leading-relaxed">{formValidationError}</p>
-                  )}
-                  
-                  {isFormValid && (
-                    <p className="mt-0.5 text-[11px] text-slate-500">
-                      Within your available balance of {balance.available} days for this month.
-                    </p>
-                  )}
+              {/* Section 2: Reason & Remarks */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Reason &amp; Remarks
+                </span>
+
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                  <label className="sm:w-36 text-xs font-semibold text-slate-700 pt-1">
+                    Reason for Leave
+                  </label>
+                  <div className="flex-1">
+                    <textarea
+                      rows={3}
+                      value={leaveForm.reason}
+                      onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
+                      placeholder="Provide brief details regarding your leave request..."
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs"
+                      required
+                    />
+                  </div>
                 </div>
-                {isFormValid ? (
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 ml-2">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                ) : (
-                  <div className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 ml-2">
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </div>
-                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold uppercase text-sky-900 mb-1">
-                  Reason for Leave
-                </label>
-                <textarea
-                  rows={3}
-                  value={leaveForm.reason}
-                  onChange={(e) => setLeaveForm({ ...leaveForm, reason: e.target.value })}
-                  placeholder="Provide brief details regarding your leave request..."
-                  className="w-full bg-sky-50/50 text-sm text-slate-800 p-3 rounded-xl border border-sky-200 focus:outline-none focus:border-sky-500"
-                  required
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsApplyModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-900 bg-sky-100 border border-sky-200 cursor-pointer"
-                >
-                  Cancel
-                </button>
+              {/* Bottom Action Buttons matching Configure Hours */}
+              <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
                 <button
                   type="submit"
                   disabled={!isFormValid || submitting}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition-all ${
-                    !isFormValid || submitting
-                      ? "bg-slate-300 opacity-50 cursor-not-allowed"
-                      : "bg-sky-600 hover:bg-sky-500 shadow-sky-500/20 cursor-pointer"
-                  }`}
+                  className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20"
                 >
                   {submitting
-                    ? isHRUser ? "Submitting to Owner..." : "Submitting to HR..."
+                    ? isHRUser ? "Submitting to Owner…" : "Submitting to HR…"
                     : isHRUser ? "Submit to Company Owner" : "Submit to HR"}
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setIsApplyModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                >
+                  Cancel
                 </button>
               </div>
             </form>
@@ -929,103 +862,133 @@ export default function LeaveManagement({ userRole, employeeProfile, company }) 
         </div>
       )}
 
-      {/* --- HR / OWNER ACTION MODAL --- */}
+      {/* --- MODAL 2: HR / OWNER ACTION MODAL (MATCHING CONFIGURE HOURS THEME) --- */}
       {selectedLeaveForAction && (() => {
         const isActionTargetHR = ["hr_manager", "hr_executive"].includes(selectedLeaveForAction.employees?.role);
 
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-            <div className="bg-white border border-slate-200 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in duration-200">
-              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    {isAdmin && isActionTargetHR ? "Owner Review: HR Leave Request" : "HR Review & Approval Action"}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Review applicant details and record an official approval or rejection decision.
-                  </p>
+          <div
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !actionLoading) setSelectedLeaveForAction(null);
+            }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+          >
+            <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+              {/* Top Header matching exact Configure Hours format */}
+              <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+                <div className="flex items-center gap-1.5 font-sans">
+                  <span className="font-bold text-slate-900 text-sm sm:text-base">
+                    {isAdmin && isActionTargetHR ? "Owner Review:" : "HR Review:"}
+                  </span>
+                  <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+                    Leave Request Action
+                  </span>
                 </div>
+
+                {/* Close button */}
                 <button
+                  type="button"
+                  disabled={actionLoading}
                   onClick={() => setSelectedLeaveForAction(null)}
-                  className="text-slate-400 hover:text-slate-700 text-base p-1 cursor-pointer"
+                  className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                  title="Close"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="p-5 space-y-4">
-                <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-2 text-xs">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Applicant:</span>
-                    <span className="font-semibold text-slate-900">
-                      {selectedLeaveForAction.employees?.full_name || "Employee"}
-                      {isActionTargetHR && (
-                        <span className="ml-2 text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
-                          HR
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Department:</span>
-                    <span className="text-slate-700 font-medium">{selectedLeaveForAction.employees?.department || "General"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Leave Type:</span>
-                    <span className="font-semibold text-sky-700">{selectedLeaveForAction.leave_type}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Duration:</span>
-                    <span className="font-mono text-slate-800 font-bold">
-                      {selectedLeaveForAction.start_date} to {selectedLeaveForAction.end_date} ({selectedLeaveForAction.total_days} days)
-                    </span>
-                  </div>
-                  <div className="pt-2 border-t border-slate-200/80">
-                    <span className="text-slate-500 block mb-1">Reason:</span>
-                    <p className="text-slate-700 italic">{selectedLeaveForAction.reason}</p>
+              <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                <div className="space-y-3">
+                  <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                    Applicant Information &amp; Period
+                  </span>
+
+                  <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Applicant:</span>
+                      <span className="font-semibold text-slate-900">
+                        {selectedLeaveForAction.employees?.full_name || "Employee"}
+                        {isActionTargetHR && (
+                          <span className="ml-2 text-[10px] text-purple-700 font-bold bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">
+                            HR
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Department:</span>
+                      <span className="text-slate-700 font-medium">{selectedLeaveForAction.employees?.department || "General"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Leave Type:</span>
+                      <span className="font-semibold text-sky-700">{selectedLeaveForAction.leave_type}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 font-medium">Duration:</span>
+                      <span className="font-mono text-slate-800 font-bold">
+                        {selectedLeaveForAction.start_date} to {selectedLeaveForAction.end_date} ({selectedLeaveForAction.total_days} days)
+                      </span>
+                    </div>
+                    <div className="pt-2 border-t border-slate-200/80">
+                      <span className="text-slate-500 block mb-1 font-medium">Reason:</span>
+                      <p className="text-slate-700 italic">{selectedLeaveForAction.reason}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    {isAdmin ? "Owner Feedback Note" : "HR Feedback Note"}{" "}
-                    <span className="text-slate-400 font-normal">(Visible to Applicant)</span>
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={hrFeedback}
-                    onChange={(e) => setHrFeedback(e.target.value)}
-                    placeholder="Enter feedback message (e.g. 'Approved: Have a good vacation!' or 'Rejected: Key deliverables scheduled on these dates')."
-                    className="w-full bg-white text-xs text-slate-800 p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-sky-500 shadow-2xs"
-                  />
+                <div className="border-t border-slate-100" />
+
+                <div className="space-y-3">
+                  <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                    Feedback &amp; Decision Note
+                  </span>
+
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700 pt-1">
+                      {isAdmin ? "Owner Note" : "HR Note"}
+                    </label>
+                    <div className="flex-1">
+                      <textarea
+                        rows={3}
+                        value={hrFeedback}
+                        onChange={(e) => setHrFeedback(e.target.value)}
+                        placeholder="Enter feedback message for applicant (e.g. 'Approved: Have a great vacation!' or reason for rejection)."
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 resize-none transition placeholder:text-slate-400 outline-none shadow-2xs"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+                {/* Bottom Actions */}
+                <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3">
                   <button
                     type="button"
+                    disabled={actionLoading}
                     onClick={() => setSelectedLeaveForAction(null)}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                   >
                     Cancel
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => handleHrAction("REJECTED")}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    Reject Request
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleHrAction("REJECTED")}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                    >
+                      Reject Request
+                    </button>
 
-                  <button
-                    type="button"
-                    disabled={actionLoading}
-                    onClick={() => handleHrAction("APPROVED")}
-                    className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    {actionLoading ? "Processing..." : "Approve Request"}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => handleHrAction("APPROVED")}
+                      className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20"
+                    >
+                      {actionLoading ? "Processing…" : "Approve Request"}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

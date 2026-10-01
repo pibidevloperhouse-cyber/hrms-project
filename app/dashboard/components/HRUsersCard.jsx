@@ -9,23 +9,22 @@ import { createClient } from "@/lib/supabase/client";
  */
 export default function HRUsersCard({ employees = [], onOpenInviteModal, companyId }) {
   const [invitations, setInvitations] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchInvitations = React.useCallback(async () => {
-    try {
-      const res = await fetch("/api/invitations");
-      if (res.ok) {
-        const data = await res.json();
-        setInvitations(data.invitations || []);
-      }
-    } catch (err) {
-      console.error("Error fetching HR invitations:", err);
-    }
-  }, []);
-
   // Realtime subscription on invitations table
   useEffect(() => {
-    fetchInvitations();
+    let isMounted = true;
+    const loadInvitations = async () => {
+      try {
+        const res = await fetch("/api/invitations");
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setInvitations(data.invitations || []);
+        }
+      } catch (err) {
+        console.error("Error fetching HR invitations:", err);
+      }
+    };
+
+    loadInvitations();
 
     const supabase = createClient();
     const channel = supabase
@@ -38,15 +37,16 @@ export default function HRUsersCard({ employees = [], onOpenInviteModal, company
           table: "invitations",
         },
         () => {
-          fetchInvitations();
+          loadInvitations();
         }
       )
       .subscribe();
 
     return () => {
+      isMounted = false;
       supabase.removeChannel(channel);
     };
-  }, [fetchInvitations]);
+  }, []);
 
   // Filter active employees with HR roles
   const activeHR = employees.filter(
@@ -90,29 +90,48 @@ export default function HRUsersCard({ employees = [], onOpenInviteModal, company
         ) : (
           <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
             {/* Render Active HR Personnel */}
-            {activeHR.map((hr) => (
-              <div
-                key={hr.id}
-                className="p-3 rounded-xl bg-slate-50/50 border border-slate-200/60 flex items-center justify-between hover:bg-slate-50 transition"
-              >
-                <div className="space-y-0.5">
-                  <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
-                    <span>{hr.full_name}</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 font-semibold border border-sky-200 capitalize">
-                      {hr.role === "hr_manager" ? "HR Manager" : "HR Executive"}
+            {activeHR.map((hr) => {
+              const initial = hr.full_name ? hr.full_name.charAt(0).toUpperCase() : "H";
+              return (
+                <div
+                  key={hr.id}
+                  className="p-3 rounded-xl bg-slate-50/50 border border-slate-200/60 flex items-center justify-between hover:bg-slate-50 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200/80 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
+                      {hr.avatar_url ? (
+                        <img
+                          src={hr.avatar_url}
+                          alt={hr.full_name || "HR"}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = "none";
+                          }}
+                        />
+                      ) : (
+                        initial
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                        <span>{hr.full_name}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 font-semibold border border-sky-200 capitalize">
+                          {hr.role === "hr_manager" ? "HR Manager" : "HR Executive"}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono">{hr.email}</div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span>Active</span>
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-500 font-mono">{hr.email}</div>
                 </div>
-
-                <div className="text-right">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-semibold border border-emerald-200">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <span>Active</span>
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Render Pending HR Invitations */}
             {pendingHRInvites.map((inv) => (
@@ -145,7 +164,7 @@ export default function HRUsersCard({ employees = [], onOpenInviteModal, company
       <div className="pt-2 border-t border-slate-100">
         <button
           onClick={onOpenInviteModal}
-          className="w-full py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-semibold transition flex items-center justify-center gap-2 shadow-2xs cursor-pointer"
+          className="w-full py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition flex items-center justify-center gap-2 shadow-xs shadow-[#1f6fb2]/20 cursor-pointer"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />

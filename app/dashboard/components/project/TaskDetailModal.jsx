@@ -6,9 +6,12 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/api/authFetch";
 import {
-  checkTaskSprintOverdue,
   validateTaskSprintBounds,
   getEmployeeSprintWorkload,
+  TASK_STATUS_TRANSITIONS,
+  getTaskPermissionRole,
+  isTaskStatusTransitionAllowed,
+  normalizeTaskStatus,
 } from "@/lib/projectUtils";
 import TaskExtensionModal from "./TaskExtensionModal";
 import TaskExtensionReviewModal from "./TaskExtensionReviewModal";
@@ -21,6 +24,7 @@ export default function TaskDetailModal({
   epics = [],
   departmentEmployees = [],
   teamLeads = [],
+  allEmployees: externalAllEmployees = [],
   employeeProfile,
   currentUserId,
   isOpen,
@@ -28,7 +32,9 @@ export default function TaskDetailModal({
   onTaskUpdated,
 }) {
   const [mounted, setMounted] = useState(false);
-  const [taskType, setTaskType] = useState("TASK");
+  const [activeTab, setActiveTab] = useState("TASK_DETAILS"); // 'TASK_DETAILS' | 'REVIEW_TASK'
+
+  // Core task form fields
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [assigneeId, setAssigneeId] = useState("");
@@ -41,20 +47,15 @@ export default function TaskDetailModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState({ text: "", type: "" });
   const [showSuggestionsForm, setShowSuggestionsForm] = useState(false);
-  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [showReviewHistory, setShowReviewHistory] = useState(false);
 
   // Due Date Extension Request & Review States
   const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
   const [isReviewExtensionModalOpen, setIsReviewExtensionModalOpen] = useState(false);
-  const [extensionDecisionNote, setExtensionDecisionNote] = useState("");
-  const [isDecidingExtension, setIsDecidingExtension] = useState(false);
   const [extensionStatus, setExtensionStatus] = useState(task?.extension_status || null);
 
   // Suggestions / Revision Form States
-  const [suggestionTitle, setSuggestionTitle] = useState("");
-  const [suggestionPriority, setSuggestionPriority] = useState("MEDIUM");
   const [suggestionNotes, setSuggestionNotes] = useState("");
-  const [suggestionAssigneeId, setSuggestionAssigneeId] = useState("");
 
   const [activeScreenshotModal, setActiveScreenshotModal] = useState(null);
   const [historyItems, setHistoryItems] = useState([]);
@@ -64,80 +65,10 @@ export default function TaskDetailModal({
   const [reviewComments, setReviewComments] = useState("");
   const [reviewAttachments, setReviewAttachments] = useState([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const fileInputRef = useRef(null);
 
-  // Compress & optimize uploaded images to keep payload responsive (<300KB)
-  const processImageFiles = useCallback((files) => {
-    const fileList = Array.from(files);
-    fileList.forEach((file) => {
-      if (!file.type.startsWith("image/")) {
-        setFeedbackMsg({ text: "Please upload image files only (PNG, JPG, WebP, GIF).", type: "warning" });
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        setFeedbackMsg({ text: "Image size exceeds 10MB limit.", type: "warning" });
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const rawDataUrl = e.target.result;
-        const img = new window.Image();
-        img.onload = () => {
-          try {
-            const maxDim = 1600;
-            let width = img.width;
-            let height = img.height;
-
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round((height * maxDim) / width);
-                width = maxDim;
-              } else {
-                width = Math.round((width * maxDim) / height);
-                height = maxDim;
-              }
-            }
-
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, width, height);
-
-            const optimizedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            const approxKb = Math.round((optimizedDataUrl.length * 0.75) / 1024);
-
-            setReviewAttachments((prev) => [
-              ...prev,
-              {
-                id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.jpg`,
-                size: `${approxKb} KB`,
-                dataUrl: optimizedDataUrl,
-                type: "image/jpeg",
-              },
-            ]);
-          } catch (canvasErr) {
-            console.warn("Canvas compression fallback:", canvasErr);
-            setReviewAttachments((prev) => [
-              ...prev,
-              {
-                id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.png`,
-                size: `${(file.size / 1024).toFixed(1)} KB`,
-                dataUrl: rawDataUrl,
-                type: file.type,
-              },
-            ]);
-          }
-        };
-        img.src = rawDataUrl;
-      };
-      reader.readAsDataURL(file);
-    });
-  }, []);
-
+  // Permissions
   const cleanRole = (employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
   const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
   const isProjectOwnerOrCreator = project?.owner_id === employeeProfile?.id || project?.created_by === employeeProfile?.id;
@@ -145,6 +76,106 @@ export default function TaskDetailModal({
   const isManagerRole = cleanRole.includes("manager") || cleanRole.includes("lead");
   const canReviewTask = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManagerRole;
   const canEditManagementFields = canReviewTask;
+
+  const isAssignedToMe = Boolean(
+    (employeeProfile?.id && (
+      task?.assigned_to === employeeProfile.id ||
+      task?.assignee_id === employeeProfile.id ||
+      task?.planned_assignee_id === employeeProfile.id ||
+      task?.assignee?.id === employeeProfile.id ||
+      task?.planned_assignee?.id === employeeProfile.id
+    )) ||
+    (currentUserId && (
+      task?.assigned_to === currentUserId ||
+      task?.assignee_id === currentUserId ||
+      task?.planned_assignee_id === currentUserId ||
+      task?.assignee?.id === currentUserId ||
+      task?.planned_assignee?.id === currentUserId
+    )) ||
+    (employeeProfile?.auth_user_id && (
+      task?.assigned_to === employeeProfile.auth_user_id ||
+      task?.assignee_id === employeeProfile.auth_user_id ||
+      task?.planned_assignee_id === employeeProfile.auth_user_id
+    ))
+  );
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Upload screenshot proofs to public bucket 'task-attachments'
+  const processImageFiles = useCallback(
+    async (files) => {
+      const fileList = Array.from(files);
+      for (const file of fileList) {
+        if (!file.type.startsWith("image/")) {
+          setFeedbackMsg({ text: "Please upload image files only (PNG, JPG, WebP, GIF).", type: "warning" });
+          continue;
+        }
+        if (file.size > 15 * 1024 * 1024) {
+          setFeedbackMsg({ text: "Image size exceeds 15MB limit.", type: "warning" });
+          continue;
+        }
+
+        const tempId = `att-temp-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const previewUrl = URL.createObjectURL(file);
+
+        setReviewAttachments((prev) => [
+          ...prev,
+          {
+            id: tempId,
+            name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.png`,
+            size: `${(file.size / 1024).toFixed(1)} KB`,
+            url: previewUrl,
+            type: file.type,
+            isUploading: true,
+          },
+        ]);
+        setUploadingCount((c) => c + 1);
+
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          if (task?.id) formData.append("taskId", task.id);
+          const effectiveProjId = task?.project_id || project?.id;
+          if (effectiveProjId) formData.append("projectId", effectiveProjId);
+
+          const res = await authFetch("/api/upload/task-attachment", {
+            method: "POST",
+            body: formData,
+          });
+
+          const data = await res.json();
+          if (res.ok && data.url) {
+            setReviewAttachments((prev) =>
+              prev.map((att) =>
+                att.id === tempId
+                  ? {
+                      id: data.id || tempId,
+                      name: data.name || att.name,
+                      size: data.size || att.size,
+                      url: data.url,
+                      type: data.type || att.type,
+                      isUploading: false,
+                    }
+                  : att
+              )
+            );
+          } else {
+            setFeedbackMsg({ text: data.message || "Failed to upload attachment.", type: "error" });
+            setReviewAttachments((prev) => prev.filter((att) => att.id !== tempId));
+          }
+        } catch (err) {
+          console.error("Task attachment upload error:", err);
+          setFeedbackMsg({ text: "Network error uploading screenshot.", type: "error" });
+          setReviewAttachments((prev) => prev.filter((att) => att.id !== tempId));
+        } finally {
+          setUploadingCount((c) => Math.max(0, c - 1));
+        }
+      }
+    },
+    [task?.id, task?.project_id, project?.id]
+  );
 
   // Automatically fetch sprints and epics if not provided via props
   useEffect(() => {
@@ -187,24 +218,32 @@ export default function TaskDetailModal({
     }
   }, [isOpen, task?.project_id, task?.project?.id, project?.id, sprints, epics]);
 
-  // Fetch status history on open to get real-time lead suggestions and review audit
+  // Fetch status history on open to get real-time lead/manager suggestions and review audit
   useEffect(() => {
     if (!isOpen || !task?.id) return;
     let isSubscribed = true;
 
     const fetchHistory = async () => {
       try {
+        const res = await authFetch(`/api/projects/tasks/${task.id}/history?t=${Date.now()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.history) && isSubscribed) {
+            setHistoryItems(data.history);
+            return;
+          }
+        }
+
         const supabase = createClient();
         const { data, error } = await supabase
           .from("task_status_history")
-          .select("*, changed_by_employee:employees!task_status_history_changed_by_fkey(id, full_name, email, role, designation)")
+          .select("*, changed_by_employee:employees(id, full_name, email, role, designation)")
           .eq("task_id", task.id)
           .order("created_at", { ascending: false });
 
         if (!error && Array.isArray(data) && isSubscribed) {
           setHistoryItems(data);
         } else {
-          // Fallback query without relational join
           const { data: fallbackData } = await supabase
             .from("task_status_history")
             .select("*")
@@ -225,14 +264,157 @@ export default function TaskDetailModal({
     };
   }, [isOpen, task?.id]);
 
-  // Deep extract deliverable metadata & screenshot attachments from all potential fields, payloads, and history
+  // Unified list of all team members and assignees for quick lookup
+  const allEmployees = useMemo(() => {
+    const map = new Map();
+
+    (externalAllEmployees || []).forEach((e) => {
+      if (e?.id) map.set(e.id, e);
+    });
+
+    if (project?.teamLead?.id) {
+      map.set(project.teamLead.id, { ...project.teamLead, roleTag: "Team Lead" });
+    } else if (project?.team_lead_id) {
+      const lead =
+        (teamLeads || []).find((l) => l.id === project.team_lead_id) ||
+        (departmentEmployees || []).find((e) => e.id === project.team_lead_id);
+      if (lead) map.set(lead.id, { ...lead, roleTag: "Team Lead" });
+    }
+
+    if (project?.creator?.id) {
+      map.set(project.creator.id, { ...project.creator, roleTag: "Project Owner" });
+    } else if (project?.created_by || project?.owner_id) {
+      const creatorId = project.created_by || project.owner_id;
+      const creator =
+        (departmentEmployees || []).find((e) => e.id === creatorId) ||
+        (teamLeads || []).find((l) => l.id === creatorId);
+      if (creator) map.set(creator.id, { ...creator, roleTag: "Project Owner" });
+    }
+
+    if (Array.isArray(project?.teamMembers)) {
+      project.teamMembers.forEach((m) => {
+        if (m?.id && !map.has(m.id)) {
+          map.set(m.id, {
+            ...m,
+            roleTag: project?.project_group ? project.project_group : (m.designation || m.role || "Squad Member"),
+          });
+        }
+      });
+    }
+
+    if (Array.isArray(project?.team_members)) {
+      project.team_members.forEach((id) => {
+        const cleanId = typeof id === "object" ? id?.id : id;
+        if (cleanId && !map.has(cleanId)) {
+          const emp =
+            (typeof id === "object" ? id : null) ||
+            (departmentEmployees || []).find((e) => e.id === cleanId) ||
+            (teamLeads || []).find((l) => l.id === cleanId);
+          if (emp) {
+            map.set(cleanId, {
+              ...emp,
+              roleTag: project?.project_group ? project.project_group : (emp.designation || emp.role || "Squad Member"),
+            });
+          }
+        }
+      });
+    }
+
+    const rawAssigneeId = task?.assigned_to || task?.planned_assignee_id || task?.assignee_id;
+    if (task?.assignee?.id) {
+      map.set(task.assignee.id, { ...task.assignee, roleTag: "Current Assignee" });
+    } else if (task?.planned_assignee?.id) {
+      map.set(task.planned_assignee.id, { ...task.planned_assignee, roleTag: "Current Assignee" });
+    } else if (rawAssigneeId && !map.has(rawAssigneeId)) {
+      const foundInPool = (departmentEmployees || []).find((e) => e.id === rawAssigneeId) || (teamLeads || []).find((l) => l.id === rawAssigneeId);
+      map.set(rawAssigneeId, {
+        id: rawAssigneeId,
+        full_name: foundInPool?.full_name || "Assigned Employee",
+        designation: foundInPool?.designation || "",
+        roleTag: "Current Assignee",
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      (a.full_name || "").localeCompare(b.full_name || "")
+    );
+  }, [project, departmentEmployees, teamLeads, externalAllEmployees, task]);
+
+  // Strict Project Squad Filter for Assignee dropdown (Excludes Team Lead and Manager)
+  const assignableProjectEmployees = useMemo(() => {
+    const map = new Map();
+    const sourcePool = Array.isArray(externalAllEmployees) && externalAllEmployees.length > 0
+      ? externalAllEmployees
+      : (Array.isArray(departmentEmployees) ? departmentEmployees : []);
+
+    const leadId = project?.teamLead?.id || project?.team_lead_id;
+    const ownerId = project?.creator?.id || project?.owner_id || project?.created_by;
+
+    const isLeadOrManager = (emp) => {
+      if (!emp) return false;
+      if (emp.id === leadId || emp.id === ownerId) return true;
+      const normalizedRole = (emp.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+      return (
+        normalizedRole === "teamlead" ||
+        normalizedRole === "manager" ||
+        normalizedRole === "admin" ||
+        normalizedRole === "hrmanager"
+      );
+    };
+
+    // 1. Explicit Team Members (from project.teamMembers)
+    if (Array.isArray(project?.teamMembers)) {
+      project.teamMembers.forEach((m) => {
+        if (m?.id && !isLeadOrManager(m) && !map.has(m.id)) {
+          map.set(m.id, m);
+        }
+      });
+    }
+
+    // 2. Explicit Team Members (from project.team_members IDs or objects)
+    if (Array.isArray(project?.team_members)) {
+      project.team_members.forEach((memberId) => {
+        const cleanId = typeof memberId === "object" ? memberId?.id : memberId;
+        if (cleanId && !map.has(cleanId)) {
+          const emp = typeof memberId === "object" ? memberId : sourcePool.find((e) => e.id === cleanId);
+          if (emp && !isLeadOrManager(emp)) {
+            map.set(cleanId, emp);
+          }
+        }
+      });
+    }
+
+    // Fallback: If no explicit members in team list, check sourcePool for employees with matching department/group
+    if (map.size === 0 && Array.isArray(sourcePool)) {
+      sourcePool.forEach((emp) => {
+        if (emp?.id && !isLeadOrManager(emp)) {
+          const empRole = (emp.role || "").toLowerCase();
+          if (empRole === "employee" || !empRole) {
+            map.set(emp.id, emp);
+          }
+        }
+      });
+    }
+
+    // If the task has an existing assignee who is not yet in map, ensure they can still be selected
+    const currentAssigneeId = task?.assigned_to || task?.planned_assignee_id || task?.assignee_id;
+    if (currentAssigneeId && !map.has(currentAssigneeId)) {
+      const existingEmp = sourcePool.find((e) => e.id === currentAssigneeId) || (task.assignee?.id ? task.assignee : null);
+      if (existingEmp) {
+        map.set(currentAssigneeId, existingEmp);
+      }
+    }
+
+    return Array.from(map.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  }, [project, externalAllEmployees, departmentEmployees, task]);
+
+  // Deep extract deliverable metadata & screenshot attachments (Current Review)
   const deliverableData = useMemo(() => {
     let attachments = [];
     let comments = "";
     let submittedAt = task?.review_submitted_at || null;
     let submittedBy = task?.review_submitted_by || null;
 
-    // 1. Direct task.review_attachments
     if (task?.review_attachments) {
       if (Array.isArray(task.review_attachments)) {
         attachments = task.review_attachments;
@@ -244,7 +426,6 @@ export default function TaskDetailModal({
       }
     }
 
-    // 2. Search embedded DELIVERABLE_PAYLOAD across all string fields and history
     const searchFields = [
       task?.review_comments,
       task?.comments,
@@ -272,7 +453,6 @@ export default function TaskDetailModal({
       }
     }
 
-    // 3. Fallback direct comments
     if (!comments) {
       const rawDirect = task?.review_comments || task?.comments || task?.last_status_comment || "";
       const cleaned = rawDirect.replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "").trim();
@@ -311,13 +491,23 @@ export default function TaskDetailModal({
     };
   }, [task, historyItems]);
 
-  // Extract Team Lead Suggestions & Review Feedback from review_feedback column, comments, last_status_comment, or history
+  // Extract Team Lead / Manager Suggestions & Review Feedback (Before Review records)
   const teamLeadSuggestion = useMemo(() => {
+    const resolveEmp = (empId) => {
+      if (!empId) return null;
+      return (
+        allEmployees.find((e) => e.id === empId) ||
+        (departmentEmployees || []).find((e) => e.id === empId) ||
+        (teamLeads || []).find((l) => l.id === empId) ||
+        null
+      );
+    };
+
     if (task?.review_feedback && typeof task.review_feedback === "string" && task.review_feedback.trim().length > 0) {
-      const leadObj = task.review_feedback_lead || project?.teamLead || (teamLeads || []).find((l) => l.id === task.review_feedback_by || l.id === project?.team_lead_id);
+      const reviewerEmp = task.review_feedback_lead || resolveEmp(task.review_feedback_by) || project?.creator || project?.teamLead;
       return {
         text: task.review_feedback.trim(),
-        leadName: leadObj?.full_name || project?.team_lead_name || "Team Lead",
+        leadName: reviewerEmp?.full_name || project?.team_lead_name || "Reviewer",
         timestamp: task.review_feedback_at || task.updated_at || null,
       };
     }
@@ -335,9 +525,10 @@ export default function TaskDetailModal({
       "[Scope Revision Instructions]:",
       "[QA Defect / Bug Report]:",
       "[Team Lead Review]:",
+      "[Review Feedback]:",
+      "[Manager Suggestions]:",
     ];
 
-    // 1. Check for explicit suggestion prefixes
     for (const raw of candidates) {
       for (const prefix of prefixes) {
         if (raw.includes(prefix)) {
@@ -345,11 +536,11 @@ export default function TaskDetailModal({
           const cleaned = text.replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "").trim();
           if (cleaned) {
             const matchingHistory = historyItems.find((h) => h.comments === raw);
-            const historyLeadName = matchingHistory?.changed_by_employee?.full_name;
-            const leadObj = project?.teamLead || (teamLeads || []).find((l) => l.id === project?.team_lead_id);
+            const historyLeadName = matchingHistory?.changed_by_employee?.full_name || resolveEmp(matchingHistory?.changed_by)?.full_name;
+            const fallbackEmp = project?.creator || project?.teamLead || (teamLeads || []).find((l) => l.id === project?.team_lead_id);
             return {
               text: cleaned,
-              leadName: historyLeadName || leadObj?.full_name || project?.team_lead_name || "Team Lead",
+              leadName: historyLeadName || fallbackEmp?.full_name || project?.team_lead_name || "Reviewer",
               timestamp: matchingHistory?.created_at || task?.updated_at || null,
             };
           }
@@ -357,7 +548,6 @@ export default function TaskDetailModal({
       }
     }
 
-    // 2. Check history items where status changed from REVIEW to TODO or IN_PROGRESS
     for (const h of historyItems) {
       if ((h.old_status === "REVIEW" || h.new_status === "TODO") && h.comments) {
         const cleaned = h.comments.replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "").trim();
@@ -368,43 +558,68 @@ export default function TaskDetailModal({
           !cleaned.startsWith("Created item") &&
           !cleaned.startsWith("Deliverable submitted")
         ) {
-          const leadObj = project?.teamLead || (teamLeads || []).find((l) => l.id === project?.team_lead_id);
+          const emp = h.changed_by_employee || resolveEmp(h.changed_by) || project?.creator || project?.teamLead;
           return {
             text: cleaned,
-            leadName: h.changed_by_employee?.full_name || leadObj?.full_name || project?.team_lead_name || "Team Lead",
+            leadName: emp?.full_name || project?.team_lead_name || "Reviewer",
             timestamp: h.created_at || task?.updated_at || null,
           };
         }
       }
     }
 
-    // 3. Fallback: If task is in TODO or IN_PROGRESS and has custom comments not matching deliverable payload
-    if (task?.status === "TODO" || task?.status === "IN_PROGRESS") {
-      for (const raw of candidates) {
-        const cleaned = raw.replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "").trim();
-        if (
-          cleaned &&
-          cleaned !== "No detailed submission comments provided." &&
-          !cleaned.startsWith("Status changed to") &&
-          !cleaned.startsWith("Created item") &&
-          !cleaned.startsWith("Deliverable submitted")
-        ) {
-          const leadObj = project?.teamLead || (teamLeads || []).find((l) => l.id === project?.team_lead_id);
-          return {
-            text: cleaned,
-            leadName: leadObj?.full_name || project?.team_lead_name || "Team Lead",
-            timestamp: task?.updated_at || null,
-          };
+    return null;
+  }, [task, project, teamLeads, historyItems, allEmployees, departmentEmployees]);
+
+  // Extract Review History timeline iterations (Before Review records)
+  const reviewHistoryIterations = useMemo(() => {
+    const list = [];
+    (historyItems || []).forEach((item) => {
+      let isReviewEvent = false;
+      let reviewPayload = null;
+      let suggestionText = "";
+
+      if (item.comments && typeof item.comments === "string") {
+        if (item.comments.includes("<!--DELIVERABLE_PAYLOAD:")) {
+          try {
+            const match = item.comments.match(/<!--DELIVERABLE_PAYLOAD:([\s\S]*?)-->/);
+            if (match && match[1]) {
+              reviewPayload = JSON.parse(match[1]);
+              isReviewEvent = true;
+            }
+          } catch {}
+        }
+        if (item.comments.includes("[Team Lead Suggestions]:")) {
+          suggestionText = item.comments.replace("[Team Lead Suggestions]:", "").replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "").trim();
+          isReviewEvent = true;
         }
       }
-    }
 
-    return null;
-  }, [task, project, teamLeads, historyItems]);
+      if (
+        item.old_status === "REVIEW" ||
+        item.new_status === "REVIEW" ||
+        item.new_status === "COMPLETED" ||
+        isReviewEvent
+      ) {
+        list.push({
+          id: item.id,
+          createdAt: item.created_at,
+          oldStatus: item.old_status,
+          newStatus: item.new_status,
+          changedBy: item.changed_by_employee?.full_name || "Team Member",
+          changedByRole: item.changed_by_employee?.role || item.changed_by_employee?.designation || "",
+          comments: item.comments ? item.comments.replace(/<!--DELIVERABLE_PAYLOAD:[\s\S]*?-->/g, "").trim() : "",
+          reviewPayload,
+          suggestionText,
+        });
+      }
+    });
+    return list;
+  }, [historyItems]);
 
   const isKanban = (project?.project_type || "").toLowerCase() === "kanban";
 
-  // Effective unified sprints & epics (merging props, fetched lists, and task-embedded objects)
+  // Effective unified sprints & epics
   const effectiveSprints = useMemo(() => {
     const list = Array.isArray(sprints) && sprints.length > 0 ? sprints : internalSprints;
     const map = new Map();
@@ -457,116 +672,238 @@ export default function TaskDetailModal({
     return effectiveSprints.find((s) => s.id === effectiveSprintId) || task?.sprint || null;
   }, [effectiveSprints, sprintId, task?.sprint_id, task?.sprint]);
 
+  const userRoleCategory = useMemo(() => {
+    return getTaskPermissionRole(employeeProfile?.role, employeeProfile, project);
+  }, [employeeProfile, project]);
+
   const isSprintActive = Boolean(
     isKanban || (currentSprint && String(currentSprint.status).toUpperCase() === "ACTIVE")
   );
   const isStatusLockedForEmployee = !isSprintActive && !canReviewTask;
 
-  const isAssignedToMe = Boolean(
-    (employeeProfile?.id && (
-      task?.assigned_to === employeeProfile.id ||
-      task?.assignee_id === employeeProfile.id ||
-      task?.planned_assignee_id === employeeProfile.id ||
-      task?.assignee?.id === employeeProfile.id ||
-      task?.planned_assignee?.id === employeeProfile.id
-    )) ||
-    (currentUserId && (
-      task?.assigned_to === currentUserId ||
-      task?.assignee_id === currentUserId ||
-      task?.planned_assignee_id === currentUserId ||
-      task?.assignee?.id === currentUserId ||
-      task?.planned_assignee?.id === currentUserId
-    )) ||
-    (employeeProfile?.auth_user_id && (
-      task?.assigned_to === employeeProfile.auth_user_id ||
-      task?.assignee_id === employeeProfile.auth_user_id ||
-      task?.planned_assignee_id === employeeProfile.auth_user_id
-    ))
-  );
+  const currentTaskNormStatus = normalizeTaskStatus(task?.status || "TODO");
+  const isTaskInReview = currentTaskNormStatus === "REVIEW";
+  const isTaskCompleted = currentTaskNormStatus === "COMPLETED";
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  // Role transition rules:
+  // 1. Regular employees cannot change status if task is COMPLETED or REVIEW
+  // 2. Managers/Leads oversee active development tasks; review actions are enabled once deliverables are submitted
+  const isCompletedLockedForEmployee = userRoleCategory === "EMPLOYEE" && isTaskCompleted;
+  const isInReviewLockedForEmployee = userRoleCategory === "EMPLOYEE" && isTaskInReview;
+  const isManagerInDevLocked = userRoleCategory !== "EMPLOYEE" && (currentTaskNormStatus === "TODO" || currentTaskNormStatus === "IN_PROGRESS");
+  const isStatusSelectDisabled = isStatusLockedForEmployee || isCompletedLockedForEmployee || isInReviewLockedForEmployee || isManagerInDevLocked;
 
-  const allEmployees = useMemo(() => {
-    const map = new Map();
 
-    // 1. Team Lead
-    if (project?.teamLead?.id) {
-      map.set(project.teamLead.id, { ...project.teamLead, roleTag: "Team Lead" });
-    } else if (project?.team_lead_id) {
-      const lead =
-        teamLeads.find((l) => l.id === project.team_lead_id) ||
-        departmentEmployees.find((e) => e.id === project.team_lead_id);
-      if (lead) map.set(lead.id, { ...lead, roleTag: "Team Lead" });
+  // Available status choices based on role matrix
+  const availableStatuses = useMemo(() => {
+    const cur = normalizeTaskStatus(task?.status || "TODO");
+    const allowed = TASK_STATUS_TRANSITIONS[userRoleCategory]?.[cur] || [];
+    const set = new Set([cur, ...allowed]);
+    return Array.from(set);
+  }, [userRoleCategory, task?.status]);
+
+  // Submitter Name Extraction
+  const submitterName = useMemo(() => {
+    if (deliverableData.submittedBy) {
+      const foundEmp = allEmployees.find((e) => e.id === deliverableData.submittedBy);
+      if (foundEmp?.full_name) return foundEmp.full_name;
     }
+    return task?.assignee?.full_name || task?.planned_assignee?.full_name || "Assigned Developer";
+  }, [deliverableData.submittedBy, allEmployees, task?.assignee, task?.planned_assignee]);
 
-    // 2. Project Owner / Creator
-    if (project?.creator?.id) {
-      map.set(project.creator.id, { ...project.creator, roleTag: "Project Owner" });
-    } else if (project?.created_by || project?.owner_id) {
-      const creatorId = project.created_by || project.owner_id;
-      const creator =
-        departmentEmployees.find((e) => e.id === creatorId) ||
-        teamLeads.find((l) => l.id === creatorId);
-      if (creator) map.set(creator.id, { ...creator, roleTag: "Project Owner" });
-    }
+  // Reviewer Name & Decision Extraction (Shown when Done / Reviewed / In Review)
+  const reviewerData = useMemo(() => {
+    const resolveEmp = (empId) => {
+      if (!empId) return null;
+      return (
+        allEmployees.find((e) => e.id === empId) ||
+        (departmentEmployees || []).find((e) => e.id === empId) ||
+        (teamLeads || []).find((l) => l.id === empId) ||
+        null
+      );
+    };
 
-    // 3. Project Team Members (from project.teamMembers objects or project.team_members IDs)
-    if (Array.isArray(project?.teamMembers)) {
-      project.teamMembers.forEach((m) => {
-        if (m?.id && !map.has(m.id)) {
-          map.set(m.id, {
-            ...m,
-            roleTag: project?.project_group ? project.project_group : (m.designation || m.role || "Squad Member"),
-          });
-        }
-      });
-    }
-
-    if (Array.isArray(project?.team_members)) {
-      project.team_members.forEach((id) => {
-        const cleanId = typeof id === "object" ? id?.id : id;
-        if (cleanId && !map.has(cleanId)) {
-          const emp =
-            (typeof id === "object" ? id : null) ||
-            departmentEmployees.find((e) => e.id === cleanId) ||
-            teamLeads.find((l) => l.id === cleanId);
-          if (emp) {
-            map.set(cleanId, {
-              ...emp,
-              roleTag: project?.project_group ? project.project_group : (emp.designation || emp.role || "Squad Member"),
-            });
-          }
-        }
-      });
-    }
-
-    // 4. Always preserve current task assignee in options so existing assignments are never lost
-    const rawAssigneeId = task?.assigned_to || task?.planned_assignee_id || task?.assignee_id;
-    if (task?.assignee?.id) {
-      map.set(task.assignee.id, { ...task.assignee, roleTag: "Current Assignee" });
-    } else if (task?.planned_assignee?.id) {
-      map.set(task.planned_assignee.id, { ...task.planned_assignee, roleTag: "Current Assignee" });
-    } else if (rawAssigneeId && !map.has(rawAssigneeId)) {
-      const foundInPool = (departmentEmployees || []).find((e) => e.id === rawAssigneeId) || (teamLeads || []).find((l) => l.id === rawAssigneeId);
-      map.set(rawAssigneeId, {
-        id: rawAssigneeId,
-        full_name: foundInPool?.full_name || "Assigned Employee",
-        designation: foundInPool?.designation || "",
-        roleTag: "Current Assignee",
-      });
-    }
-
-    return Array.from(map.values()).sort((a, b) =>
-      (a.full_name || "").localeCompare(b.full_name || "")
+    // 1. Look for approval/completion history event (REVIEW -> COMPLETED or new_status === COMPLETED)
+    const approvalEvent = (historyItems || []).find(
+      (h) =>
+        (h.new_status === "COMPLETED" || (h.old_status === "REVIEW" && h.new_status === "COMPLETED") || (h.comments && h.comments.toLowerCase().includes("approved"))) &&
+        (h.changed_by_employee?.full_name || h.changed_by || (h.comments && h.comments.includes("Approved and marked completed by ")))
     );
-  }, [project, departmentEmployees, teamLeads, task]);
+
+    if (approvalEvent) {
+      const emp = approvalEvent.changed_by_employee || resolveEmp(approvalEvent.changed_by);
+      let reviewerName = emp?.full_name;
+      if (!reviewerName && approvalEvent.comments && approvalEvent.comments.includes("Approved and marked completed by ")) {
+        reviewerName = approvalEvent.comments.replace("Approved and marked completed by ", "").trim();
+      }
+
+      if (reviewerName) {
+        const rawRole = emp?.role || emp?.designation || "";
+        const roleLabel = rawRole.toLowerCase().includes("manager")
+          ? "Project Manager"
+          : rawRole.toLowerCase().includes("lead")
+          ? "Team Lead"
+          : rawRole.toLowerCase().includes("admin")
+          ? "Admin"
+          : "Reviewer";
+
+        return {
+          reviewerName,
+          reviewerRole: roleLabel,
+          reviewedAt: approvalEvent.created_at || task?.completed_at || task?.updated_at,
+          decision: "Approved (100%)",
+          isApproved: true,
+          isPending: false,
+        };
+      }
+    }
+
+    // 2. Look for review suggestion/rework event
+    const suggestionEvent = (historyItems || []).find(
+      (h) => (h.old_status === "REVIEW" && h.new_status === "TODO") || (h.comments && (h.comments.includes("[Team Lead Suggestions]:") || h.comments.includes("[Review Feedback")))
+    );
+
+    if (suggestionEvent && (suggestionEvent.changed_by_employee?.full_name || suggestionEvent.changed_by)) {
+      const emp = suggestionEvent.changed_by_employee || resolveEmp(suggestionEvent.changed_by);
+      const name = emp?.full_name || "Team Lead";
+      const rawRole = emp?.role || emp?.designation || "";
+      const roleLabel = rawRole.toLowerCase().includes("manager") ? "Project Manager" : "Team Lead";
+      return {
+        reviewerName: name,
+        reviewerRole: roleLabel,
+        reviewedAt: suggestionEvent.created_at,
+        decision: "Suggestions Given (Rework)",
+        isApproved: false,
+        isPending: false,
+      };
+    }
+
+    // 3. Direct task properties if populated on completed task
+    if (isTaskCompleted) {
+      if (task?.reviewed_by_name || task?.approved_by_name) {
+        const revId = task?.reviewed_by || task?.approved_by;
+        const revEmp = resolveEmp(revId);
+        const rawRole = revEmp?.role || revEmp?.designation || "";
+        const roleLabel = rawRole.toLowerCase().includes("manager")
+          ? "Project Manager"
+          : rawRole.toLowerCase().includes("lead")
+          ? "Team Lead"
+          : "Reviewer";
+
+        return {
+          reviewerName: task.reviewed_by_name || task.approved_by_name,
+          reviewerRole: roleLabel,
+          reviewedAt: task.reviewed_at || task.approved_at || task.completed_at || task.updated_at,
+          decision: "Approved (100%)",
+          isApproved: true,
+          isPending: false,
+        };
+      }
+
+      if (task?.reviewer?.full_name || task?.approver?.full_name) {
+        const rev = task.reviewer || task.approver;
+        const rawRole = rev?.role || rev?.designation || "";
+        const roleLabel = rawRole.toLowerCase().includes("manager")
+          ? "Project Manager"
+          : rawRole.toLowerCase().includes("lead")
+          ? "Team Lead"
+          : "Reviewer";
+
+        return {
+          reviewerName: rev.full_name,
+          reviewerRole: roleLabel,
+          reviewedAt: task.reviewed_at || task.approved_at || task.completed_at || task.updated_at,
+          decision: "Approved (100%)",
+          isApproved: true,
+          isPending: false,
+        };
+      }
+
+      const revById = task?.reviewed_by || task?.approved_by || task?.completed_by;
+      if (revById) {
+        const emp = resolveEmp(revById);
+        if (emp?.full_name) {
+          const rawRole = emp.role || emp.designation || "";
+          const roleLabel = rawRole.toLowerCase().includes("manager")
+            ? "Project Manager"
+            : rawRole.toLowerCase().includes("lead")
+            ? "Team Lead"
+            : "Reviewer";
+
+          return {
+            reviewerName: emp.full_name,
+            reviewerRole: roleLabel,
+            reviewedAt: task.reviewed_at || task.approved_at || task.completed_at || task.updated_at,
+            decision: "Approved (100%)",
+            isApproved: true,
+            isPending: false,
+          };
+        }
+      }
+
+      if (task?.review_feedback_lead?.full_name) {
+        return {
+          reviewerName: task.review_feedback_lead.full_name,
+          reviewerRole: "Team Lead",
+          reviewedAt: task.review_feedback_at || task.updated_at,
+          decision: "Approved (100%)",
+          isApproved: true,
+          isPending: false,
+        };
+      }
+
+      // Check project creator/owner (Project Manager)
+      if (project?.creator?.full_name) {
+        return {
+          reviewerName: project.creator.full_name,
+          reviewerRole: "Project Manager",
+          reviewedAt: task?.completed_at || task?.updated_at,
+          decision: "Approved (100%)",
+          isApproved: true,
+          isPending: false,
+        };
+      }
+
+      // Fallback to project team lead if available
+      const lead = project?.teamLead || (teamLeads || []).find((l) => l.id === project?.team_lead_id);
+      if (lead?.full_name) {
+        return {
+          reviewerName: lead.full_name,
+          reviewerRole: "Team Lead",
+          reviewedAt: task?.completed_at || task?.updated_at,
+          decision: "Approved (100%)",
+          isApproved: true,
+          isPending: false,
+        };
+      }
+    }
+
+    // 4. If task is in review (Pending Review):
+    // Both Project Manager and Team Lead can review it, so indicate "Pending Review"
+    if (isTaskInReview) {
+      return {
+        reviewerName: "Pending Review",
+        reviewerRole: "Team Lead / Project Manager",
+        reviewedAt: null,
+        decision: "Pending Review",
+        isApproved: false,
+        isPending: true,
+      };
+    }
+
+    return null;
+  }, [historyItems, task, isTaskCompleted, isTaskInReview, project, teamLeads, allEmployees, departmentEmployees]);
 
   // Sync state whenever task changes or modal opens
   useEffect(() => {
     if (task && isOpen) {
-      setTaskType(task.task_type === "BUG" ? "BUG" : "TASK");
+      // Default to REVIEW_TASK tab if task is in review, otherwise TASK_DETAILS
+      if (task.status === "REVIEW") {
+        setActiveTab("REVIEW_TASK");
+      } else {
+        setActiveTab("TASK_DETAILS");
+      }
+
       setTitle(task.title || "");
       setDescription(task.description || "");
       const currentAssignee =
@@ -588,15 +925,9 @@ export default function TaskDetailModal({
       setDueDate(task.due_date ? task.due_date.split("T")[0] : "");
       setFeedbackMsg({ text: "", type: "" });
       setShowSuggestionsForm(false);
-      setShowAdvancedSettings(task.status !== "REVIEW");
       setExtensionStatus(task.extension_status || null);
-      setExtensionDecisionNote("");
 
-      // Suggestion form pre-fills
-      setSuggestionTitle(task.title || "");
-      setSuggestionPriority(task.priority || "MEDIUM");
       setSuggestionNotes("");
-      setSuggestionAssigneeId(currentAssignee);
 
       const existingComments =
         deliverableData.comments && deliverableData.comments !== "No detailed submission comments provided."
@@ -612,7 +943,6 @@ export default function TaskDetailModal({
     if (!isOpen) return;
 
     const handlePaste = (e) => {
-      // Don't intercept paste if user is focusing a normal text input (unless in review mode)
       const targetTag = e.target?.tagName?.toLowerCase();
       if (targetTag === "input" && e.target?.type === "text") return;
 
@@ -654,11 +984,6 @@ export default function TaskDetailModal({
     return effectiveSprints.find((s) => s.id === effectiveSprintId) || task?.sprint || null;
   }, [effectiveSprints, sprintId, task?.sprint_id, task?.sprint, isKanban]);
 
-  const selectedEpic = useMemo(() => {
-    const effectiveEpicId = epicId || task?.epic_id;
-    return effectiveEpics.find((e) => e.id === effectiveEpicId) || task?.epic || null;
-  }, [effectiveEpics, epicId, task?.epic_id, task?.epic]);
-
   const sprintMinDate = useMemo(() => {
     return selectedSprint?.start_date ? selectedSprint.start_date.split("T")[0] : "";
   }, [selectedSprint]);
@@ -667,7 +992,6 @@ export default function TaskDetailModal({
     return selectedSprint?.end_date ? selectedSprint.end_date.split("T")[0] : "";
   }, [selectedSprint]);
 
-  // When user changes sprint selection, clamp or auto-populate due date to sprint end date
   const handleSprintChange = (newSprintId) => {
     setSprintId(newSprintId);
     if (!newSprintId) return;
@@ -683,115 +1007,10 @@ export default function TaskDetailModal({
     }
   };
 
-  // Real-time validation of due date within sprint bounds
   const dateValidation = useMemo(() => {
     if (isKanban) return { isValid: true, error: "" };
     return validateTaskSprintBounds(dueDate, selectedSprint);
   }, [dueDate, selectedSprint, isKanban]);
-
-  const sprintOverdueWarning = useMemo(() => {
-    if (isKanban) return null;
-    return checkTaskSprintOverdue(dueDate, selectedSprint);
-  }, [dueDate, selectedSprint, isKanban]);
-
-  const isTaskDueToday = useMemo(() => {
-    if (!dueDate || status === "COMPLETED") return false;
-    try {
-      const d = new Date(dueDate);
-      if (isNaN(d.getTime())) return false;
-      const today = new Date();
-      return (
-        d.getFullYear() === today.getFullYear() &&
-        d.getMonth() === today.getMonth() &&
-        d.getDate() === today.getDate()
-      );
-    } catch {
-      return false;
-    }
-  }, [dueDate, status]);
-
-  const isTaskModalOverdue = useMemo(() => {
-    if (!dueDate || status === "COMPLETED") return false;
-    try {
-      const d = new Date(dueDate);
-      if (isNaN(d.getTime())) return false;
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const target = new Date(d);
-      target.setHours(0, 0, 0, 0);
-      return target < today;
-    } catch {
-      return false;
-    }
-  }, [dueDate, status]);
-
-  // Real-time selected assignee details & sprint workload
-  const selectedAssignee = useMemo(() => {
-    return allEmployees.find((e) => e.id === assigneeId) || null;
-  }, [allEmployees, assigneeId]);
-
-  const assigneeSprintWorkload = useMemo(() => {
-    if (!assigneeId) return { count: 0, completedCount: 0, inProgressCount: 0, points: 0 };
-    return getEmployeeSprintWorkload(assigneeId, sprintId, tasks);
-  }, [assigneeId, sprintId, tasks]);
-
-  const sprintTotalTasksCount = useMemo(() => {
-    if (!sprintId) return 0;
-    return tasks.filter((t) => t.sprint_id === sprintId).length;
-  }, [sprintId, tasks]);
-
-  // Handle Team Lead Extension Approval / Rejection Decision
-  const handleDecideExtension = async (decision) => {
-    setIsDecidingExtension(true);
-    setFeedbackMsg({ text: "", type: "" });
-    try {
-      const res = await authFetch(`/api/projects/tasks/${task.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "decide_extension",
-          decision,
-          decision_note: extensionDecisionNote.trim() || undefined,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Failed to submit extension decision.");
-      }
-
-      if (decision === "APPROVE") {
-        setDueDate(data.task?.due_date || task.extension_requested_date || dueDate);
-        setExtensionStatus("APPROVED");
-        setFeedbackMsg({
-          text: `✓ Extension approved until ${data.task?.due_date || task.extension_requested_date}.`,
-          type: "success",
-        });
-      } else {
-        setExtensionStatus("REJECTED");
-        setFeedbackMsg({
-          text: `Extension request rejected. Due date remains ${dueDate}.`,
-          type: "info",
-        });
-      }
-
-      if (onTaskUpdated && data.task) {
-        onTaskUpdated(data.task);
-      }
-
-      window.dispatchEvent(
-        new CustomEvent("project-task-updated", {
-          detail: data.task || { id: task.id, extension_status: decision === "APPROVE" ? "APPROVED" : "REJECTED" },
-        })
-      );
-    } catch (err) {
-      setFeedbackMsg({ text: err.message || "Error processing decision.", type: "error" });
-    } finally {
-      setIsDecidingExtension(false);
-    }
-  };
-
-  if (!isOpen || !task || !mounted) return null;
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -823,9 +1042,9 @@ export default function TaskDetailModal({
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     if (!title.trim()) {
-      setFeedbackMsg({ text: "Please enter a title.", type: "error" });
+      setFeedbackMsg({ text: "Please enter a task title.", type: "error" });
       return;
     }
 
@@ -841,21 +1060,9 @@ export default function TaskDetailModal({
     setFeedbackMsg({ text: "", type: "" });
 
     try {
-      const supabase = createClient();
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token
-          ? { Authorization: `Bearer ${session.access_token}` }
-          : {}),
-      };
-
       const payload = {
         title: title.trim(),
         description: description.trim(),
-        task_type: taskType,
         priority,
         story_points: Number(storyPoints) || 1,
         assigned_to: assigneeId || null,
@@ -866,10 +1073,29 @@ export default function TaskDetailModal({
       };
 
       if (status && status !== task.status) {
-        if (status === "COMPLETED" && !canReviewTask) {
+        const normStatus = normalizeTaskStatus(status);
+        if (!isTaskStatusTransitionAllowed(userRoleCategory, task.status, normStatus)) {
+          if (normStatus === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
+            setFeedbackMsg({
+              text: "Deliverable Approval Required: Only the Project Manager or Team Lead can mark this task as Completed after reviewing the deliverable. Please submit for Review.",
+              type: "warning",
+            });
+            setTimeout(() => setFeedbackMsg({ text: "", type: "" }), 3000);
+            setIsSubmitting(false);
+            return;
+          }
+          if (task.status === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
+            setFeedbackMsg({
+              text: "Action Blocked: Completed tasks are locked and cannot be reopened by employees.",
+              type: "error",
+            });
+            setTimeout(() => setFeedbackMsg({ text: "", type: "" }), 3000);
+            setIsSubmitting(false);
+            return;
+          }
           setFeedbackMsg({
-            text: "Deliverable Approval Required: Only the Project Manager or Team Lead can mark this task as Completed after reviewing the deliverable.",
-            type: "warning",
+            text: `Invalid transition: Changing from ${task.status} to ${normStatus} is not permitted for your role.`,
+            type: "error",
           });
           setTimeout(() => setFeedbackMsg({ text: "", type: "" }), 3000);
           setIsSubmitting(false);
@@ -885,11 +1111,16 @@ export default function TaskDetailModal({
           setIsSubmitting(false);
           return;
         }
-        payload.status = status;
+        payload.status = normStatus;
       }
 
-      // If status is REVIEW (or was updated to REVIEW), include deliverables
+
       if (status === "REVIEW" || payload.status === "REVIEW" || reviewComments.trim() || reviewAttachments.length > 0) {
+        if (uploadingCount > 0) {
+          setFeedbackMsg({ text: "Please wait for screenshots to finish uploading.", type: "warning" });
+          setIsSubmitting(false);
+          return;
+        }
         if (status === "REVIEW" || payload.status === "REVIEW") {
           payload.status = "REVIEW";
         }
@@ -899,7 +1130,8 @@ export default function TaskDetailModal({
           id: a.id,
           name: a.name,
           size: a.size,
-          dataUrl: a.dataUrl || a.url || a,
+          url: a.url || a.dataUrl || (typeof a === "string" ? a : ""),
+          type: a.type || "image/png",
         }));
         payload.review_submitted_at = new Date().toISOString();
       }
@@ -923,7 +1155,7 @@ export default function TaskDetailModal({
         onClose();
       } else {
         setFeedbackMsg({
-          text: data.message || "Failed to update item.",
+          text: data.message || "Failed to update task.",
           type: data.code === "SPRINT_NOT_STARTED" ? "warning" : "error",
         });
         setTimeout(() => setFeedbackMsg({ text: "", type: "" }), 2500);
@@ -931,7 +1163,7 @@ export default function TaskDetailModal({
     } catch (err) {
       console.error("Update task error:", err);
       setFeedbackMsg({
-        text: "Network error updating item. Please try again.",
+        text: "Network error updating task. Please try again.",
         type: "error",
       });
     } finally {
@@ -943,13 +1175,19 @@ export default function TaskDetailModal({
     setIsSubmitting(true);
     setFeedbackMsg({ text: "", type: "" });
     try {
+      const reviewerFullName = employeeProfile?.full_name || "Team Lead / Project Manager";
+      const reviewerId = employeeProfile?.id || null;
       const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: "COMPLETED",
           progress: 100,
-          comments: "Approved and marked completed by Reviewer",
+          reviewed_by: reviewerId,
+          reviewed_by_name: reviewerFullName,
+          approved_by: reviewerId,
+          approved_by_name: reviewerFullName,
+          comments: `Approved and marked completed by ${reviewerFullName}`,
         }),
       });
 
@@ -993,15 +1231,17 @@ export default function TaskDetailModal({
     setIsSubmitting(true);
     setFeedbackMsg({ text: "", type: "" });
     try {
+      const reviewerFullName = employeeProfile?.full_name || "Reviewer";
       const payload = {
         status: "TODO",
         progress: 0,
-        title: suggestionTitle.trim() || task.title,
-        priority: suggestionPriority || "MEDIUM",
-        assigned_to: suggestionAssigneeId || task.assigned_to || null,
-        assignee_id: suggestionAssigneeId || task.assigned_to || null,
+        title: title.trim() || task.title,
+        priority: priority || "MEDIUM",
+        assigned_to: assigneeId || task.assigned_to || null,
+        assignee_id: assigneeId || task.assigned_to || null,
         review_feedback: suggestionNotes.trim(),
-        comments: `[Team Lead Suggestions]: ${suggestionNotes.trim()}`,
+        review_feedback_by: employeeProfile?.id || null,
+        comments: `[Review Suggestions by ${reviewerFullName}]: ${suggestionNotes.trim()}`,
       };
 
       const res = await authFetch(`/api/projects/tasks/${task.id}`, {
@@ -1040,91 +1280,62 @@ export default function TaskDetailModal({
 
   const handleStartWorking = async () => {
     setIsSubmitting(true);
-    setFeedbackMsg({ text: "", type: "" });
     try {
       const res = await authFetch(`/api/projects/tasks/${task.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "IN_PROGRESS",
-          progress: 25,
-        }),
+        body: JSON.stringify({ status: "IN_PROGRESS" }),
       });
-
-      const data = await res.json();
       if (res.ok) {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("project-task-updated", {
-              detail: { taskId: task.id, status: "IN_PROGRESS", new: data.task, project_id: project?.id },
-            })
-          );
-        }
         if (onTaskUpdated) onTaskUpdated();
-        setStatus("IN_PROGRESS");
-        setFeedbackMsg({
-          text: "Task moved to In Progress! You can now start addressing the suggestions.",
-          type: "success",
-        });
-      } else {
-        setFeedbackMsg({
-          text: data.message || "Failed to move task to In Progress.",
-          type: "error",
-        });
+        onClose();
       }
-    } catch (err) {
-      console.error("Error moving task to In Progress:", err);
-      setFeedbackMsg({
-        text: "Network error updating task status.",
-        type: "error",
-      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  return createPortal(
+  if (!isOpen || !task || !mounted) return null;
+
+  const modalContent = (
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) onClose();
       }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn overflow-y-auto"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn overflow-y-auto"
     >
-      <div className="relative w-full max-w-xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleIn m-auto">
-        {/* Top Header matching exact Create Sprint format */}
-        <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-slate-100">
+      <div className="relative w-full max-w-xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleIn m-auto my-auto">
+        {/* Top Header strictly matching Add Task format with 2 Features: Task Details & Review Task */}
+        <div className="px-6 pt-4 pb-2.5 flex items-center justify-between border-b border-slate-100">
           <div className="flex items-center gap-3 text-base">
-            <span className="font-bold text-slate-900">{canEditManagementFields ? "Update:" : "Task:"}</span>
-            {canEditManagementFields ? (
-              <div className="flex items-center gap-4 text-sm">
-                <button
-                  type="button"
-                  onClick={() => setTaskType("TASK")}
-                  className={`transition-colors cursor-pointer pb-0.5 ${
-                    taskType === "TASK"
-                      ? "text-blue-600 font-semibold border-b-2 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Task
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTaskType("BUG")}
-                  className={`transition-colors cursor-pointer pb-0.5 ${
-                    taskType === "BUG"
-                      ? "text-blue-600 font-semibold border-b-2 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                >
-                  Bug
-                </button>
-              </div>
-            ) : (
-              <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
-                {taskType === "BUG" ? "Bug Details" : "Task Details"}
-              </span>
-            )}
+            <span className="font-bold text-slate-900 text-sm">Update:</span>
+            <div className="flex items-center gap-4 text-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTab("TASK_DETAILS")}
+                className={`transition-colors cursor-pointer pb-0.5 ${
+                  activeTab === "TASK_DETAILS"
+                    ? "text-blue-600 font-semibold border-b-2 border-blue-600"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                Task Details
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("REVIEW_TASK")}
+                className={`transition-colors cursor-pointer pb-0.5 flex items-center gap-1.5 ${
+                  activeTab === "REVIEW_TASK"
+                    ? "text-blue-600 font-semibold border-b-2 border-blue-600"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <span>Review Task</span>
+                {isTaskInReview && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block animate-pulse" title="Submitted for Review" />
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Red square close button */}
@@ -1132,18 +1343,19 @@ export default function TaskDetailModal({
             type="button"
             disabled={isSubmitting}
             onClick={onClose}
-            className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+            className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shrink-0"
             title="Close"
           >
             ✕
           </button>
         </div>
 
-        {/* Form Body matching Create Sprint layout */}
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4 max-h-[82vh] overflow-y-auto">
+        {/* Unified Form Body */}
+        <form onSubmit={handleSubmit} className="px-6 py-3 space-y-2.5 max-h-[85vh] overflow-y-auto">
+          {/* Feedback Alert */}
           {feedbackMsg.text && (
             <div
-              className={`p-2.5 rounded text-xs font-medium ${
+              className={`p-2 rounded text-xs font-medium ${
                 feedbackMsg.type === "error" || feedbackMsg.type === "warning"
                   ? "bg-rose-50 border border-rose-200 text-rose-700"
                   : "bg-emerald-50 border border-emerald-200 text-emerald-700"
@@ -1153,90 +1365,365 @@ export default function TaskDetailModal({
             </div>
           )}
 
-          {/* Sprint in Planned State Notice */}
-          {isStatusLockedForEmployee && (
-            <div className="p-2.5 rounded bg-slate-50 border border-slate-200 text-xs text-slate-700">
-              <strong className="text-slate-900 font-semibold">Planned Sprint:</strong> Status updates are locked until the sprint is officially started.
-            </div>
-          )}
-
-          {/* Team Lead Review Suggestions & Action Items */}
-          {teamLeadSuggestion && (
-            <div className="space-y-3 pt-1">
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm flex items-center justify-between">
-                <span>Team Lead Review Suggestions</span>
-                <span className="text-xs text-slate-500 font-normal">
-                  {task.status === "TODO" ? "Status: To Do (Revision Required)" : "Status: In Progress"}
-                </span>
+          {/* ======================================================== */}
+          {/* FEATURE TAB 1: TASK DETAILS                              */}
+          {/* ======================================================== */}
+          {activeTab === "TASK_DETAILS" && (
+            <>
+              {/* Section Header */}
+              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-0.5 text-xs pt-1">
+                Task Details
               </div>
 
-              {/* Reviewer Row */}
+              {/* Row: Task Name with red underline indicator */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  Reviewed by
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                  <span className="border-b-2 border-rose-500 pb-0.5">
+                    Task Name
+                  </span>
                 </label>
-                <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm text-slate-900">
-                  <span className="font-semibold">{teamLeadSuggestion.leadName}</span>
-                  {teamLeadSuggestion.timestamp && (
-                    <span className="text-xs text-slate-500 font-mono">
-                      {new Date(teamLeadSuggestion.timestamp).toLocaleString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  )}
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    required
+                    readOnly={!canEditManagementFields}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g., Implement employee attendance export"
+                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 transition-colors placeholder:text-slate-400"
+                  />
                 </div>
               </div>
 
-              {/* Instructions Row */}
+              {/* Row: Description */}
               <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-0.5">
-                  <span className="border-b-2 border-rose-500 pb-0.5">Instructions</span>
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
+                  Description
                 </label>
                 <div className="flex-1">
-                  <div className="w-full p-2.5 rounded bg-slate-50 border border-slate-200 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
-                    {teamLeadSuggestion.text}
+                  <textarea
+                    rows={2}
+                    readOnly={!canEditManagementFields}
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Optional description or details…"
+                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400"
+                  />
+                </div>
+              </div>
+
+              {/* Row: Status */}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:items-center gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                  Status
+                </label>
+                <div className="flex-1 space-y-1">
+                  <div className="relative">
+                    <select
+                      value={status}
+                      disabled={isStatusSelectDisabled}
+                      onChange={(e) => setStatus(e.target.value)}
+                      className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer disabled:opacity-60"
+                    >
+                      {availableStatuses.map((st) => {
+                        const labels = {
+                          TODO: "To Do",
+                          IN_PROGRESS: "In Progress",
+                          REVIEW: "In Review",
+                          COMPLETED: "Completed",
+                        };
+                        return (
+                          <option key={st} value={st}>
+                            {labels[st] || st}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
+                      ▼
+                    </div>
+                  </div>
+                  {isCompletedLockedForEmployee && (
+                    <div className="text-[10px] text-emerald-800 flex items-center gap-1 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      <span>🔒</span>
+                      <span>This deliverable is completed and finalized. Reopening is restricted to Team Leads &amp; Managers.</span>
+                    </div>
+                  )}
+                  {isInReviewLockedForEmployee && (
+                    <div className="text-[10px] text-purple-800 flex items-center gap-1 font-medium bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                      <span>⏳</span>
+                      <span>Deliverable submitted for review. Awaiting Team Lead or Project Manager verification.</span>
+                    </div>
+                  )}
+                  {isManagerInDevLocked && (
+                    <div className="text-[10px] text-slate-600 flex items-center gap-1 font-medium bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                      <span>ℹ️</span>
+                      <span>In active development by assigned developer. Review &amp; Approval actions become available once deliverables are submitted.</span>
+                    </div>
+                  )}
+
+                </div>
+              </div>
+
+
+              {/* Row: Owner (Assignee) */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
+                  Owner
+                </label>
+                <div className="flex-1 space-y-1">
+                  <div className="relative">
+                    <select
+                      value={assigneeId}
+                      disabled={!canEditManagementFields}
+                      onChange={(e) => setAssigneeId(e.target.value)}
+                      className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer disabled:opacity-60"
+                    >
+                      <option value="">Unassigned</option>
+                      {assignableProjectEmployees.map((emp) => {
+                        const roleLabel = emp.designation || (emp.role ? (emp.role.charAt(0).toUpperCase() + emp.role.slice(1).replace(/_/g, " ")) : "Employee");
+                        return (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.full_name} ({roleLabel})
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs pb-0.5">
+                      ▼
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex items-start gap-1 pt-0.5 bg-slate-50/80 p-1.5 rounded border border-slate-100">
+                    <span className="text-blue-600 font-semibold shrink-0">ℹ️ Note:</span>
+                    <span>
+                      Only members included in this project are shown. To assign tasks to other colleagues, first add them to this project via the <strong>Team</strong> tab.
+                    </span>
                   </div>
                 </div>
               </div>
 
-              {/* Action Button for assigned employee if in TODO */}
-              {task.status === "TODO" && isAssignedToMe && (
-                <div className="pt-1 flex items-center justify-end">
-                  <button
-                    type="button"
-                    onClick={handleStartWorking}
-                    disabled={isSubmitting}
-                    className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-50 shadow-xs"
-                  >
-                    Start Working (Move to In Progress)
-                  </button>
+              {/* Row: Sprint Allocation (Scrum / Custom Agile only) */}
+              {!isKanban && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+                  <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                    Sprint
+                  </label>
+                  <div className="flex-1 relative">
+                    <select
+                      value={sprintId}
+                      disabled={!canEditManagementFields}
+                      onChange={(e) => handleSprintChange(e.target.value)}
+                      className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer disabled:opacity-60"
+                    >
+                      <option value="">Backlog (Unscheduled)</option>
+                      {effectiveSprints
+                        .filter((s) => s.status !== "COMPLETED" || s.id === sprintId)
+                        .map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.status})
+                          </option>
+                        ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
+                      ▼
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
+
+              {/* Row: Priority */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                  Priority
+                </label>
+                <div className="flex-1 relative">
+                  <select
+                    value={priority}
+                    disabled={!canEditManagementFields}
+                    onChange={(e) => setPriority(e.target.value)}
+                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="URGENT">Urgent</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
+              {/* Row: Story Points */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                  Story Points
+                </label>
+                <div className="flex-1 relative">
+                  <select
+                    value={storyPoints}
+                    disabled={!canEditManagementFields}
+                    onChange={(e) => setStoryPoints(Number(e.target.value))}
+                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer disabled:opacity-60"
+                  >
+                    {[1, 2, 3, 5, 8, 13, 21].map((pts) => (
+                      <option key={pts} value={pts}>
+                        {pts} {pts === 1 ? "point" : "points"}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
+              {/* Row: Epic */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                  Epic
+                </label>
+                <div className="flex-1 relative">
+                  <select
+                    value={epicId}
+                    disabled={!canEditManagementFields}
+                    onChange={(e) => setEpicId(e.target.value)}
+                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="">--None--</option>
+                    {effectiveEpics.map((epic) => (
+                      <option key={epic.id} value={epic.id}>
+                        {epic.name}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
+                    ▼
+                  </div>
+                </div>
+              </div>
+
+              {/* Row: Due Date */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
+                  Due Date
+                </label>
+                <div className="flex-1 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      readOnly={!canEditManagementFields}
+                      disabled={!canEditManagementFields}
+                      min={sprintMinDate || undefined}
+                      max={sprintMaxDate || undefined}
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="flex-1 border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 disabled:opacity-60"
+                    />
+                    {!canEditManagementFields && task.status !== "COMPLETED" && extensionStatus !== "PENDING" && (
+                      <button
+                        type="button"
+                        onClick={() => setIsExtensionModalOpen(true)}
+                        className="px-2.5 py-0.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 text-xs font-medium transition cursor-pointer shrink-0"
+                      >
+                        Request Extension
+                      </button>
+                    )}
+                  </div>
+                  {selectedSprint && (
+                    <p className="text-[10px] text-blue-700 font-medium pt-0.5">
+                      Locked to sprint window: {sprintMinDate || "Start"} to {sprintMaxDate || "End"}
+                    </p>
+                  )}
+                  {!dateValidation.isValid && (
+                    <p className="text-[10px] text-rose-600 font-semibold pt-0.5">
+                      ❌ {dateValidation.error}
+                    </p>
+                  )}
+
+                  {/* Team Lead Extension Request Banner */}
+                  {canEditManagementFields && extensionStatus === "PENDING" && (
+                    <div className="mt-1.5 p-1.5 rounded bg-amber-50 border border-amber-200 flex items-center justify-between gap-2 text-xs">
+                      <span className="text-amber-900">
+                        Extension Requested: <strong className="font-mono text-blue-700">{task.extension_requested_date}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsReviewExtensionModalOpen(true)}
+                        className="px-2.5 py-0.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer shrink-0"
+                      >
+                        Review Request
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Bottom Action Buttons matching Add Task */}
+              <div className="pt-3 pb-1 flex items-center gap-3">
+                {canEditManagementFields ? (
+                  <>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || !title.trim() || !dateValidation.isValid}
+                      className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-xs"
+                    >
+                      {isSubmitting ? "Saving…" : "Save Changes"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={onClose}
+                      className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                )}
+              </div>
+            </>
           )}
 
-          {/* Deliverable Review & Proof of Work */}
-          {(task.status === "REVIEW" || deliverableData.attachments.length > 0 || (task.status === "COMPLETED" && deliverableData.comments !== "No detailed submission comments provided.")) && (
-            <div className="space-y-3 pt-1">
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm flex items-center justify-between">
-                <span>Deliverable Proof of Work</span>
-                <span className="text-xs text-slate-500 font-normal">
-                  {task.status === "COMPLETED" ? "Status: Completed" : "Status: In Review"}
+          {/* ======================================================== */}
+          {/* FEATURE TAB 2: REVIEW TASK                               */}
+          {/* ======================================================== */}
+          {activeTab === "REVIEW_TASK" && (
+            <>
+              {/* Section Header: Review Task Feature */}
+              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-0.5 text-xs pt-1 flex items-center justify-between">
+                <span>Review Task Feature</span>
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wider ${
+                    isTaskCompleted
+                      ? "text-emerald-600"
+                      : isTaskInReview
+                      ? "text-amber-600"
+                      : "text-slate-500"
+                  }`}
+                >
+                  Status: {isTaskCompleted ? "Completed" : isTaskInReview ? "In Review" : task.status}
                 </span>
               </div>
 
-              {/* Submitter & Time */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  Submitter
+              {/* Row: Submitter Name */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                  Submitter Name
                 </label>
-                <div className="flex-1 flex items-center justify-between border-b border-slate-300 pb-1 text-sm text-slate-900">
-                  <span className="font-semibold">{task.assignee?.full_name || task.planned_assignee?.full_name || "Assigned Employee"}</span>
+                <div className="flex-1 flex items-center justify-between text-xs text-slate-900">
+                  <span className="font-semibold">
+                    {submitterName}
+                  </span>
                   {deliverableData.submittedAt && (
-                    <span className="text-xs text-slate-500 font-mono">
+                    <span className="text-[11px] text-slate-500 font-mono">
                       {new Date(deliverableData.submittedAt).toLocaleString("en-US", {
                         month: "short",
                         day: "numeric",
@@ -1249,44 +1736,87 @@ export default function TaskDetailModal({
                 </div>
               </div>
 
-              {/* Submitter's Notes */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-0.5">
+              {/* Row: Reviewer Name (Shown when reviewed / completed / in review) */}
+              {(reviewerData || isTaskCompleted || isTaskInReview) && (
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
+                  <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
+                    Reviewer Name
+                  </label>
+                  <div className="flex-1 flex items-center justify-between text-xs text-slate-900">
+                    <div className="flex items-center gap-2">
+                      {reviewerData?.isPending ? (
+                        <span className="text-slate-500 font-medium italic">
+                          Pending Review (Team Lead / Project Manager)
+                        </span>
+                      ) : (
+                        <>
+                          <span className="font-semibold text-slate-900">
+                            {reviewerData?.reviewerName || "Reviewer"}
+                          </span>
+                          {reviewerData?.decision && (
+                            <span
+                              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                reviewerData.isApproved
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                  : "bg-blue-50 text-blue-700 border border-blue-200"
+                              }`}
+                            >
+                              {reviewerData.decision}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {reviewerData?.reviewedAt && (
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        {new Date(reviewerData.reviewedAt).toLocaleString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Row: Completion Notes */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
                   Completion Notes
                 </label>
-                <div className="flex-1">
-                  <div className="w-full p-2.5 rounded bg-slate-50 border border-slate-200 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed font-sans">
-                    {deliverableData.comments}
-                  </div>
+                <div className="flex-1 text-xs text-slate-800 border-b border-slate-200 pb-1.5 whitespace-pre-wrap leading-relaxed">
+                  {deliverableData.comments}
                 </div>
               </div>
 
-              {/* Screenshot Proof */}
-              {deliverableData.attachments.length > 0 && (
-                <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-                  <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-0.5">
-                    Screenshots ({deliverableData.attachments.length})
-                  </label>
-                  <div className="flex-1">
+              {/* Row: Attachments / Screenshots */}
+              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5">
+                <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
+                  Attachments {deliverableData.attachments.length > 0 ? `(${deliverableData.attachments.length})` : ""}
+                </label>
+                <div className="flex-1 space-y-2">
+                  {deliverableData.attachments.length > 0 ? (
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                       {deliverableData.attachments.map((att, idx) => {
                         const imgSrc = att.dataUrl || att.url || att;
                         const imgName = att.name || `Screenshot ${idx + 1}`;
-                        const keyId = att.id ? `deliv-att-${att.id}` : `deliv-att-idx-${idx}`;
                         return (
                           <button
-                            key={keyId}
+                            key={`att-proof-${idx}`}
                             type="button"
                             onClick={() => setActiveScreenshotModal(att)}
-                            className="group relative rounded border border-slate-200 bg-white overflow-hidden p-1 text-left hover:border-blue-500 hover:shadow-xs transition cursor-pointer"
+                            className="group relative rounded border border-slate-200 bg-white overflow-hidden p-1 text-left hover:border-blue-600 transition cursor-pointer"
                           >
-                            <div className="h-20 w-full bg-slate-100 rounded overflow-hidden relative flex items-center justify-center">
+                            <div className="h-16 w-full bg-slate-100 rounded overflow-hidden relative flex items-center justify-center">
                               <img
                                 src={imgSrc}
                                 alt={imgName}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                               />
-                              <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                                 <span className="px-2 py-0.5 rounded bg-black/75 text-white text-[10px] font-semibold">
                                   Expand
                                 </span>
@@ -1297,22 +1827,80 @@ export default function TaskDetailModal({
                         );
                       })}
                     </div>
-                  </div>
-                </div>
-              )}
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">No image attachments provided.</p>
+                  )}
 
-              {/* Reviewer Action Controls (Manager & Team Lead only) */}
-              {canReviewTask && task.status === "REVIEW" && (
-                <div className="space-y-3 pt-2 border-t border-slate-200">
-                  {!showSuggestionsForm && (
-                    <div className="flex flex-wrap items-center justify-between gap-2.5">
-                      <span className="text-xs text-slate-700 font-medium">Review Decisions:</span>
-                      <div className="flex items-center gap-2">
+                  {/* Allow adding attachments if submitting deliverable */}
+                  {(!isTaskInReview && !isTaskCompleted) && (
+                    <div className="pt-1 space-y-1.5">
+                      <div
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={handleDrop}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`border border-dashed rounded p-2 text-center cursor-pointer transition ${
+                          isDraggingOver ? "border-blue-600 bg-blue-50/50" : "border-slate-300 hover:border-blue-600 bg-slate-50/50"
+                        }`}
+                      >
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileChange}
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                        />
+                        <p className="text-xs text-slate-600 font-medium">
+                          <span className="text-blue-600 font-semibold">Upload screenshots</span> or paste (Ctrl+V)
+                        </p>
+                      </div>
+
+                      {reviewAttachments.length > 0 && (
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                          {reviewAttachments.map((att) => {
+                            const imgSrc = att.url || att.dataUrl || att;
+                            const imgName = att.name || "Screenshot";
+                            return (
+                              <div key={att.id} className="relative group rounded border border-slate-200 p-1 bg-white overflow-hidden flex flex-col">
+                                <div className="h-14 w-full rounded overflow-hidden bg-slate-100 flex items-center justify-center relative cursor-pointer" onClick={() => !att.isUploading && setActiveScreenshotModal(att)}>
+                                  <img src={imgSrc} alt={imgName} className="w-full h-full object-cover" />
+                                  {att.isUploading && (
+                                    <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-white text-[10px]">
+                                      Uploading…
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex items-center justify-between pt-1 text-[10px] px-0.5">
+                                  <span className="truncate max-w-[80px] text-slate-700">{imgName}</span>
+                                  <button type="button" onClick={() => handleRemoveAttachment(att.id)} className="text-rose-500 hover:text-rose-700 font-bold px-1 cursor-pointer">
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Row: Process of Approve & Given Suggestions (Lead / Manager when in REVIEW) */}
+              {canReviewTask && isTaskInReview && (
+                <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1.5 border-t border-slate-100">
+                  <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-1">
+                    Review Decision
+                  </label>
+                  <div className="flex-1 space-y-2">
+                    {!showSuggestionsForm ? (
+                      <div className="flex items-center gap-2.5">
                         <button
                           type="button"
                           disabled={isSubmitting}
                           onClick={handleApproveReview}
-                          className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer shadow-xs disabled:opacity-50"
+                          className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-xs"
                         >
                           Approve (100%)
                         </button>
@@ -1320,548 +1908,134 @@ export default function TaskDetailModal({
                           type="button"
                           disabled={isSubmitting}
                           onClick={() => setShowSuggestionsForm(true)}
-                          className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
+                          className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50"
                         >
                           Give Suggestions
                         </button>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Suggestion Form */}
-                  {showSuggestionsForm && (
-                    <div className="space-y-3 p-3 rounded bg-slate-50 border border-slate-200 text-xs">
-                      <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-xs">
-                        Give Suggestions &amp; Move to To Do
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-xs text-slate-700 font-medium block">
-                          <span className="border-b-2 border-rose-500 pb-0.5">Suggestions &amp; Instructions *</span>
-                        </label>
+                    ) : (
+                      <div className="p-2.5 rounded bg-slate-50 border border-slate-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-slate-800">
+                            Provide Suggestions &amp; Send to To Do
+                          </span>
+                          <span className="text-[10px] text-slate-500">Employee will rework</span>
+                        </div>
                         <textarea
-                          rows={3}
+                          rows={2}
+                          autoFocus
                           value={suggestionNotes}
                           onChange={(e) => setSuggestionNotes(e.target.value)}
-                          placeholder="Detail the improvements or suggestions for the employee…"
-                          className="w-full text-xs p-2.5 rounded border border-slate-300 bg-white focus:outline-none focus:border-blue-600 resize-none text-slate-800"
-                          autoFocus
+                          placeholder="Specify requested improvements, modifications, or bug fixes…"
+                          className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-white text-slate-900 resize-none transition-colors placeholder:text-slate-400 p-1.5 rounded"
                         />
+                        <div className="flex items-center gap-2 pt-0.5">
+                          <button
+                            type="button"
+                            disabled={isSubmitting || !suggestionNotes.trim()}
+                            onClick={handleSubmitSuggestions}
+                            className="px-3.5 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-xs"
+                          >
+                            {isSubmitting ? "Submitting…" : "Submit Suggestions"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSubmitting}
+                            onClick={() => setShowSuggestionsForm(false)}
+                            className="px-3.5 py-1 rounded border border-slate-300 hover:bg-slate-100 text-slate-700 font-medium text-xs transition cursor-pointer"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          disabled={isSubmitting || !suggestionNotes.trim()}
-                          onClick={handleSubmitSuggestions}
-                          className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs cursor-pointer disabled:opacity-50 shadow-xs"
-                        >
-                          Submit Suggestions &amp; Move to To Do
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSubmitting}
-                          onClick={() => setShowSuggestionsForm(false)}
-                          className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Employee Deliverable Submission Section (When moving status to REVIEW) */}
-          {task.status !== "REVIEW" && status === "REVIEW" && (
-            <div className="space-y-3 pt-1">
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-2">
-                Submit Deliverable for Review
-              </div>
-
-              {/* Completion Notes */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-0.5">
-                  <span className="border-b-2 border-rose-500 pb-0.5">Completion Notes *</span>
-                </label>
-                <div className="flex-1">
-                  <textarea
-                    rows={2}
-                    value={reviewComments}
-                    onChange={(e) => setReviewComments(e.target.value)}
-                    placeholder="Describe completed work or deliverable notes…"
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 resize-none placeholder:text-slate-400"
-                  />
-                </div>
-              </div>
-
-              {/* Screenshot Dropzone */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-0.5">
-                  Screenshots
-                </label>
-                <div className="flex-1 space-y-2">
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current?.click()}
-                    className={`border border-dashed rounded p-3 text-center cursor-pointer transition ${
-                      isDraggingOver
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-slate-300 hover:border-blue-500 bg-white"
-                    }`}
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileChange}
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                    />
-                    <p className="text-xs text-slate-700 font-medium">
-                      <span className="text-blue-600 font-bold">Click to upload</span> or drag &amp; drop screenshot files
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">PNG, JPG, WebP up to 10MB</p>
-                  </div>
-
-                  {/* Thumbnail List */}
-                  {reviewAttachments.length > 0 && (
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                      {reviewAttachments.map((att, idx) => {
-                        const imgSrc = att.dataUrl || att.url || att;
-                        const imgName = att.name || "Screenshot";
-                        const keyId = att.id ? `review-att-${att.id}` : `review-att-idx-${idx}`;
-                        return (
-                          <div
-                            key={keyId}
-                            className="relative group rounded border border-slate-200 p-1 bg-white overflow-hidden flex flex-col shadow-2xs"
-                          >
-                            <div
-                              className="h-16 w-full rounded overflow-hidden bg-slate-100 flex items-center justify-center relative cursor-pointer"
-                              onClick={() => setActiveScreenshotModal(att)}
-                            >
-                              <img
-                                src={imgSrc}
-                                alt={imgName}
-                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                              />
-                              <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-semibold">
-                                Expand
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between pt-1 text-[10px] px-0.5">
-                              <span className="truncate max-w-[80px] text-slate-700 font-medium" title={imgName}>
-                                {imgName}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveAttachment(att.id)}
-                                className="text-rose-500 hover:text-rose-700 font-bold px-1 cursor-pointer"
-                                title="Remove screenshot"
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Standard Task Fields matching Create Sprint layout */}
-          <div className="space-y-4 pt-1">
-            {/* Row: Name with red underline indicator */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                <span className="border-b-2 border-rose-500 pb-0.5">
-                  {taskType === "BUG" ? "Bug Name" : "Task Name"}
-                </span>
-              </label>
-              <div className="flex-1">
-                <input
-                  type="text"
-                  required
-                  readOnly={!canEditManagementFields}
-                  autoFocus={canEditManagementFields && task.status !== "REVIEW"}
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={
-                    taskType === "BUG"
-                      ? "e.g., Task title fails to update on save"
-                      : "e.g., Implement employee attendance export"
-                  }
-                  className={`w-full border-b outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors placeholder:text-slate-400 ${
-                    canEditManagementFields
-                      ? "border-slate-300 focus:border-blue-600"
-                      : "border-slate-300 cursor-default"
-                  }`}
-                />
-              </div>
-            </div>
-
-            {/* Row: Description */}
-            <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-                Description
-              </label>
-              <div className="flex-1">
-                <textarea
-                  rows={2}
-                  readOnly={!canEditManagementFields}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Optional description or details…"
-                  className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400 ${
-                    canEditManagementFields ? "focus:border-blue-600" : "cursor-default"
-                  }`}
-                />
-              </div>
-            </div>
-
-            {/* Section Divider: Default Section */}
-            <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-2">
-              Default Section
-            </div>
-
-            {/* Row: Status */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                Status
-              </label>
-              <div className="flex-1 relative">
-                <select
-                  value={status}
-                  disabled={isStatusLockedForEmployee || (status === "COMPLETED" && !canReviewTask)}
-                  onChange={(e) => {
-                    const newStatus = e.target.value;
-                    if (newStatus === "COMPLETED" && !canReviewTask) {
-                      setFeedbackMsg({
-                        text: "Deliverable Approval Required: Only the Project Manager or Team Lead can mark this task as Completed.",
-                        type: "warning",
-                      });
-                      setTimeout(() => setFeedbackMsg({ text: "", type: "" }), 3000);
-                      return;
-                    }
-                    setStatus(newStatus);
-                  }}
-                  className={`w-full border-b outline-none pb-1 text-sm bg-transparent text-slate-900 appearance-none pr-6 ${
-                    isStatusLockedForEmployee
-                      ? "border-slate-200 text-slate-500 cursor-not-allowed"
-                      : "border-slate-300 focus:border-blue-600 cursor-pointer"
-                  }`}
-                >
-                  <option value="TODO">To Do</option>
-                  <option value="IN_PROGRESS">In Progress</option>
-                  <option value="REVIEW">In Review</option>
-                  {canReviewTask && <option value="COMPLETED">Completed</option>}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                  {isStatusLockedForEmployee ? "🔒" : "▼"}
-                </div>
-              </div>
-            </div>
-
-            {/* Row: Owner (Assignee) */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                Owner
-              </label>
-              <div className="flex-1 relative">
-                <select
-                  value={assigneeId}
-                  disabled={!canEditManagementFields}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                  className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 appearance-none pr-6 ${
-                    !canEditManagementFields ? "cursor-default text-slate-900" : "focus:border-blue-600 cursor-pointer"
-                  }`}
-                >
-                  <option value="">Unassigned</option>
-                  {allEmployees.map((emp, idx) => {
-                    const empId = emp.id || `emp-fallback-${idx}`;
-                    const load = getEmployeeSprintWorkload(empId, sprintId, tasks);
-                    const tag = emp.roleTag ? `[${emp.roleTag}] ` : "";
-                    return (
-                      <option key={`assignee-opt-${empId}-${idx}`} value={empId}>
-                        {tag}{emp.full_name || "Employee"} {emp.designation ? `(${emp.designation})` : ""} {sprintId ? `— ${load.count} sp` : `— ${load.count} active`}
-                      </option>
-                    );
-                  })}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                  ▼
-                </div>
-              </div>
-            </div>
-
-            {/* Row: Sprint Allocation */}
-            {!isKanban && (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  Sprint
-                </label>
-                <div className="flex-1 relative">
-                  <select
-                    value={sprintId}
-                    disabled={!canEditManagementFields}
-                    onChange={(e) => handleSprintChange(e.target.value)}
-                    className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 appearance-none pr-6 ${
-                      !canEditManagementFields ? "cursor-default text-slate-900" : "focus:border-blue-600 cursor-pointer"
-                    }`}
-                  >
-                    <option value="">Backlog (Unscheduled)</option>
-                    {effectiveSprints.map((s, idx) => (
-                      <option key={`sprint-opt-${s.id || idx}-${idx}`} value={s.id}>
-                        {s.name} {s.status ? `(${s.status})` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                    ▼
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Row: Priority */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                Priority
-              </label>
-              <div className="flex-1 relative">
-                <select
-                  value={priority}
-                  disabled={!canEditManagementFields}
-                  onChange={(e) => setPriority(e.target.value)}
-                  className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 appearance-none pr-6 ${
-                    !canEditManagementFields ? "cursor-default text-slate-900" : "focus:border-blue-600 cursor-pointer"
-                  }`}
-                >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                  <option value="URGENT">Urgent</option>
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                  ▼
-                </div>
-              </div>
-            </div>
-
-            {/* Row: Story Points */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                Story Points
-              </label>
-              <div className="flex-1 relative">
-                <select
-                  value={storyPoints}
-                  disabled={!canEditManagementFields}
-                  onChange={(e) => setStoryPoints(Number(e.target.value))}
-                  className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 appearance-none pr-6 ${
-                    !canEditManagementFields ? "cursor-default text-slate-900" : "focus:border-blue-600 cursor-pointer"
-                  }`}
-                >
-                  {[1, 2, 3, 5, 8, 13, 21].map((pts) => (
-                    <option key={`storypoint-opt-${pts}`} value={pts}>
-                      {pts} {pts === 1 ? "point" : "points"}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                  ▼
-                </div>
-              </div>
-            </div>
-
-            {/* Row: Epic */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                Epic
-              </label>
-              <div className="flex-1 relative">
-                <select
-                  value={epicId}
-                  disabled={!canEditManagementFields}
-                  onChange={(e) => setEpicId(e.target.value)}
-                  className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 appearance-none pr-6 ${
-                    !canEditManagementFields ? "cursor-default text-slate-900" : "focus:border-blue-600 cursor-pointer"
-                  }`}
-                >
-                  <option value="">--None--</option>
-                  {effectiveEpics.map((epic, idx) => (
-                    <option key={`epic-opt-${epic.id || idx}-${idx}`} value={epic.id}>
-                      {epic.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                  ▼
-                </div>
-              </div>
-            </div>
-
-            {/* Row: Due Date */}
-            <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-              <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-                Due Date
-              </label>
-              <div className="flex-1 space-y-1.5">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[200px]">
-                    <input
-                      type="date"
-                      readOnly={!canEditManagementFields}
-                      disabled={!canEditManagementFields}
-                      min={sprintMinDate || undefined}
-                      max={sprintMaxDate || undefined}
-                      value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
-                      className={`w-full border-b border-slate-300 outline-none pb-1 text-sm bg-transparent text-slate-900 ${
-                        !canEditManagementFields ? "cursor-default text-slate-900" : "focus:border-blue-600"
-                      }`}
-                    />
-                  </div>
-
-                  {/* Employee Request Extension Button */}
-                  {!canEditManagementFields && task.status !== "COMPLETED" && extensionStatus !== "PENDING" && (
-                    <button
-                      type="button"
-                      onClick={() => setIsExtensionModalOpen(true)}
-                      className="px-2.5 py-1 rounded bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 border border-slate-300 hover:border-blue-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                      title="Request a deadline extension from your Team Lead"
-                    >
-                      <svg className="w-3.5 h-3.5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>Request Extension</span>
-                    </button>
-                  )}
-                </div>
-
-                {selectedSprint && (
-                  <p className="text-xs text-blue-700 font-medium">
-                    Sprint window: {sprintMinDate || "Start"} to {sprintMaxDate || "End"}
-                  </p>
-                )}
-
-                {/* Team Lead Extension Request Banner Triggering Review Popup */}
-                {canEditManagementFields && extensionStatus === "PENDING" && (
-                  <div className="mt-3 p-3 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 animate-fadeIn">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-900 truncate flex items-center gap-1.5">
-                          <span>Extension Requested:</span>
-                          <span className="font-mono text-blue-700">
-                            {task.extension_requested_date ? new Date(task.extension_requested_date).toLocaleDateString() : "New Date"}
+              {/* Previous Review Feedback (When in Rework / To Do) */}
+              {teamLeadSuggestion && task.status === "TODO" && (
+                <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5 border-t border-slate-100">
+                  <label className="sm:w-32 text-xs text-amber-700 font-medium shrink-0 pt-0.5">
+                    Review Feedback
+                  </label>
+                  <div className="flex-1 space-y-1.5">
+                    <div className="p-2 rounded bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                      <div className="flex items-center justify-between text-[11px] pb-1 border-b border-amber-200 font-medium">
+                        <span>Reviewed by: <strong>{teamLeadSuggestion.leadName}</strong></span>
+                        {teamLeadSuggestion.timestamp && (
+                          <span className="text-slate-500 font-mono">
+                            {new Date(teamLeadSuggestion.timestamp).toLocaleDateString()}
                           </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                          Reason: "{task.extension_reason || "More time requested"}"
-                        </p>
+                        )}
                       </div>
+                      <p className="pt-1 whitespace-pre-wrap">{teamLeadSuggestion.text}</p>
                     </div>
+                    {isAssignedToMe && (
+                      <button
+                        type="button"
+                        onClick={handleStartWorking}
+                        disabled={isSubmitting}
+                        className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-xs"
+                      >
+                        Start Working (Move to In Progress)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Review History Records */}
+              {reviewHistoryIterations.length > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5 border-t border-slate-100">
+                  <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
+                    Review Records
+                  </label>
+                  <div className="flex-1 space-y-1">
                     <button
                       type="button"
-                      onClick={() => setIsReviewExtensionModalOpen(true)}
-                      className="px-3 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold text-xs transition shrink-0 cursor-pointer shadow-2xs flex items-center gap-1.5"
+                      onClick={() => setShowReviewHistory((prev) => !prev)}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
                     >
-                      <span>Review Request</span>
-                      <span>→</span>
+                      <span>{showReviewHistory ? "Hide Review Records" : `View Past Records (${reviewHistoryIterations.length})`}</span>
+                      <span>{showReviewHistory ? "▲" : "▼"}</span>
                     </button>
+                    {showReviewHistory && (
+                      <div className="p-2 rounded bg-slate-50 border border-slate-200 space-y-2 mt-1">
+                        {reviewHistoryIterations.map((entry, idx) => (
+                          <div key={entry.id || idx} className="text-xs border-b border-slate-200 pb-1.5 last:border-0 last:pb-0">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="font-semibold text-slate-800">{entry.changedBy}</span>
+                              <span className="text-slate-400 font-mono">{entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : ""}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              {entry.oldStatus || "CREATED"} → <strong className="text-blue-600">{entry.newStatus}</strong>
+                            </div>
+                            {entry.comments && <p className="text-[11px] text-slate-700 pt-0.5 whitespace-pre-wrap">{entry.comments}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              )}
 
-                {/* Employee Extension Status Notice (Pending) */}
-                {!canEditManagementFields && extensionStatus === "PENDING" && (
-                  <div className="mt-2 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs space-y-1 animate-fadeIn">
-                    <div className="flex items-center gap-2 font-bold text-slate-900">
-                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-                      <span>Extension Request Pending Team Lead Review</span>
-                    </div>
-                    <p className="text-[11px] text-slate-600 leading-relaxed">
-                      You requested an extension to <strong className="font-mono text-blue-700">{task.extension_requested_date}</strong>. Reason: "{task.extension_reason}". Your Team Lead will review shortly.
-                    </p>
-                  </div>
-                )}
-
-                {/* Approved Extension Notice */}
-                {extensionStatus === "APPROVED" && (
-                  <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs flex items-center justify-between gap-2 animate-fadeIn">
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-600 font-bold">✓</span>
-                      <span><strong>Extension Approved:</strong> Due date updated to <span className="font-mono font-bold text-blue-700">{dueDate}</span>.{task.extension_decision_note ? ` Note: "${task.extension_decision_note}"` : ""}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Rejected Extension Notice */}
-                {extensionStatus === "REJECTED" && (
-                  <div className="mt-2 p-2 rounded-lg bg-slate-50 border border-slate-200 text-slate-800 text-xs flex items-center justify-between gap-2 animate-fadeIn">
-                    <div className="flex items-center gap-2">
-                      <span className="text-rose-600 font-bold">✕</span>
-                      <span><strong>Extension Rejected:</strong> Deadline remains <span className="font-mono font-bold">{dueDate}</span>.{task.extension_decision_note ? ` Note: "${task.extension_decision_note}"` : ""}</span>
-                    </div>
-                  </div>
-                )}
-
-                {isTaskDueToday && (
-                  <div className="mt-1.5 flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-300/80 text-amber-950 text-xs font-semibold animate-fadeIn">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
-                    <span>⏰ Deliverable Due Today · Please analyze status and prioritize remaining work for on-time completion.</span>
-                  </div>
-                )}
-                {isTaskModalOverdue && (
-                  <div className="mt-1.5 flex items-center gap-2 p-2 rounded-lg bg-rose-50 border border-rose-300/80 text-rose-950 text-xs font-semibold animate-fadeIn">
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
-                    <span>⚠️ Target Deadline Passed ({dueDate}) · Please analyze blockers and update status immediately.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Bottom Action Buttons matching Create Sprint format */}
-            <div className="pt-6 pb-2 flex items-center gap-3">
-              {canEditManagementFields ? (
-                <>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !title.trim() || !dateValidation.isValid}
-                    className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-50 shadow-xs"
-                  >
-                    {isSubmitting ? "Saving…" : "Update"}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={onClose}
-                    className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
+              {/* Bottom Action Footer for Review Tab */}
+              <div className="pt-3 pb-1 flex items-center gap-3 border-t border-slate-100">
                 <button
                   type="button"
-                  disabled={isSubmitting}
                   onClick={onClose}
-                  className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
+                  className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer"
                 >
                   Close
                 </button>
-              )}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
         </form>
       </div>
 
-      {/* Task Extension Modal Triggered from inside Task Detail */}
+      {/* Task Extension Modal */}
       {isExtensionModalOpen && (
         <TaskExtensionModal
           isOpen={isExtensionModalOpen}
@@ -1877,7 +2051,7 @@ export default function TaskDetailModal({
         />
       )}
 
-      {/* Task Extension Review Modal Triggered for Team Leads */}
+      {/* Task Extension Review Modal */}
       {isReviewExtensionModalOpen && (
         <TaskExtensionReviewModal
           isOpen={isReviewExtensionModalOpen}
@@ -1913,9 +2087,9 @@ export default function TaskDetailModal({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-700 flex flex-col cursor-default"
+            className="relative max-w-4xl max-h-[90vh] bg-slate-900 rounded-lg overflow-hidden shadow-2xl border border-slate-700 flex flex-col cursor-default"
           >
-            <div className="px-4 py-2.5 bg-slate-800 flex items-center justify-between border-b border-slate-700 text-white text-xs">
+            <div className="px-4 py-2 bg-slate-800 flex items-center justify-between border-b border-slate-700 text-white text-xs">
               <span className="font-semibold truncate">
                 {activeScreenshotModal.name || "Screenshot Preview"}
               </span>
@@ -1937,7 +2111,8 @@ export default function TaskDetailModal({
           </div>
         </div>
       )}
-    </div>,
-    document.body
+    </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

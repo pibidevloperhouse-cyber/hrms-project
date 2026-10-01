@@ -17,7 +17,6 @@ import MyDocumentsCard from "./components/MyDocumentsCard";
 import ProjectManagement from "./components/ProjectManagement";
 import RolePromotionModal from "./components/RolePromotionModal";
 import ExecutivePerformanceMatrix from "./components/ExecutivePerformanceMatrix";
-import TLMonthlyEvaluationModal from "./components/TLMonthlyEvaluationModal";
 import { checkTaskSprintOverdue } from "@/lib/projectUtils";
 
 // ─── NAV CONFIG ──────────────────────────────────────────────────────────────
@@ -38,69 +37,62 @@ function getNavIcon(key, className = "w-4 h-4 shrink-0") {
   switch (key) {
     case "overview":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" />
-          <rect x="14" y="14" width="7" height="7" rx="1.5" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25V15.75z" />
         </svg>
       );
     case "evaluations":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.563.563 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.563.563 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
         </svg>
       );
     case "projects":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
         </svg>
       );
     case "attendance":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="10" />
-          <polyline points="12 6 12 12 16 14" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       );
     case "calendar":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <rect x="3" y="4" width="18" height="18" rx="2" />
-          <line x1="16" y1="2" x2="16" y2="6" />
-          <line x1="8" y1="2" x2="8" y2="6" />
-          <line x1="3" y1="10" x2="21" y2="10" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.253M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" />
         </svg>
       );
     case "leave-requests":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
         </svg>
       );
     case "documents":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
         </svg>
       );
     case "employees":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
         </svg>
       );
     case "departments":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 7.125C2.25 6.504 2.754 6 3.375 6h6c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-6A1.125 1.125 0 012.25 9.375v-2.25zM13.5 7.125c0-.621.504-1.125 1.125-1.125h6c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-6A1.125 1.125 0 0113.5 9.375v-2.25zM7.875 14.625c0-.621.504-1.125 1.125-1.125h6c.621 0 1.125.504 1.125 1.125v2.25c0 .621-.504 1.125-1.125 1.125h-6a1.125 1.125 0 01-1.125-1.125v-2.25z" />
         </svg>
       );
     case "settings":
       return (
-        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+        <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M17.982 18.725A7.488 7.488 0 0012 15.75a7.488 7.488 0 00-5.982 2.975m11.964 0a9 9 0 10-11.963 0m11.964 0A8.966 8.966 0 0112 21a8.966 8.966 0 01-5.982-2.275M15 9.75a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
       );
     default:
@@ -127,7 +119,7 @@ const STATUS_MAP = {
 function RoleBadge({ role }) {
   const r = ROLE_MAP[role] || ROLE_MAP.employee;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${r.bg} ${r.color}`}>
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${r.bg} ${r.color}`}>
       {r.label}
     </span>
   );
@@ -136,7 +128,7 @@ function RoleBadge({ role }) {
 function StatusBadge({ status }) {
   const s = STATUS_MAP[status] || { label: status, dot: "bg-slate-400", pill: "bg-slate-100 text-slate-700 border-slate-200" };
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${s.pill}`}>
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${s.pill}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
       {s.label}
     </span>
@@ -207,53 +199,13 @@ function resolveDepartmentForRole(role, availableDepartments = [], currentDepart
 function DashboardContent() {
   const router = useRouter();
 
-  // Instant bootstrap from session storage if returning from login
-  const [company, setCompany] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const b = sessionStorage.getItem("workspace_bootstrap");
-        if (b) return JSON.parse(b).company || null;
-      } catch (_) {}
-    }
-    return null;
-  });
-  const [userRole, setUserRole] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const b = sessionStorage.getItem("workspace_bootstrap");
-        if (b) return JSON.parse(b).role || "ADMIN";
-      } catch (_) {}
-    }
-    return "ADMIN";
-  });
-  const [employeeProfile, setEmployeeProfile] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const b = sessionStorage.getItem("workspace_bootstrap");
-        if (b) return JSON.parse(b).employee || null;
-      } catch (_) {}
-    }
-    return null;
-  });
-  const [userSession, setUserSession] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const b = sessionStorage.getItem("workspace_bootstrap");
-        if (b) return JSON.parse(b).user || null;
-      } catch (_) {}
-    }
-    return null;
-  });
+  // Consistent initial state across Server and Client to guarantee zero hydration mismatch
+  const [company, setCompany] = useState(null);
+  const [userRole, setUserRole] = useState("ADMIN");
+  const [employeeProfile, setEmployeeProfile] = useState(null);
+  const [userSession, setUserSession] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [loading, setLoading] = useState(() => {
-    if (typeof window !== "undefined") {
-      try {
-        const b = sessionStorage.getItem("workspace_bootstrap");
-        if (b && JSON.parse(b).company) return false;
-      } catch (_) {}
-    }
-    return true;
-  });
+  const [loading, setLoading] = useState(true);
   const [loadingEmployees, setLoadingEmployees] = useState(false);
   const [authError, setAuthError] = useState("");
   const [realtimeStatus, setRealtimeStatus] = useState("connecting");
@@ -265,8 +217,6 @@ function DashboardContent() {
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
   const [selectedEmpForRoleModal, setSelectedEmpForRoleModal] = useState(null);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
-  const [showTLMonthlyEvalModal, setShowTLMonthlyEvalModal] = useState(false);
-  const [selectedEmpForTLEval, setSelectedEmpForTLEval] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -286,9 +236,7 @@ function DashboardContent() {
   const isAdmin = normalizedUserRole.includes("admin") || normalizedUserRole.includes("owner");
   const isHR = normalizedUserRole.includes("hr");
   const canInvite = isAdmin || isHR;
-  const isManager =
-    isAdmin ||
-    isHR ||
+  const isLeadOrManager =
     normalizedUserRole.includes("manager") ||
     normalizedUserRole.includes("lead") ||
     normalizedUserRole.includes("supervisor") ||
@@ -297,6 +245,7 @@ function DashboardContent() {
     normalizedDesignation.includes("lead") ||
     normalizedDesignation.includes("supervisor") ||
     normalizedDesignation.includes("head");
+  const isManager = isAdmin || isHR || isLeadOrManager;
   const isStaff = !isManager && !isAdmin && !isHR;
   const [isSubmittingInvite, setIsSubmittingInvite] = useState(false);
   const [inviteError, setInviteError] = useState("");
@@ -314,6 +263,7 @@ function DashboardContent() {
     avatarUrl: null,
   });
   const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [profileMsg, setProfileMsg] = useState({ error: "", success: "" });
 
   useEffect(() => {
@@ -334,14 +284,84 @@ function DashboardContent() {
     }
   }, [employeeProfile]);
 
-  const handleAvatarChange = (e) => {
+  const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileForm((prev) => ({ ...prev, avatarUrl: reader.result }));
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setProfileMsg({ error: "Please select a valid image file (PNG, JPG, WebP, GIF).", success: "" });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setProfileMsg({ error: "Avatar image size must be less than 5MB.", success: "" });
+      return;
+    }
+
+    // Immediate preview for responsive UX
+    const previewUrl = URL.createObjectURL(file);
+    setProfileForm((prev) => ({ ...prev, avatarUrl: previewUrl }));
+    setIsUploadingAvatar(true);
+    setProfileMsg({ error: "", success: "" });
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await authFetch("/api/upload/avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setProfileMsg({ error: data.message || "Failed to upload avatar image.", success: "" });
+        setProfileForm((prev) => ({ ...prev, avatarUrl: employeeProfile?.avatar_url || null }));
+      } else {
+        // Set permanent Supabase Storage public CDN URL
+        const uploadedUrl = data.avatarUrl || data.url;
+        setProfileForm((prev) => ({ ...prev, avatarUrl: uploadedUrl }));
+        if (data.employee) {
+          setEmployeeProfile(data.employee);
+        } else {
+          setEmployeeProfile((prev) => (prev ? { ...prev, avatar_url: uploadedUrl } : prev));
+        }
+
+        // Sync local employees directory list immediately
+        setEmployees((prev) =>
+          prev.map((emp) =>
+            emp.id === data.employee?.id || emp.id === employeeProfile?.id || emp.email === employeeProfile?.email
+              ? { ...emp, avatar_url: uploadedUrl }
+              : emp
+          )
+        );
+
+        // Update sessionStorage bootstrap cache so page refresh or fast tab switch retains the photo immediately
+        try {
+          const cachedBootstrap = sessionStorage.getItem("workspace_bootstrap");
+          if (cachedBootstrap) {
+            const parsed = JSON.parse(cachedBootstrap);
+            if (parsed.employee) {
+              parsed.employee.avatar_url = uploadedUrl;
+            }
+            if (parsed.employees && Array.isArray(parsed.employees)) {
+              const empId = data.employee?.id || employeeProfile?.id;
+              const targetEmp = parsed.employees.find((item) => item.id === empId);
+              if (targetEmp) targetEmp.avatar_url = uploadedUrl;
+            }
+            sessionStorage.setItem("workspace_bootstrap", JSON.stringify(parsed));
+          }
+        } catch (_) {}
+
+        setProfileMsg({ error: "", success: "Profile photo uploaded and updated successfully!" });
+        showToast("Profile Photo Updated", "Your new profile picture is now live across the workspace.", "success");
+      }
+    } catch (err) {
+      console.error("Avatar upload failed:", err);
+      setProfileMsg({ error: "Network error uploading avatar.", success: "" });
+      setProfileForm((prev) => ({ ...prev, avatarUrl: employeeProfile?.avatar_url || null }));
+    } finally {
+      setIsUploadingAvatar(false);
     }
   };
 
@@ -360,7 +380,22 @@ function DashboardContent() {
         setProfileMsg({ error: data.message || "Failed to update profile.", success: "" });
       } else {
         setProfileMsg({ error: "", success: "Profile details updated successfully!" });
-        if (data.employee) setEmployeeProfile(data.employee);
+        if (data.employee) {
+          setEmployeeProfile(data.employee);
+          setEmployees((prev) =>
+            prev.map((emp) =>
+              emp.id === data.employee.id || emp.email === data.employee.email ? { ...emp, ...data.employee } : emp
+            )
+          );
+          try {
+            const cachedBootstrap = sessionStorage.getItem("workspace_bootstrap");
+            if (cachedBootstrap) {
+              const parsed = JSON.parse(cachedBootstrap);
+              parsed.employee = data.employee;
+              sessionStorage.setItem("workspace_bootstrap", JSON.stringify(parsed));
+            }
+          } catch (_) {}
+        }
         showToast("Profile Updated", "Your profile details have been saved.", "success");
       }
     } catch {
@@ -373,12 +408,31 @@ function DashboardContent() {
   const showToast = (title, message, type = "info") => {
     const id = Date.now();
     setRealtimeToast({ id, title, message, type });
-    setTimeout(() => setRealtimeToast((c) => (c?.id === id ? null : c)), 4500);
+    setTimeout(() => setRealtimeToast((c) => (c?.id === id ? null : c)), 5000);
   };
 
   // Fetch company + role with resilient session hydration and seamless fallback
   useEffect(() => {
     let isMounted = true;
+
+    // Immediately restore cached bootstrap state on client after initial mount
+    try {
+      if (typeof window !== "undefined") {
+        const b = sessionStorage.getItem("workspace_bootstrap");
+        if (b) {
+          const parsed = JSON.parse(b);
+          if (parsed.company && isMounted) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            setCompany(parsed.company);
+            if (parsed.role) setUserRole(parsed.role);
+            if (parsed.employee) setEmployeeProfile(parsed.employee);
+            if (parsed.user) setUserSession(parsed.user);
+            setLoading(false);
+          }
+        }
+      }
+    } catch (_) {}
+
     (async () => {
       try {
         const supabase = createClient();
@@ -661,11 +715,13 @@ function DashboardContent() {
     }
     loadCompanyData();
     return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company?.id]);
 
   // Ensure employees are immediately loaded/refreshed when switching to Team Directory tab
   useEffect(() => {
     if (activeTab === "employees" && company?.id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchEmployees();
     }
   }, [activeTab, company?.id]);
@@ -1070,7 +1126,7 @@ function DashboardContent() {
         {/* Brand Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-sky-600 flex items-center justify-center text-white font-extrabold text-base shadow-xs shadow-sky-600/25 shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-brand-gradient flex items-center justify-center text-white font-extrabold text-base shadow-xs shadow-[#1f6fb2]/25 shrink-0">
               {company?.name?.charAt(0)?.toUpperCase() || "H"}
             </div>
             <div className="min-w-0">
@@ -1107,7 +1163,7 @@ function DashboardContent() {
                 className={`
                   w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[14px] font-bold tracking-tight transition-all duration-200 cursor-pointer group
                   ${active
-                    ? "bg-sky-600 text-white shadow-md shadow-sky-600/25 scale-[1.01]"
+                    ? "bg-brand-gradient text-white shadow-md shadow-[#1f6fb2]/25 scale-[1.01]"
                     : "text-slate-700 hover:text-slate-950 hover:bg-slate-100 hover:translate-x-1"
                   }
                 `}
@@ -1144,7 +1200,7 @@ function DashboardContent() {
                 }}
                 className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-200 shadow-2xs transition-all cursor-pointer group"
               >
-                <span className="w-4 h-4 text-sky-600 font-bold text-sm">＋</span>
+                <span className="w-4 h-4 text-[#1f6fb2] font-bold text-sm">＋</span>
                 <span>Invite Employee</span>
               </button>
             </div>
@@ -1157,8 +1213,19 @@ function DashboardContent() {
           <div className="p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs space-y-2">
             <div className="flex items-center gap-3">
               <div className="relative shrink-0">
-                <div className="w-8 h-8 rounded-lg bg-sky-600 flex items-center justify-center text-white font-extrabold text-xs shadow-2xs">
-                  {avatar}
+                <div className="w-8 h-8 rounded-lg bg-brand-gradient flex items-center justify-center text-white font-extrabold text-xs shadow-2xs overflow-hidden">
+                  {employeeProfile?.avatar_url ? (
+                    <img
+                      src={employeeProfile.avatar_url}
+                      alt={displayName}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    avatar
+                  )}
                 </div>
                 <span
                   className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full ring-2 ring-white ${
@@ -1228,13 +1295,31 @@ function DashboardContent() {
             {canInvite && (
               <button
                 onClick={() => openInviteModal("employee")}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition shadow-xs shadow-sky-600/20 cursor-pointer"
+                className="hidden sm:flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition shadow-xs shadow-[#1f6fb2]/20 cursor-pointer"
               >
                 <span>＋</span>
                 <span>Invite</span>
               </button>
             )}
             <div className="hidden sm:block"><RoleBadge role={userRole} /></div>
+            <button
+              onClick={() => setActiveTab("settings")}
+              className="relative flex items-center justify-center w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-100 hover:ring-2 hover:ring-[#1f6fb2]/40 transition cursor-pointer shrink-0"
+              title="View My Profile"
+            >
+              {employeeProfile?.avatar_url ? (
+                <img
+                  src={employeeProfile.avatar_url}
+                  alt={displayName}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : (
+                <span className="text-xs font-extrabold text-[#1f6fb2]">{avatar}</span>
+              )}
+            </button>
           </div>
         </header>
 
@@ -1250,10 +1335,6 @@ function DashboardContent() {
                 userSession={userSession}
                 employeeProfile={employeeProfile}
                 onOpenInviteModal={() => openInviteModal("hr_manager")}
-                onOpenEvaluationModal={(emp) => {
-                  setSelectedEmpForTLEval(emp || null);
-                  setShowTLMonthlyEvalModal(true);
-                }}
                 onEmployeeUpdated={fetchEmployees}
                 renderRoleBadge={(r) => <RoleBadge role={r} />}
                 renderStatusBadge={(s) => <StatusBadge status={s} />}
@@ -1263,153 +1344,91 @@ function DashboardContent() {
                 {/* Top Welcome & Workspace Banner for Staff / HR */}
                 <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                          </svg>
-                        </div>
-                        <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                          Welcome back, {displayName}
-                        </h1>
-                        <span className="px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-200 capitalize">
-                          {userRole.replace("_", " ")}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500">
-                        {isHR && "HR Management Portal — Manage employees, send invitations, and oversee onboarding workflows."}
-                        {isManager && !isHR && "Manager Portal — Monitor team directory, department stats, and attendance records."}
-                        {isStaff && "Employee Workspace — View profile, record daily attendance, and access workspace documents."}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Sub-role Quick Status Bar */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Organization</span>
-                      <span className="font-semibold text-slate-900 truncate block">{company?.name || "Workspace"}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Assigned Role</span>
-                      <span className="font-semibold text-slate-900 truncate block">{ROLE_MAP[userRole]?.label || userRole}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Department</span>
-                      <span className="font-semibold text-slate-900 truncate block">{employeeProfile?.department || "General"}</span>
-                    </div>
-                    <div className="p-3 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
-                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Account Status</span>
-                      <span className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        <span>{employeeProfile?.status || "Active"}</span>
+                    <div className="flex items-center gap-2.5">
+                      <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                        Welcome, {displayName}
+                      </h1>
+                      <span className="px-2.5 py-0.5 rounded-full bg-sky-50 text-sky-700 text-xs font-semibold border border-sky-200 capitalize">
+                        {userRole.replace("_", " ")}
                       </span>
                     </div>
                   </div>
+
+                  {/* Sub-role Quick Status Bar - 3 Columns (Organization, Assigned Role, Department) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Organization</span>
+                      <span className="font-semibold text-slate-900 truncate block">{company?.name || "Workspace"}</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Assigned Role</span>
+                      <span className="font-semibold text-slate-900 truncate block">{ROLE_MAP[userRole]?.label || userRole}</span>
+                    </div>
+                    <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/70 space-y-0.5">
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Department</span>
+                      <span className="font-semibold text-slate-900 truncate block">{employeeProfile?.department || "General"}</span>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Stat Cards */}
+                {/* Top Summary Stat Cards matching Document & Payslips */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-                  <StatCard label="Monthly Leave Quota" value="3.0 Days" sub="Resets 1st of month" />
-                  <StatCard label="Available Leave Balance" value="3.0 Days" sub="Active monthly quota" />
+                  <StatCard label="Monthly Leave Quota" value="3.0 Days" />
+                  <StatCard label="Available Leave Balance" value="3.0 Days" />
                   <StatCard
                     label={["manager", "team_lead"].includes(userRole) ? "Department Staff" : "Registered Staff"}
                     value={employees.length}
-                    sub={["manager", "team_lead"].includes(userRole) ? "Assigned personnel" : "Active personnel"}
                   />
-                  <StatCard label={isHR ? "Pending Offers" : "Access Tier"} value={isHR ? pendingCount : (ROLE_MAP[userRole]?.label || userRole)} sub={isHR ? "Awaiting acceptance" : "Workspace role"} />
+                  <StatCard
+                    label={isHR ? "Pending Offers" : "Access Tier"}
+                    value={isHR ? pendingCount : (ROLE_MAP[userRole]?.label || userRole)}
+                  />
                 </div>
 
-                  {/* Profile + Attendance Row */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                    {/* Profile Card */}
-                    <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
-                      <div className="flex items-center gap-2.5 border-b border-slate-100 pb-4">
-                        <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                        </div>
-                        <div>
-                          <h3 className="text-sm font-bold text-slate-900 tracking-tight">My Profile Details</h3>
-                          <p className="text-[11px] text-slate-500">Official employment records & credentials</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {[
-                          { label: "Full Name", value: employeeProfile?.full_name || company?.name || "N/A" },
-                          { label: "Department", value: employeeProfile?.department || "General" },
-                          { label: "Designation", value: employeeProfile?.designation || "N/A" },
-                          { label: "Email", value: employeeProfile?.email || userSession?.email },
-                          { label: "Username", value: employeeProfile?.username ? `@${employeeProfile.username}` : "N/A", mono: true },
-                          { label: "Status", value: employeeProfile?.status || "active", badge: true },
-                        ].map(({ label, value, mono, badge }) => (
-                          <div key={label} className="p-3 rounded-xl bg-slate-50/50 border border-slate-200/60 space-y-0.5">
-                            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">{label}</p>
-                            {badge
-                              ? <StatusBadge status={value} />
-                              : <p className={`text-xs font-semibold ${mono ? "text-sky-700 font-mono" : "text-slate-900"}`}>{value}</p>
-                            }
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                {/* Attendance & Shift Card */}
+                <AttendanceCard />
 
-                    {/* Attendance Card */}
-                    <AttendanceCard />
-                  </div>
-
-                  {/* Manager / TL Monthly Evaluation Banner */}
-                  {isManager && (
-                    <div className="bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 border border-amber-200/90 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
-                          <span className="text-base">⭐</span>
-                          <span>Manager Monthly Team Performance Evaluation</span>
-                        </h3>
-                        <p className="text-xs text-amber-800/90">
-                          Evaluate team members on task completion, deadline punctuality, learning agility, innovation, and collaboration. Submit scores and monthly feedback remarks.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedEmpForTLEval(null);
-                          setShowTLMonthlyEvalModal(true);
-                        }}
-                        className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold shadow-xs shadow-amber-600/20 transition-all shrink-0 cursor-pointer flex items-center gap-1.5 active:scale-[0.98]"
-                      >
-                        <span>⭐</span>
-                        <span>Open Monthly Evaluation</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Leave Request Quick Action Banner */}
-                  <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
+                {/* Manager / TL Monthly Evaluation Banner */}
+                {isLeadOrManager && !isAdmin && !isHR && (
+                  <div className="bg-gradient-to-r from-sky-50/70 via-cyan-50/50 to-teal-50/70 border border-sky-200/80 rounded-2xl p-5 sm:p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xs">
                     <div className="space-y-1">
                       <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                        <svg className="w-4 h-4 text-sky-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                        <span>{isHR ? "HR Leave Approval Inbox" : "Employee Leave Request Portal"}</span>
+                        <span className="w-2 h-2 rounded-full bg-[#1f6fb2]" />
+                        <span>Manager Monthly Team Performance Evaluation</span>
                       </h3>
-                      <p className="text-xs text-slate-500">
-                        {isHR
-                          ? "Review, approve, or reject employee leave requests across the company with custom feedback notes."
-                          : "You have 3.0 days available leave quota for this month. Submit requests for HR approval with automatic monthly refresh."}
+                      <p className="text-xs text-slate-600">
+                        Evaluate team members on task completion, deadline punctuality, learning agility, innovation, and collaboration. Submit scores and monthly feedback remarks.
                       </p>
                     </div>
                     <button
-                      onClick={() => setActiveTab("leave-requests")}
-                      className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold shadow-xs shadow-sky-600/20 transition-colors shrink-0 cursor-pointer"
+                      type="button"
+                      onClick={() => {
+                        setSelectedEmpForTLEval(null);
+                        setShowTLMonthlyEvalModal(true);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold shadow-xs shadow-[#1f6fb2]/20 transition-all shrink-0 cursor-pointer flex items-center gap-1.5 active:scale-[0.98]"
                     >
-                      {isHR ? "Review Approval Inbox →" : "Apply / Manage Leaves →"}
+                      <span>Open Monthly Evaluation</span>
                     </button>
                   </div>
-                </>
-              )
+                )}
+
+                {/* Leave Request Quick Action Banner */}
+                <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900 tracking-tight">
+                      {isHR ? "HR Leave Approval Inbox" : "Employee Leave Request Portal"}
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setActiveTab("leave-requests")}
+                    className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold shadow-xs shadow-[#1f6fb2]/20 transition-all shrink-0 cursor-pointer"
+                  >
+                    {isHR ? "Review Approval Inbox →" : "Apply / Manage Leaves →"}
+                  </button>
+                </div>
+              </>
+            )
           )}
 
           {/* --- TAB: EXECUTIVE APPRAISALS & EVALUATIONS (OWNER ONLY) --- */}
@@ -1434,7 +1453,7 @@ function DashboardContent() {
 
           {/* --- TAB: WORK CALENDAR --- */}
           {activeTab === "calendar" && (
-            <CompanyCalendar />
+            <CompanyCalendar userRole={userRole} />
           )}
 
           {/* --- TAB: LEAVE REQUESTS --- */}
@@ -1463,11 +1482,6 @@ function DashboardContent() {
                 {/* Master Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                    </div>
                     <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                       {["manager", "team_lead"].includes(userRole)
                         ? `${employeeProfile?.department ? `${employeeProfile.department} ` : ""}Team Directory`
@@ -1476,22 +1490,6 @@ function DashboardContent() {
                   </div>
 
                   <div className="flex items-center gap-2.5">
-                    {/* Monthly Evaluation Trigger (Manager / TL / HR / Admin) */}
-                    {isManager && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedEmpForTLEval(null);
-                          setShowTLMonthlyEvalModal(true);
-                        }}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold transition shadow-xs shadow-amber-600/20 cursor-pointer active:scale-[0.98]"
-                        title="Open Team Monthly Performance & Feedback Evaluation Dialog"
-                      >
-                        <span className="text-amber-200">⭐</span>
-                        <span>Monthly Evaluation</span>
-                      </button>
-                    )}
-
                     {canInvite && (
                       <button
                         type="button"
@@ -1515,40 +1513,6 @@ function DashboardContent() {
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                     </button>
-                  </div>
-                </div>
-
-                {/* Real-time Department Progress & Live Status Tracker */}
-                <div className="p-4 rounded-xl bg-gradient-to-r from-sky-50/70 via-slate-50/70 to-indigo-50/70 border border-sky-100/80 space-y-2.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      <span className="text-xs font-bold text-slate-800 tracking-tight">
-                        {["manager", "team_lead"].includes(userRole)
-                          ? "Real-Time Department Activity & Progress"
-                          : "Real-Time Team Activity & Progress"}
-                      </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 font-bold border border-sky-200">
-                        {activeCount} of {employees.length} Active ({activePercent}%)
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 text-[11px] font-medium text-slate-600">
-                      <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                        {onlineCount} Online Now
-                      </span>
-                      <span className="text-slate-300">|</span>
-                      <span className="text-slate-500">
-                        {pendingCount} Pending Onboarding
-                      </span>
-                    </div>
-                  </div>
-                  {/* Clean Animated Progress Bar */}
-                  <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden shadow-inner">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all duration-700 ease-out"
-                      style={{ width: `${Math.max(activePercent, employees.length > 0 ? 5 : 0)}%` }}
-                    />
                   </div>
                 </div>
 
@@ -1653,12 +1617,11 @@ function DashboardContent() {
                       <table className="w-full text-left text-xs min-w-[700px]">
                         <thead className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                           <tr>
-                            <th className="py-3 px-5">Member &amp; Email</th>
-                            <th className="py-3 px-5">Role Assigned</th>
-                            <th className="py-3 px-5">Department &amp; Title</th>
+                            <th className="py-3 px-5">Member</th>
+                            <th className="py-3 px-5">Role</th>
+                            <th className="py-3 px-5">Department</th>
                             <th className="py-3 px-5">Joining Date</th>
-                            <th className="py-3 px-5">Username</th>
-                            <th className="py-3 px-5 text-right">Account Status</th>
+                            {canInvite && <th className="py-3 px-5 text-right">Actions</th>}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -1669,8 +1632,19 @@ function DashboardContent() {
                               <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors group">
                                 <td className="py-3.5 px-5">
                                   <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200/80 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                                      {initial}
+                                    <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
+                                      {emp.avatar_url ? (
+                                        <img
+                                          src={emp.avatar_url}
+                                          alt={emp.full_name || "Employee"}
+                                          className="w-full h-full object-cover"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = "none";
+                                          }}
+                                        />
+                                      ) : (
+                                        initial
+                                      )}
                                     </div>
                                     <div className="min-w-0">
                                       <div className="font-semibold text-slate-900 text-xs truncate max-w-xs flex items-center gap-1.5">
@@ -1688,44 +1662,12 @@ function DashboardContent() {
                                 </td>
 
                                 <td className="py-3.5 px-5">
-                                  <div className="flex items-center gap-2">
-                                    <RoleBadge role={emp.role} />
-                                    {isManager && emp.id !== employeeProfile?.id && (emp.role === "employee" || (!emp.role && !emp.is_owner)) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedEmpForTLEval(emp);
-                                          setShowTLMonthlyEvalModal(true);
-                                        }}
-                                        className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-[0.98]"
-                                        title={`Evaluate monthly performance for ${emp.full_name}`}
-                                      >
-                                        <span>⭐</span>
-                                        <span>Evaluate</span>
-                                      </button>
-                                    )}
-                                    {canInvite && (
-                                      <button
-                                        type="button"
-                                        onClick={() => {
-                                          setSelectedEmpForRoleModal(emp);
-                                          setIsRoleModalOpen(true);
-                                        }}
-                                        className="px-2 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                        title="Promote or Change Role"
-                                      >
-                                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                          <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                        </svg>
-                                        <span>Edit</span>
-                                      </button>
-                                    )}
-                                  </div>
+                                  <RoleBadge role={emp.role} />
                                 </td>
 
                                 <td className="py-3.5 px-5">
                                   <div className="space-y-0.5">
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
                                       {emp.department || "General"}
                                     </span>
                                     {emp.designation && (
@@ -1734,17 +1676,25 @@ function DashboardContent() {
                                   </div>
                                 </td>
 
-                                <td className="py-3.5 px-5 font-mono text-slate-600 text-[11px]">
+                                <td className="py-3.5 px-5 font-mono text-slate-600 text-xs">
                                   {emp.joining_date ? new Date(emp.joining_date).toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' }) : "—"}
                                 </td>
 
-                                <td className="py-3.5 px-5 font-mono text-sky-700 font-semibold text-xs">
-                                  {emp.username ? `@${emp.username}` : <span className="text-slate-400 font-sans italic text-[11px]">Pending</span>}
-                                </td>
-
-                                <td className="py-3.5 px-5 text-right">
-                                  <StatusBadge status={emp.status} />
-                                </td>
+                                {canInvite && (
+                                  <td className="py-3.5 px-5 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedEmpForRoleModal(emp);
+                                        setIsRoleModalOpen(true);
+                                      }}
+                                      className="px-3 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                                      title="Promote or Change Role"
+                                    >
+                                      Edit Role
+                                    </button>
+                                  </td>
+                                )}
                               </tr>
                             );
                           })}
@@ -1815,51 +1765,58 @@ function DashboardContent() {
 
           {/* --- TAB: SETTINGS (MY PROFILE) --- */}
           {activeTab === "settings" && (
-            <div className="max-w-3xl space-y-6">
+            <div className="max-w-4xl space-y-6">
               <form onSubmit={handleProfileSave} className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
                 {/* Profile Header & Photo Upload */}
-                <div className="bg-white border-b border-slate-100 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
-                  <div className="flex items-center gap-4">
+                <div className="bg-white border-b border-slate-100 p-5 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5">
+                  <div className="flex items-center gap-4 min-w-0">
                     <div className="relative group shrink-0">
-                      {profileForm.avatarUrl ? (
-                        <img
-                          src={profileForm.avatarUrl}
-                          alt="Profile Avatar"
-                          className="w-16 h-16 rounded-xl object-cover border border-slate-200 shadow-2xs"
-                        />
-                      ) : (
-                        <div className="w-16 h-16 rounded-xl bg-sky-50 text-sky-700 border border-sky-200/80 flex items-center justify-center font-bold text-xl shadow-2xs">
-                          {avatar}
+                      <div className="w-16 h-16 rounded-2xl overflow-hidden border border-slate-200/80 bg-slate-50 text-[#1f6fb2] flex items-center justify-center font-bold text-xl shadow-2xs relative">
+                        {avatar}
+                        {(profileForm.avatarUrl || employeeProfile?.avatar_url) && (
+                          <img
+                            src={profileForm.avatarUrl || employeeProfile?.avatar_url}
+                            alt="Profile Avatar"
+                            className="absolute inset-0 w-full h-full object-cover bg-white"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
+                        )}
+                      </div>
+                      {isUploadingAvatar && (
+                        <div className="absolute inset-0 rounded-2xl bg-slate-900/60 flex items-center justify-center text-white text-[10px] font-bold z-10">
+                          <svg className="animate-spin w-5 h-5 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
                         </div>
                       )}
-                      <label className="absolute inset-0 rounded-xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-[11px] font-semibold">
+                      <label className="absolute inset-0 rounded-2xl bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer text-white text-[11px] font-semibold z-20">
                         Change
                         <input
                           type="file"
                           accept="image/*"
                           onChange={handleAvatarChange}
+                          disabled={isUploadingAvatar}
                           className="hidden"
                         />
                       </label>
                     </div>
                     <div className="min-w-0">
-                      <h2 className="text-base font-bold text-slate-900 tracking-tight truncate">{displayName}</h2>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">{employeeProfile?.email || userSession?.email}</p>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <RoleBadge role={userRole} />
-                        <span className="text-[10px] font-mono font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                          {employeeProfile?.employee_id || `EMP-${employeeProfile?.id?.slice(0, 5)?.toUpperCase() || "001"}`}
-                        </span>
-                      </div>
+                      <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">
+                        {displayName}
+                      </h2>
                     </div>
                   </div>
 
-                  <label className="cursor-pointer px-3.5 py-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs shrink-0 self-stretch sm:self-auto justify-center">
-                    <span>Upload Photo</span>
+                  <label className={`cursor-pointer px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 text-xs font-semibold transition flex items-center gap-1.5 shadow-2xs shrink-0 self-stretch sm:self-auto justify-center ${isUploadingAvatar ? "opacity-60 pointer-events-none" : ""}`}>
+                    <span>{isUploadingAvatar ? "Uploading..." : "Upload Photo"}</span>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={handleAvatarChange}
+                      disabled={isUploadingAvatar}
                       className="hidden"
                     />
                   </label>
@@ -1879,11 +1836,11 @@ function DashboardContent() {
                   </div>
                 )}
 
-                <div className="p-6 space-y-6">
+                <div className="p-5 sm:p-6 space-y-6">
                   {/* SECTION 1: Workspace Account Information */}
                   <div className="space-y-3">
-                    <div className="border-b border-slate-100 pb-2 flex items-center justify-between">
-                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <div className="border-b border-slate-100 pb-2.5 flex items-center justify-between">
+                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Workspace Account Information
                       </h3>
                       <span className="text-[10px] text-slate-400 font-medium">
@@ -1894,7 +1851,7 @@ function DashboardContent() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {/* Employee ID */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Employee ID
                         </label>
                         <input
@@ -1902,13 +1859,13 @@ function DashboardContent() {
                           disabled
                           readOnly
                           value={employeeProfile?.employee_id || `EMP-${employeeProfile?.id?.slice(0, 5)?.toUpperCase() || "001"}`}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none shadow-2xs"
                         />
                       </div>
 
                       {/* Work Email */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Official Work Email
                         </label>
                         <input
@@ -1916,13 +1873,13 @@ function DashboardContent() {
                           disabled
                           readOnly
                           value={employeeProfile?.email || userSession?.email || ""}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 font-mono text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none shadow-2xs"
                         />
                       </div>
 
                       {/* Department */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Assigned Department
                         </label>
                         <input
@@ -1930,13 +1887,13 @@ function DashboardContent() {
                           disabled
                           readOnly
                           value={employeeProfile?.department || "General"}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-slate-700 text-xs cursor-not-allowed select-none outline-none shadow-2xs"
                         />
                       </div>
 
                       {/* Username */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Username
                         </label>
                         <input
@@ -1944,7 +1901,7 @@ function DashboardContent() {
                           disabled
                           readOnly
                           value={employeeProfile?.username ? `@${employeeProfile.username}` : "Not configured"}
-                          className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50/70 border border-slate-200/80 text-slate-700 font-mono text-xs cursor-not-allowed select-none outline-none shadow-2xs"
                         />
                       </div>
                     </div>
@@ -1952,8 +1909,8 @@ function DashboardContent() {
 
                   {/* SECTION 2: Personal Profile & Contact Information */}
                   <div className="space-y-4 pt-2">
-                    <div className="border-b border-slate-100 pb-2">
-                      <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <div className="border-b border-slate-100 pb-2.5">
+                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
                         Personal Profile &amp; Contact Details
                       </h3>
                     </div>
@@ -1961,7 +1918,7 @@ function DashboardContent() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {/* First Name */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           First Name
                         </label>
                         <input
@@ -1969,13 +1926,13 @@ function DashboardContent() {
                           value={profileForm.firstName}
                           onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
                           placeholder="First Name"
-                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-900 placeholder:text-slate-400 text-xs focus:border-[#1f6fb2] focus:ring-1 focus:ring-[#1f6fb2]/20 outline-none transition shadow-2xs font-medium"
                         />
                       </div>
 
                       {/* Last Name */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Last Name
                         </label>
                         <input
@@ -1983,13 +1940,13 @@ function DashboardContent() {
                           value={profileForm.lastName}
                           onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
                           placeholder="Last Name"
-                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-900 placeholder:text-slate-400 text-xs focus:border-[#1f6fb2] focus:ring-1 focus:ring-[#1f6fb2]/20 outline-none transition shadow-2xs font-medium"
                         />
                       </div>
 
                       {/* Personal Email */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Personal Email Address
                         </label>
                         <input
@@ -1997,13 +1954,13 @@ function DashboardContent() {
                           value={profileForm.personalEmail}
                           onChange={(e) => setProfileForm({ ...profileForm, personalEmail: e.target.value })}
                           placeholder="personal.email@example.com"
-                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-900 placeholder:text-slate-400 text-xs focus:border-[#1f6fb2] focus:ring-1 focus:ring-[#1f6fb2]/20 outline-none transition shadow-2xs font-medium"
                         />
                       </div>
 
                       {/* Phone Number */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Phone Number
                         </label>
                         <input
@@ -2011,27 +1968,27 @@ function DashboardContent() {
                           value={profileForm.phone}
                           onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
                           placeholder="+1 (555) 000-0000"
-                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-900 placeholder:text-slate-400 text-xs focus:border-[#1f6fb2] focus:ring-1 focus:ring-[#1f6fb2]/20 outline-none transition shadow-2xs font-medium"
                         />
                       </div>
 
                       {/* Joining Date */}
                       <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                           Date of Joining
                         </label>
                         <input
                           type="date"
                           value={profileForm.joiningDate}
                           onChange={(e) => setProfileForm({ ...profileForm, joiningDate: e.target.value })}
-                          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-900 text-xs focus:border-[#1f6fb2] focus:ring-1 focus:ring-[#1f6fb2]/20 outline-none transition shadow-2xs cursor-pointer font-medium"
                         />
                       </div>
                     </div>
 
                     {/* Address */}
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
                         Residential Address
                       </label>
                       <textarea
@@ -2039,7 +1996,7 @@ function DashboardContent() {
                         value={profileForm.address}
                         onChange={(e) => setProfileForm({ ...profileForm, address: e.target.value })}
                         placeholder="Residential address details"
-                        className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-800 placeholder-slate-400 text-xs focus:border-sky-500 focus:outline-none transition shadow-2xs resize-none"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200/80 text-slate-900 placeholder:text-slate-400 text-xs focus:border-[#1f6fb2] focus:ring-1 focus:ring-[#1f6fb2]/20 outline-none transition shadow-2xs resize-none font-medium"
                       />
                     </div>
                   </div>
@@ -2049,7 +2006,7 @@ function DashboardContent() {
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 text-xs font-semibold transition-all w-full sm:w-auto justify-center cursor-pointer shadow-2xs"
+                      className="px-4 py-2.5 rounded-xl border border-slate-200/80 bg-white text-slate-600 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 text-xs font-semibold transition-all w-full sm:w-auto justify-center cursor-pointer shadow-2xs"
                     >
                       Sign Out
                     </button>
@@ -2057,7 +2014,7 @@ function DashboardContent() {
                     <button
                       type="submit"
                       disabled={isSavingProfile}
-                      className="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold disabled:opacity-50 transition-colors shadow-xs shadow-sky-600/20 w-full sm:w-auto justify-center cursor-pointer flex items-center gap-2"
+                      className="px-5 py-2.5 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold disabled:opacity-50 transition shadow-xs shadow-[#1f6fb2]/20 w-full sm:w-auto justify-center cursor-pointer flex items-center gap-2"
                     >
                       {isSavingProfile ? (
                         <>
@@ -2076,53 +2033,35 @@ function DashboardContent() {
         </main>
       </div>
 
-      {/* --- INVITE MODAL (REALTIME STYLED MATCHING DOCUMENT UPLOAD POPUP) --- */}
+      {/* --- INVITE MODAL (MATCHING CONFIGURE HOURS POPUP THEME) --- */}
       {isInviteModalOpen && canInvite && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-white border border-slate-200/90 rounded-2xl shadow-2xl overflow-hidden my-auto animate-scaleUp">
-            {/* Modal Header */}
-            <div className="bg-slate-50/90 border-b border-slate-100 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center text-lg shrink-0 border border-sky-100 shadow-2xs">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.374 21c-2.331 0-4.512-.645-6.374-1.765z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900 leading-tight">
-                    Invite Employee to Workspace
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Send onboarding offer &amp; auto-provision company credentials
-                  </p>
-                </div>
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isSubmittingInvite) closeInviteModal();
+          }}
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+        >
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
+            {/* Top Header matching Configure Hours */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">Invite:</span>
+                <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+                  Team Member
+                </span>
               </div>
+
+              {/* Close button */}
               <button
                 type="button"
+                disabled={isSubmittingInvite}
                 onClick={closeInviteModal}
-                className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition text-sm font-bold cursor-pointer"
+                className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                 title="Close"
               >
                 ✕
               </button>
             </div>
-
-            {/* Error Notification Banner */}
-            {inviteError && (
-              <div className="mx-6 mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span>⚠️</span>
-                  <span>{inviteError}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setInviteError("")}
-                  className="text-rose-600 hover:text-rose-800 font-bold ml-2 cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
 
             {inviteSuccessData ? (
               <div className="p-6 space-y-4 text-xs">
@@ -2136,132 +2075,155 @@ function DashboardContent() {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={closeInviteModal}
-                  className="w-full py-2.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-xs cursor-pointer"
-                >
-                  Done &amp; Close
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleInviteSubmit} className="p-6 space-y-4 text-xs">
-                {/* Full Name & Work Email */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Candidate Full Name <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="fullName"
-                    placeholder="e.g. Sarah Jenkins"
-                    required
-                    value={inviteForm.fullName}
-                    onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
-                    className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Work Email Address <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    placeholder="sarah@company.com"
-                    required
-                    value={inviteForm.email}
-                    onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                    className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
-                  />
-                </div>
-
-                {/* Role & Department Selection */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      System Role <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      name="role"
-                      value={inviteForm.role}
-                      onChange={(e) => handleRoleChange(e.target.value)}
-                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
-                    >
-                      <option value="employee">Standard Employee</option>
-                      {userRole === "ADMIN" && (
-                        <>
-                          <option value="hr_manager">HR Manager</option>
-                          <option value="hr_executive">HR Executive</option>
-                        </>
-                      )}
-                      <option value="team_lead">Team Lead</option>
-                      <option value="manager">Manager / Supervisor</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Department <span className="text-rose-500">*</span>
-                    </label>
-                    <select
-                      name="department"
-                      value={inviteForm.department}
-                      onChange={(e) => setInviteForm({ ...inviteForm, department: e.target.value })}
-                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 cursor-pointer shadow-2xs font-medium transition"
-                    >
-                      {getDepartmentsForRole(inviteForm.role, dbDepartments).map((d) => (
-                        <option key={d} value={d}>{d}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Designation & Phone */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Job Designation
-                    </label>
-                    <input
-                      type="text"
-                      name="designation"
-                      placeholder="e.g. Senior Software Engineer"
-                      value={inviteForm.designation}
-                      onChange={(e) => setInviteForm({ ...inviteForm, designation: e.target.value })}
-                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                      Contact Phone
-                    </label>
-                    <input
-                      type="text"
-                      name="phone"
-                      placeholder="+1 (555) 0199"
-                      value={inviteForm.phone}
-                      onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
-                      className="w-full bg-slate-50/70 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-2xs font-medium transition"
-                    />
-                  </div>
-                </div>
-
-                {/* Footer Action Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                <div className="pt-2 flex justify-end">
                   <button
                     type="button"
                     onClick={closeInviteModal}
-                    className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer shadow-xs shadow-[#1f6fb2]/20"
                   >
-                    Cancel
+                    Done &amp; Close
                   </button>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleInviteSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                {inviteError && (
+                  <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                    {inviteError}
+                  </div>
+                )}
+
+                {/* Section 1: Candidate Identity */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                    Member Information
+                  </span>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      Candidate Name <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        name="fullName"
+                        placeholder="e.g. Sarah Jenkins"
+                        required
+                        value={inviteForm.fullName}
+                        onChange={(e) => setInviteForm({ ...inviteForm, fullName: e.target.value })}
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition placeholder:text-slate-400 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      Work Email <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex-1">
+                      <input
+                        type="email"
+                        name="email"
+                        placeholder="sarah@company.com"
+                        required
+                        value={inviteForm.email}
+                        onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition placeholder:text-slate-400 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Small separation divider */}
+                <div className="border-t border-slate-100" />
+
+                {/* Section 2: Position & Assignment */}
+                <div className="space-y-3">
+                  <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                    Position &amp; Assignment
+                  </span>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      System Role <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex-1">
+                      <select
+                        name="role"
+                        value={inviteForm.role}
+                        onChange={(e) => handleRoleChange(e.target.value)}
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 cursor-pointer outline-none shadow-2xs transition font-medium"
+                      >
+                        <option value="employee">Standard Employee</option>
+                        {userRole === "ADMIN" && (
+                          <>
+                            <option value="hr_manager">HR Manager</option>
+                            <option value="hr_executive">HR Executive</option>
+                          </>
+                        )}
+                        <option value="team_lead">Team Lead</option>
+                        <option value="manager">Manager / Supervisor</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      Department <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="flex-1">
+                      <select
+                        name="department"
+                        value={inviteForm.department}
+                        onChange={(e) => setInviteForm({ ...inviteForm, department: e.target.value })}
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 cursor-pointer outline-none shadow-2xs transition font-medium"
+                      >
+                        {getDepartmentsForRole(inviteForm.role, dbDepartments).map((d) => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      Job Designation
+                    </label>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        name="designation"
+                        placeholder="e.g. Senior Software Engineer"
+                        value={inviteForm.designation}
+                        onChange={(e) => setInviteForm({ ...inviteForm, designation: e.target.value })}
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition placeholder:text-slate-400 font-medium"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <label className="sm:w-36 text-xs font-semibold text-slate-700">
+                      Contact Phone
+                    </label>
+                    <div className="flex-1">
+                      <input
+                        type="text"
+                        name="phone"
+                        placeholder="+1 (555) 0199"
+                        value={inviteForm.phone}
+                        onChange={(e) => setInviteForm({ ...inviteForm, phone: e.target.value })}
+                        className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition placeholder:text-slate-400 font-mono"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Action Buttons */}
+                <div className="pt-4 border-t border-slate-100 flex items-center gap-3">
                   <button
                     type="submit"
                     disabled={isSubmittingInvite}
-                    className="py-2.5 px-5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition shadow-md shadow-sky-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20 flex items-center gap-2"
                   >
                     {isSubmittingInvite ? (
                       <>
@@ -2269,11 +2231,16 @@ function DashboardContent() {
                         <span>Sending Invitation…</span>
                       </>
                     ) : (
-                      <>
-                        <span>✉️</span>
-                        <span>Send Invitation</span>
-                      </>
+                      <span>Send Invitation</span>
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSubmittingInvite}
+                    onClick={closeInviteModal}
+                    className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
+                  >
+                    Cancel
                   </button>
                 </div>
               </form>
@@ -2308,19 +2275,61 @@ function DashboardContent() {
         }}
       />
 
-      {/* --- MONTHLY TEAM LEAD & MANAGER PERFORMANCE EVALUATION MODAL --- */}
-      {showTLMonthlyEvalModal && (
-        <TLMonthlyEvaluationModal
-          isOpen={showTLMonthlyEvalModal}
-          onClose={() => {
-            setShowTLMonthlyEvalModal(false);
-            setSelectedEmpForTLEval(null);
-          }}
-          initialEmployeeId={selectedEmpForTLEval?.id || null}
-          onSaved={() => {
-            fetchEmployees();
-          }}
-        />
+      {/* --- REALTIME TOAST NOTIFICATION POPUP (5-SECOND AUTO-DISMISS) --- */}
+      {realtimeToast && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-sm w-full animate-in fade-in slide-in-from-bottom-5 duration-300 pointer-events-auto">
+          <div
+            className={`p-4 rounded-2xl shadow-xl border backdrop-blur-md relative overflow-hidden flex items-start justify-between gap-3 ${
+              realtimeToast.type === "error"
+                ? "bg-rose-50/95 border-rose-200 text-rose-900"
+                : realtimeToast.type === "warning"
+                ? "bg-amber-50/95 border-amber-200 text-amber-900"
+                : realtimeToast.type === "success"
+                ? "bg-emerald-50/95 border-emerald-200 text-emerald-900"
+                : "bg-white/95 border-slate-200 text-slate-800 shadow-slate-200/50"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <span className="text-lg shrink-0 mt-0.5">
+                {realtimeToast.type === "error"
+                  ? "❌"
+                  : realtimeToast.type === "warning"
+                  ? "⚠️"
+                  : realtimeToast.type === "success"
+                  ? "✅"
+                  : "🔔"}
+              </span>
+              <div>
+                <p className="font-bold text-xs leading-snug">{realtimeToast.title}</p>
+                <p className="text-[11px] opacity-90 mt-0.5 leading-relaxed">{realtimeToast.message}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setRealtimeToast(null)}
+              className="text-xs opacity-50 hover:opacity-100 transition p-1 cursor-pointer"
+              title="Dismiss"
+            >
+              ✕
+            </button>
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/5">
+              <div
+                className={`h-full ${
+                  realtimeToast.type === "error"
+                    ? "bg-rose-500"
+                    : realtimeToast.type === "warning"
+                    ? "bg-amber-500"
+                    : realtimeToast.type === "success"
+                    ? "bg-emerald-500"
+                    : "bg-sky-500"
+                }`}
+                style={{
+                  width: "100%",
+                  animation: "shrinkProgress 5s linear forwards",
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

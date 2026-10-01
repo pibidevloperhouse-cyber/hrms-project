@@ -41,6 +41,7 @@ export default function ProjectReviewsTab({
   const isProjectOwnerOrCreator = project?.owner_id === employeeProfile?.id || project?.created_by === employeeProfile?.id;
   const isAssignedLead = project?.team_lead_id === employeeProfile?.id;
   const isManagerRole = cleanRole.includes("manager") || cleanRole.includes("lead");
+  const canEvaluateTasks = (isManagerRole || isAssignedLead) && !isOwnerOrAdmin;
   const canReview = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManagerRole;
 
   const allEmployees = useMemo(() => {
@@ -81,6 +82,61 @@ export default function ProjectReviewsTab({
     });
     return Array.from(map.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
   }, [project, departmentEmployees, teamLeads]);
+
+  // Strict Project Squad Filter for Assignee dropdown (Excludes Team Lead and Manager)
+  const assignableProjectEmployees = useMemo(() => {
+    const map = new Map();
+    const sourcePool = Array.isArray(departmentEmployees) ? departmentEmployees : [];
+
+    const leadId = project?.teamLead?.id || project?.team_lead_id;
+    const ownerId = project?.creator?.id || project?.owner_id || project?.created_by;
+
+    const isLeadOrManager = (emp) => {
+      if (!emp) return false;
+      if (emp.id === leadId || emp.id === ownerId) return true;
+      const normalizedRole = (emp.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+      return (
+        normalizedRole === "teamlead" ||
+        normalizedRole === "manager" ||
+        normalizedRole === "admin" ||
+        normalizedRole === "hrmanager"
+      );
+    };
+
+    // 1. Explicit Team Members
+    if (Array.isArray(project?.teamMembers)) {
+      project.teamMembers.forEach((m) => {
+        if (m?.id && !isLeadOrManager(m) && !map.has(m.id)) {
+          map.set(m.id, m);
+        }
+      });
+    }
+
+    if (Array.isArray(project?.team_members)) {
+      project.team_members.forEach((memberId) => {
+        const cleanId = typeof memberId === "object" ? memberId?.id : memberId;
+        if (cleanId && !map.has(cleanId)) {
+          const emp = typeof memberId === "object" ? memberId : sourcePool.find((e) => e.id === cleanId);
+          if (emp && !isLeadOrManager(emp)) {
+            map.set(cleanId, emp);
+          }
+        }
+      });
+    }
+
+    if (map.size === 0 && Array.isArray(sourcePool)) {
+      sourcePool.forEach((emp) => {
+        if (emp?.id && !isLeadOrManager(emp)) {
+          const empRole = (emp.role || "").toLowerCase();
+          if (empRole === "employee" || !empRole) {
+            map.set(emp.id, emp);
+          }
+        }
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
+  }, [project, departmentEmployees]);
 
   // Real-time listener for tasks updated
   useEffect(() => {
@@ -466,18 +522,17 @@ export default function ProjectReviewsTab({
               ))}
           </select>
 
-          {/* Monthly Evaluation Button (Manager / Lead / Admin) */}
-          {canReview && (
+          {/* Monthly Evaluation Button (Manager / Lead ONLY) */}
+          {canEvaluateTasks && (
             <button
               type="button"
               onClick={() => {
                 setSelectedEmpForEval(null);
                 setShowEvalModal(true);
               }}
-              className="h-8 px-3 rounded-lg bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-semibold text-xs transition cursor-pointer shadow-xs active:scale-[0.98] flex items-center gap-1.5 shrink-0"
+              className="h-8 px-3 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer shadow-xs active:scale-[0.98] flex items-center gap-1.5 shrink-0"
               title="Open Team Member Monthly Performance & Evaluation Dialog"
             >
-              <span className="text-amber-200">⭐</span>
               <span className="hidden sm:inline">Monthly Evaluation</span>
             </button>
           )}
@@ -749,18 +804,17 @@ export default function ProjectReviewsTab({
                             <span>Give Suggestions &amp; Move to To Do</span>
                           </button>
 
-                          {/* 3. Evaluate Member Modal (Only for Employee role) */}
-                          {task.assigned_to && (submitter?.role === "employee" || !submitter?.role) && submitter?.id !== employeeProfile?.id && (
+                          {/* 3. Evaluate Member Modal (Manager / Lead ONLY) */}
+                          {canEvaluateTasks && task.assigned_to && (submitter?.role === "employee" || !submitter?.role) && submitter?.id !== employeeProfile?.id && (
                             <button
                               type="button"
                               onClick={() => {
                                 setSelectedEmpForEval(task.assigned_to);
                                 setShowEvalModal(true);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-[0.98]"
+                              className="px-3 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer flex items-center gap-1 shadow-xs active:scale-[0.98]"
                               title={`Evaluate monthly performance for ${submitterName}`}
                             >
-                              <span>⭐</span>
                               <span>Evaluate Member</span>
                             </button>
                           )}
@@ -850,11 +904,14 @@ export default function ProjectReviewsTab({
                             className="w-full text-xs p-2 rounded-lg border border-amber-300 bg-white focus:outline-none focus:border-amber-600 text-slate-900 cursor-pointer"
                           >
                             <option value="">Unassigned</option>
-                            {allEmployees.map((emp) => (
-                              <option key={emp.id} value={emp.id}>
-                                {emp.roleTag ? `[${emp.roleTag}] ` : ""}{emp.full_name} {emp.designation ? `(${emp.designation})` : ""}
-                              </option>
-                            ))}
+                            {assignableProjectEmployees.map((emp) => {
+                              const roleLabel = emp.designation || (emp.role ? (emp.role.charAt(0).toUpperCase() + emp.role.slice(1).replace(/_/g, " ")) : "Employee");
+                              return (
+                                <option key={emp.id} value={emp.id}>
+                                  {emp.full_name} ({roleLabel})
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
 

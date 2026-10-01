@@ -20,7 +20,6 @@ export default function OwnerDashboard({
   employeeProfile,
   onOpenInviteModal,
   onEmployeeUpdated,
-  onOpenEvaluationModal,
   renderRoleBadge,
   renderStatusBadge,
 }) {
@@ -69,174 +68,188 @@ export default function OwnerDashboard({
       <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
           <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-700 flex items-center justify-center border border-sky-200/60">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-50 to-teal-50 text-[#1f6fb2] flex items-center justify-center border border-sky-200/60 shadow-2xs">
+                <svg className="w-5 h-5 text-[#1f6fb2]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
                 </svg>
               </div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Company Overview &amp; Management
-              </h2>
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                  Company Overview &amp; Management
+                </h2>
+              </div>
             </div>
-            <p className="text-xs text-slate-500">
-              Oversee company workforce directory, department divisions, active staff accounts, and workspace operations.
-            </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {onOpenEvaluationModal && (
-              <button
-                type="button"
-                onClick={() => onOpenEvaluationModal(null)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white text-xs font-semibold transition shadow-xs shadow-amber-600/20 cursor-pointer active:scale-[0.98]"
-                title="Open Team Monthly Performance & Feedback Evaluation Dialog"
-              >
-                <span className="text-amber-200">⭐</span>
-                <span>Monthly Evaluation</span>
-              </button>
-            )}
-
             <button
               onClick={onOpenInviteModal}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold transition-colors shadow-xs shadow-sky-600/20 cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition-all shadow-xs shadow-[#1f6fb2]/20 cursor-pointer"
             >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.375 21c-2.331 0-4.512-.645-6.374-1.765z" />
               </svg>
               <span>Invite Member</span>
             </button>
 
             <button
               onClick={() => setIsDeptModalOpen(true)}
-              className="p-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
+              className="inline-flex items-center gap-1.5 p-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
             >
-              <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25V15.75z" />
               </svg>
               <span>Departments</span>
             </button>
           </div>
         </div>
 
-        {/* Unified Horizontal Navigation Bar Track (One Div) */}
-        <nav className="flex items-center gap-1.5 p-1.5 bg-[#f1f5f9] border border-slate-200/70 rounded-2xl shadow-2xs overflow-x-auto scroll-smooth custom-scroll w-full">
+        {/* Unified Horizontal Navigation Bar Track (Segmented Control, Proportional & No scrollbar) */}
+        <nav className="flex items-center gap-1 p-1 bg-slate-100/90 border border-slate-200/70 rounded-xl overflow-x-auto no-scrollbar w-full">
           <button
             type="button"
             onClick={(e) => handleTabClick("directory", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-lg text-xs font-semibold tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap text-center ${
               viewTab === "directory"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <span>Staff Directory ({employees.length})</span>
+            <span>Staff Directory</span>
+            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
+              viewTab === "directory" ? "bg-slate-100 text-slate-900 border border-slate-200/60" : "bg-slate-200/60 text-slate-600"
+            }`}>
+              {employees.length}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={(e) => handleTabClick("departments", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+            className={`flex-1 min-w-[160px] py-2.5 px-3 rounded-lg text-xs font-semibold tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap text-center ${
               viewTab === "departments"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-            </svg>
-            <span>Department Structure ({activeDepartmentsCount})</span>
+            <span>Department Structure</span>
+            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
+              viewTab === "departments" ? "bg-slate-100 text-slate-900 border border-slate-200/60" : "bg-slate-200/60 text-slate-600"
+            }`}>
+              {activeDepartmentsCount}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={(e) => handleTabClick("hr_team", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+            className={`flex-1 min-w-[140px] py-2.5 px-3 rounded-lg text-xs font-semibold tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap text-center ${
               viewTab === "hr_team"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-            <span>HR Management ({hrCount})</span>
+            <span>HR Management</span>
+            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
+              viewTab === "hr_team" ? "bg-slate-100 text-slate-900 border border-slate-200/60" : "bg-slate-200/60 text-slate-600"
+            }`}>
+              {hrCount}
+            </span>
           </button>
 
           <button
             type="button"
             onClick={(e) => handleTabClick("live_attendance", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+            className={`flex-1 min-w-[160px] py-2.5 px-3 rounded-lg text-xs font-semibold tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap text-center ${
               viewTab === "live_attendance"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
             <span>Live Attendance &amp; Shifts</span>
           </button>
 
           <button
             type="button"
             onClick={(e) => handleTabClick("performance_matrix", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+            className={`flex-1 min-w-[150px] py-2.5 px-3 rounded-lg text-xs font-semibold tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap text-center ${
               viewTab === "performance_matrix"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-            </svg>
             <span>Executive Appraisals</span>
           </button>
 
           <button
             type="button"
             onClick={(e) => handleTabClick("company", e)}
-            className={`flex-1 min-w-max py-3 px-5 sm:px-6 rounded-xl font-['Manrope'] font-bold text-xs sm:text-sm tracking-normal transition-all duration-300 ease-out flex items-center justify-center gap-2.5 cursor-pointer whitespace-nowrap active:scale-95 ${
+            className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-lg text-xs font-semibold tracking-tight transition-all flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap text-center ${
               viewTab === "company"
-                ? "bg-sky-600 text-white shadow-md shadow-sky-600/30 scale-[1.01]"
-                : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/60"
+                ? "bg-white text-slate-900 shadow-xs border border-slate-200/60 font-bold"
+                : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
             }`}
           >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
             <span>Company Profile</span>
           </button>
         </nav>
 
         {/* 4 Summary Stat Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-          <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Registered Staff</span>
-            <div className="text-xl font-bold text-slate-900">{totalStaff}</div>
-            <span className="text-[11px] text-slate-500">1 Owner + {employees.length} Members</span>
+          <div className="p-4 rounded-xl bg-white border border-slate-200/80 space-y-2 hover:border-slate-300 transition shadow-2xs group">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Registered Staff</span>
+              <div className="w-8 h-8 rounded-lg bg-sky-50 text-[#1f6fb2] flex items-center justify-center border border-sky-100 group-hover:scale-105 transition-transform">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">{totalStaff}</div>
+            <span className="text-xs text-slate-500 font-medium">1 Owner · {employees.length} Members</span>
           </div>
 
-          <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Active Departments</span>
-            <div className="text-xl font-bold text-slate-900">{activeDepartmentsCount}</div>
-            <span className="text-[11px] text-slate-500">Organizational divisions</span>
+          <div className="p-4 rounded-xl bg-white border border-slate-200/80 space-y-2 hover:border-slate-300 transition shadow-2xs group">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Active Departments</span>
+              <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-600 flex items-center justify-center border border-teal-100 group-hover:scale-105 transition-transform">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25a2.25 2.25 0 01-2.25-2.25V15.75z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">{activeDepartmentsCount}</div>
+            <span className="text-xs text-slate-500 font-medium">Organizational divisions</span>
           </div>
 
-          <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">HR Management</span>
-            <div className="text-xl font-bold text-slate-900">{hrCount}</div>
-            <span className="text-[11px] text-slate-500">Assigned HR personnel</span>
+          <div className="p-4 rounded-xl bg-white border border-slate-200/80 space-y-2 hover:border-slate-300 transition shadow-2xs group">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">HR Management</span>
+              <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 group-hover:scale-105 transition-transform">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">{hrCount}</div>
+            <span className="text-xs text-slate-500 font-medium">Assigned HR personnel</span>
           </div>
 
-          <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">Admin Access Tier</span>
-            <div className="text-xl font-bold text-slate-900">Owner Root</div>
-            <span className="text-[11px] text-slate-500 font-mono">Full Permissions</span>
+          <div className="p-4 rounded-xl bg-white border border-slate-200/80 space-y-2 hover:border-slate-300 transition shadow-2xs group">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Admin Access Tier</span>
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 group-hover:scale-105 transition-transform">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.75">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                </svg>
+              </div>
+            </div>
+            <div className="text-2xl font-bold text-slate-900 tracking-tight">Owner Root</div>
+            <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+              Full Permissions
+            </span>
           </div>
         </div>
       </div>
@@ -263,12 +276,12 @@ export default function OwnerDashboard({
                 placeholder="Search staff name, email, department..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-sky-500 transition shadow-2xs"
+                className="w-full bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1f6fb2] transition shadow-2xs"
               />
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer"
                 >
                   ✕
                 </button>
@@ -298,11 +311,10 @@ export default function OwnerDashboard({
                 <table className="w-full text-left text-xs min-w-[700px]">
                   <thead className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                     <tr>
-                      <th className="py-3 px-5">Employee Name &amp; Email</th>
-                      <th className="py-3 px-5">Department &amp; Designation</th>
-                      <th className="py-3 px-5">Role Assigned</th>
-                      <th className="py-3 px-5">Username</th>
-                      <th className="py-3 px-5 text-right">Account Status</th>
+                      <th className="py-3 px-5">Member</th>
+                      <th className="py-3 px-5">Role</th>
+                      <th className="py-3 px-5">Department</th>
+                      <th className="py-3 px-5 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
@@ -311,11 +323,22 @@ export default function OwnerDashboard({
 
                       return (
                         <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors">
-                          {/* Employee info with initial avatar */}
+                          {/* Employee info with avatar */}
                           <td className="py-3.5 px-5">
                             <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-lg bg-sky-50 border border-sky-200/80 text-sky-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs">
-                                {initial}
+                              <div className="w-8 h-8 rounded-lg bg-slate-50 border border-slate-200 text-slate-700 flex items-center justify-center font-bold text-xs shrink-0 shadow-2xs overflow-hidden">
+                                {emp.avatar_url ? (
+                                  <img
+                                    src={emp.avatar_url}
+                                    alt={emp.full_name || "Employee"}
+                                    className="w-full h-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  initial
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <div className="font-semibold text-slate-900 text-xs truncate max-w-xs">{emp.full_name}</div>
@@ -324,60 +347,36 @@ export default function OwnerDashboard({
                             </div>
                           </td>
 
-                          {/* Department & Designation */}
-                          <td className="py-4 px-5 whitespace-nowrap">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                              {emp.department || "General"}
-                            </span>
-                            <div className="text-[11px] text-slate-500 capitalize mt-1 font-medium">
-                              {emp.designation || "-"}
-                            </div>
-                          </td>
-
                           {/* Role Assigned */}
-                          <td className="py-4 px-5 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
-                              {renderRoleBadge(emp.role)}
-                              {onOpenEvaluationModal && emp.id !== employeeProfile?.id && (emp.role === "employee" || (!emp.role && !emp.is_owner)) && (
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenEvaluationModal(emp)}
-                                  className="px-2 py-0.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/90 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs active:scale-[0.98]"
-                                  title={`Evaluate monthly performance for ${emp.full_name}`}
-                                >
-                                  <span>⭐</span>
-                                  <span>Evaluate</span>
-                                </button>
+                          <td className="py-3.5 px-5">
+                            {renderRoleBadge(emp.role)}
+                          </td>
+
+                          {/* Department & Designation */}
+                          <td className="py-3.5 px-5">
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                {emp.department || "General"}
+                              </span>
+                              {emp.designation && (
+                                <p className="text-[11px] text-slate-500 mt-0.5">{emp.designation}</p>
                               )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedEmpForRoleModal(emp);
-                                  setIsRoleModalOpen(true);
-                                }}
-                                className="px-2 py-0.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200/80 text-[10px] font-semibold transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                                title="Promote or Change Role"
-                              >
-                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                                </svg>
-                                <span>Edit</span>
-                              </button>
                             </div>
                           </td>
 
-                          {/* Generated Username */}
-                          <td className="py-4 px-5 whitespace-nowrap font-mono text-sky-700 font-semibold text-[11px]">
-                            {emp.username ? (
-                              `@${emp.username}`
-                            ) : (
-                              <span className="text-slate-400 font-sans italic text-[11px]">Pending Acceptance</span>
-                            )}
-                          </td>
-
-                          {/* Status Badge */}
-                          <td className="py-3.5 px-5 text-right whitespace-nowrap">
-                            {renderStatusBadge(emp.status)}
+                          {/* Actions */}
+                          <td className="py-3.5 px-5 text-right">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedEmpForRoleModal(emp);
+                                setIsRoleModalOpen(true);
+                              }}
+                              className="px-3 py-1 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 text-xs font-semibold transition cursor-pointer shadow-2xs"
+                              title="Promote or Change Role"
+                            >
+                              Edit Role
+                            </button>
                           </td>
                         </tr>
                       );
@@ -406,7 +405,7 @@ export default function OwnerDashboard({
       {/* --- SUB-VIEW 4: LIVE ATTENDANCE SUMMARY --- */}
       {viewTab === "live_attendance" && (
         <div className="space-y-6">
-          <HRAttendanceTracker embedded={false} />
+          <HRAttendanceTracker embedded={false} userRole="ADMIN" />
         </div>
       )}
 

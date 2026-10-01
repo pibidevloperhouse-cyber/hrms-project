@@ -9,8 +9,15 @@ import TaskProgressUpdateModal from "./TaskProgressUpdateModal";
 import CreateStoryTaskModal from "./CreateStoryTaskModal";
 import TaskSuggestionModal from "./TaskSuggestionModal";
 import TaskExtensionModal from "./TaskExtensionModal";
-import TaskExtensionReviewModal from "./TaskExtensionReviewModal";
-import { checkTaskSprintOverdue } from "@/lib/projectUtils";
+import {
+  checkTaskSprintOverdue,
+  TASK_STATUS_TRANSITIONS,
+  getTaskPermissionRole,
+  isTaskStatusTransitionAllowed,
+  normalizeTaskStatus,
+  canUserDragBoardTask,
+} from "@/lib/projectUtils";
+
 
 const isDueToday = (dueDateStr) => {
   if (!dueDateStr) return false;
@@ -154,7 +161,8 @@ export default function ProjectBoardTab({
   // Helper: Check if task has active Team Lead feedback / suggestions
   const hasActiveTlSuggestions = (task) => {
     if (!task) return false;
-    if (task.status !== "TODO" && task.status !== "IN_PROGRESS") return false;
+    const currentNorm = normalizeTaskStatus(task.status);
+    if (currentNorm !== "TODO" && currentNorm !== "IN_PROGRESS") return false;
     if (task.review_feedback && typeof task.review_feedback === "string" && task.review_feedback.trim().length > 0) {
       return true;
     }
@@ -243,6 +251,10 @@ export default function ProjectBoardTab({
   const isManagerRole = cleanRole.includes("manager") || cleanRole.includes("lead");
   const isLeadOrManagerOrAdmin = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManagerRole;
 
+  const userRoleCategory = useMemo(() => {
+    return getTaskPermissionRole(employeeProfile?.role, employeeProfile, project);
+  }, [employeeProfile, project]);
+
   // Sprint Readiness Helper: Backlog & Planned sprints are locked for regular employees until started
   const getTaskSprintState = (task) => {
     if (isKanban) return { isReady: true, reason: "", sprintName: "" };
@@ -304,13 +316,36 @@ export default function ProjectBoardTab({
   }, [tasks, sprints, activeSprint, sprintFilter, assigneeFilter, priorityFilter, isKanban, isLeadOrManagerOrAdmin]);
 
   // Direct status update for drag & drop and quick dropdown with instant optimistic UI (<10ms)
+  // Direct status update for drag & drop and quick dropdown with instant optimistic UI (<10ms)
   const executeDirectStatusUpdate = async (taskId, newStatus) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    if (!isTaskAssignedToCurrentUser(task)) {
+    const currentNormStatus = normalizeTaskStatus(task.status);
+    const normStatus = normalizeTaskStatus(newStatus || "TODO");
+    if (currentNormStatus === normStatus) return;
+
+    // 1. Completed tasks are finalized and locked for employees
+    if (currentNormStatus === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
       showNotificationToast(
-        "Only the assigned employee can update the task status. Managers can view progress only.",
+        "Action Blocked: Completed tasks are finalized and cannot be moved or reopened by employees.",
+        "error"
+      );
+      return;
+    }
+
+    // 2. Tasks under review are locked for employees
+    if (currentNormStatus === "REVIEW" && userRoleCategory === "EMPLOYEE") {
+      showNotificationToast(
+        "Action Blocked: Deliverables under review cannot be moved while awaiting supervisor verification.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!isTaskAssignedToCurrentUser(task) && !isLeadOrManagerOrAdmin) {
+      showNotificationToast(
+        "Only the assigned employee or supervisor can update the task status.",
         "warning"
       );
       return;
@@ -324,18 +359,11 @@ export default function ProjectBoardTab({
       }
     }
 
-    const normStatus = (newStatus || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
-    if (task.status === normStatus) return;
-
-    // Scrum Review & Completion Rule: Only Project Manager, Team Lead, Owner, or Admin can mark as Completed
-    if (normStatus === "COMPLETED" && !isLeadOrManagerOrAdmin) {
-      setPendingProgressUpdate({
-        task,
-        targetStatus: "REVIEW",
-      });
+    // 3. Validate role transition matrix
+    if (!isTaskStatusTransitionAllowed(userRoleCategory, currentNormStatus, normStatus)) {
       showNotificationToast(
-        "Deliverable Approval Required: Only the Project Manager or Team Lead can mark this task as Completed. Please submit for Review.",
-        "warning"
+        `Action Blocked: Moving from ${currentNormStatus} to ${normStatus} is not permitted for your role.`,
+        "error"
       );
       return;
     }
@@ -426,24 +454,42 @@ export default function ProjectBoardTab({
     }
   };
 
-  // Drag and drop event handlers: ONLY assigned employee can drag
+  // Drag and drop event handlers: Exclusively assigned developers can drag active development tasks
   const handleDragStart = (e, task) => {
-    if (!isTaskAssignedToCurrentUser(task)) {
+    const currentNormStatus = normalizeTaskStatus(task?.status);
+
+    if (currentNormStatus === "COMPLETED") {
       e.preventDefault();
       showNotificationToast(
-        "Only the assigned employee can drag and update the status of this task. Managers can view progress only.",
+        "Action Blocked: Completed tasks are finalized and cannot be dragged or reopened.",
         "warning"
       );
       return;
     }
 
-    if (!isLeadOrManagerOrAdmin) {
-      const sprintState = getTaskSprintState(task);
-      if (!sprintState.isReady) {
-        e.preventDefault();
-        showNotificationToast(sprintState.reason, "warning");
-        return;
-      }
+    if (currentNormStatus === "REVIEW") {
+      e.preventDefault();
+      showNotificationToast(
+        "Action Blocked: This deliverable is under review and cannot be dragged.",
+        "warning"
+      );
+      return;
+    }
+
+    if (!isTaskAssignedToCurrentUser(task)) {
+      e.preventDefault();
+      showNotificationToast(
+        "Only the assigned developer can drag their active tasks. Managers oversee progress and review deliverables.",
+        "warning"
+      );
+      return;
+    }
+
+    const sprintState = getTaskSprintState(task);
+    if (!sprintState.isReady) {
+      e.preventDefault();
+      showNotificationToast(sprintState.reason, "warning");
+      return;
     }
 
     e.dataTransfer.setData("text/plain", task.id);
@@ -481,40 +527,63 @@ export default function ProjectBoardTab({
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
-    if (!isTaskAssignedToCurrentUser(task)) {
+    const currentNormStatus = normalizeTaskStatus(task.status);
+    const normTarget = normalizeTaskStatus(targetColId || "TODO");
+
+    // 1. Strictly block any drop or transition from COMPLETED (Done)
+    if (currentNormStatus === "COMPLETED") {
       showNotificationToast(
-        "Only the assigned employee can update the task status. Managers can view progress only.",
+        "Action Blocked: Completed tasks are finalized and cannot be moved.",
+        "error"
+      );
+      return;
+    }
+
+    // 2. Strictly block any drop or transition from REVIEW (In Review)
+    if (currentNormStatus === "REVIEW") {
+      showNotificationToast(
+        "Action Blocked: Tasks under review cannot be moved while awaiting supervisor verification.",
         "warning"
       );
       return;
     }
 
-    if (!isLeadOrManagerOrAdmin) {
-      const sprintState = getTaskSprintState(task);
-      if (!sprintState.isReady) {
-        showNotificationToast(sprintState.reason, "warning");
-        return;
-      }
-    }
-
-    const normTarget = (targetColId || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
-    if (task.status === normTarget) return;
-
-    // Scrum Review & Completion Rule: If moving to COMPLETED and employee is not lead/manager/admin
-    if (normTarget === "COMPLETED" && !isLeadOrManagerOrAdmin) {
-      setPendingProgressUpdate({
-        task,
-        targetStatus: "REVIEW",
-      });
+    if (!isTaskAssignedToCurrentUser(task)) {
       showNotificationToast(
-        "Deliverable Approval Required: Only the Project Manager or Team Lead can mark this task as Completed. Please submit for Review.",
-        "info"
+        "Only the assigned developer can update the task status on the board.",
+        "warning"
       );
       return;
     }
 
-    // When moving to REVIEW, open progress/review modal so employee enters summary notes
-    if (normTarget === "REVIEW") {
+    const sprintState = getTaskSprintState(task);
+    if (!sprintState.isReady) {
+      showNotificationToast(sprintState.reason, "warning");
+      return;
+    }
+
+    if (currentNormStatus === normTarget) return;
+
+    // 3. Prevent dropping directly onto COMPLETED for employee
+    if (normTarget === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
+      showNotificationToast(
+        "Deliverable Approval Required: Please submit for Review. Only your Manager or Team Lead can verify and mark a task as Completed.",
+        "warning"
+      );
+      return;
+    }
+
+    // 4. Validate transition against state machine
+    if (!isTaskStatusTransitionAllowed(userRoleCategory, currentNormStatus, normTarget)) {
+      showNotificationToast(
+        `Action Blocked: Moving from ${currentNormStatus} to ${normTarget} is not permitted for your role.`,
+        "error"
+      );
+      return;
+    }
+
+    // 5. Only when moving an IN_PROGRESS task to REVIEW, open progress/review modal
+    if (normTarget === "REVIEW" && currentNormStatus === "IN_PROGRESS") {
       setPendingProgressUpdate({
         task,
         targetStatus: "REVIEW",
@@ -538,7 +607,26 @@ export default function ProjectBoardTab({
     const task = tasks.find((t) => t.id === taskId);
     if (!task || !isTaskAssignedToCurrentUser(task)) {
       showNotificationToast(
-        "Only the assigned employee can update the task status. Managers can view progress only.",
+        "Only the assigned employee can update the task status.",
+        "warning"
+      );
+      setPendingProgressUpdate(null);
+      return;
+    }
+
+    const currentNormStatus = normalizeTaskStatus(task.status);
+    if (currentNormStatus === "COMPLETED") {
+      showNotificationToast(
+        "Action Blocked: Completed tasks are finalized and cannot be submitted for review.",
+        "error"
+      );
+      setPendingProgressUpdate(null);
+      return;
+    }
+
+    if (currentNormStatus === "REVIEW") {
+      showNotificationToast(
+        "Action Blocked: Task is already in review and awaiting supervisor verification.",
         "warning"
       );
       setPendingProgressUpdate(null);
@@ -553,6 +641,7 @@ export default function ProjectBoardTab({
         return;
       }
     }
+
 
     const normStatus = (newStatus || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
     const nextProgress = progress !== undefined ? Number(progress) : (normStatus === "COMPLETED" ? 100 : normStatus === "REVIEW" ? 85 : 50);
@@ -870,14 +959,21 @@ export default function ProjectBoardTab({
                       task.planned_assignee ||
                       allEmployees.find((e) => e.id === (task.assigned_to || task.planned_assignee_id || task.assignee_id));
                     const linkedEpic = epics.find((e) => e.id === task.epic_id);
-                    const isDueTodayTask = isDueToday(task.due_date) && task.status !== "COMPLETED";
-                    const isOverdue = isTaskOverdue(task.due_date, task.status);
+                    const currentNormStatus = normalizeTaskStatus(task.status);
+                    const isDueTodayTask = isDueToday(task.due_date) && currentNormStatus !== "COMPLETED";
+                    const isOverdue = isTaskOverdue(task.due_date, currentNormStatus);
 
                     const isBeingDragged = draggedTaskId === task.id;
                     const isAssigned = isTaskAssignedToCurrentUser(task);
                     const sprintState = getTaskSprintState(task);
-                    const canMoveTask = isAssigned && (isLeadOrManagerOrAdmin || sprintState.isReady);
-                    const isTaskSprintLocked = !isLeadOrManagerOrAdmin && !sprintState.isReady;
+                    const isCompleted = currentNormStatus === "COMPLETED";
+                    const isInReview = currentNormStatus === "REVIEW";
+
+                    const canMoveTask = canUserDragBoardTask({
+                      isAssigned,
+                      status: task.status,
+                      sprintIsReady: sprintState.isReady,
+                    });
 
                     const taskIndex = tasks.findIndex((t) => t.id === task.id) + 1;
                     const taskCode =
@@ -907,15 +1003,20 @@ export default function ProjectBoardTab({
                         title={
                           hasActiveTlSuggestions(task)
                             ? "Team Lead provided suggestions. Click to view instructions."
-                            : isDueTodayTask
-                            ? "Deliverable is due today. Click to inspect details and prioritize work."
-                            : canMoveTask
-                            ? "Drag to change status, or click to view detailed description"
-                            : isAssigned && isTaskSprintLocked
+                            : isCompleted
+                            ? "Deliverable approved & completed (Locked)."
+                            : isInReview
+                            ? isLeadOrManagerOrAdmin
+                              ? "Deliverable submitted by developer. Click to inspect screenshots and approve or give suggestions."
+                              : "Deliverable submitted. Awaiting supervisor review."
+                            : !isAssigned
+                            ? "Oversight mode: Task is managed by the assigned developer."
+                            : !sprintState.isReady
                             ? "Sprint is in planned state. Status updates locked."
-                            : "Click to view task details."
+                            : "Drag to change status, or click to view detailed description"
                         }
                       >
+
                         {/* Left vertical accent bar */}
                         <div
                           className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${
@@ -1053,6 +1154,37 @@ export default function ProjectBoardTab({
                             <span>💬 TL Review Suggestions</span>
                           </div>
                         )}
+
+                        {/* Task Completed Status Badge */}
+                        {isCompleted && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTaskForDetail(task);
+                            }}
+                            className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
+                            title={userRoleCategory === "EMPLOYEE" ? "Deliverable approved & completed. Locked from employee changes." : "Deliverable approved & completed."}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                            <span>{userRoleCategory === "EMPLOYEE" ? "🔒 Completed (Locked)" : "✓ Completed"}</span>
+                          </div>
+                        )}
+
+                        {/* Task Under Review Status Badge */}
+                        {isInReview && (
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedTaskForDetail(task);
+                            }}
+                            className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-purple-950 bg-purple-50 border border-purple-300 px-2 py-0.5 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
+                            title={userRoleCategory === "EMPLOYEE" ? "Work submitted for review. Awaiting Team Lead / Manager approval." : "Deliverable submitted. Ready for verification."}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse" />
+                            <span>{userRoleCategory === "EMPLOYEE" ? "⏳ In Review (Awaiting Approval)" : "📋 In Review (Ready for Verification)"}</span>
+                          </div>
+                        )}
+
 
                         {/* Bottom Toolbar with dashed divider */}
                         <div className="border-t border-dashed border-slate-200 mt-2.5 pt-2 flex items-center justify-between text-slate-400">

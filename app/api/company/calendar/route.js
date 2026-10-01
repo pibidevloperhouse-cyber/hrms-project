@@ -77,11 +77,14 @@ export async function GET(req) {
       createdAt: h.created_at,
     }));
 
+    const isHR = ["ADMIN", "hr_manager", "hr_executive"].includes(role);
+
     return NextResponse.json({
       success: true,
       companyId: company.id,
       companyName: company.name,
       userRole: role,
+      isHR,
       schedule,
       holidays,
     });

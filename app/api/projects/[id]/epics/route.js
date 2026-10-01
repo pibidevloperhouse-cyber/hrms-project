@@ -184,6 +184,21 @@ export async function POST(req, { params }) {
       return NextResponse.json({ message: "Epic name is required." }, { status: 400 });
     }
 
+    const projStart = targetProject.start_date ? String(targetProject.start_date).split("T")[0] : null;
+    const projEnd = targetProject.end_date ? String(targetProject.end_date).split("T")[0] : null;
+    const epicStart = start_date ? String(start_date).split("T")[0] : null;
+    const epicEnd = end_date ? String(end_date).split("T")[0] : null;
+
+    if (epicStart && epicEnd && epicEnd < epicStart) {
+      return NextResponse.json({ message: "Epic end date cannot be earlier than epic start date." }, { status: 400 });
+    }
+    if (projEnd && epicEnd && epicEnd > projEnd) {
+      return NextResponse.json({ message: `Epic end date (${epicEnd}) cannot exceed project end date (${projEnd}).` }, { status: 400 });
+    }
+    if (projStart && epicStart && epicStart < projStart) {
+      return NextResponse.json({ message: `Epic start date (${epicStart}) cannot be earlier than project start date (${projStart}).` }, { status: 400 });
+    }
+
     const payload = {
       company_id: targetProject.company_id || company.id,
       project_id: projectId,
@@ -306,6 +321,21 @@ export async function PATCH(req, { params }) {
 
     if (!epic_id) {
       return NextResponse.json({ message: "Epic ID is required." }, { status: 400 });
+    }
+
+    const projStart = targetProject.start_date ? String(targetProject.start_date).split("T")[0] : null;
+    const projEnd = targetProject.end_date ? String(targetProject.end_date).split("T")[0] : null;
+    const epicStart = start_date !== undefined ? (start_date ? String(start_date).split("T")[0] : null) : null;
+    const epicEnd = end_date !== undefined ? (end_date ? String(end_date).split("T")[0] : null) : null;
+
+    if (epicStart && epicEnd && epicEnd < epicStart) {
+      return NextResponse.json({ message: "Epic end date cannot be earlier than epic start date." }, { status: 400 });
+    }
+    if (projEnd && epicEnd && epicEnd > projEnd) {
+      return NextResponse.json({ message: `Epic end date (${epicEnd}) cannot exceed project end date (${projEnd}).` }, { status: 400 });
+    }
+    if (projStart && epicStart && epicStart < projStart) {
+      return NextResponse.json({ message: `Epic start date (${epicStart}) cannot be earlier than project start date (${projStart}).` }, { status: 400 });
     }
 
     const updateData = { updated_at: new Date().toISOString() };

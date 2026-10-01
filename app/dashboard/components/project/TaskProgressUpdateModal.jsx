@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { authFetch } from "@/lib/api/authFetch";
 
 export default function TaskProgressUpdateModal({
   isOpen,
@@ -20,93 +21,82 @@ export default function TaskProgressUpdateModal({
   const [selectedPreviewImg, setSelectedPreviewImg] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [isDraggingOver, setIsDraggingOver] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
   const fileInputRef = useRef(null);
 
-  // Process, optimize, and convert uploaded image files to base64 Data URLs
-  const processImageFiles = useCallback((files) => {
-    const fileList = Array.from(files);
-    fileList.forEach((file) => {
-      if (!file.type.startsWith("image/")) {
-        setErrorMsg("Please upload image files only (PNG, JPG, WebP, GIF).");
-        return;
-      }
-      if (file.size > 10 * 1024 * 1024) {
-        setErrorMsg("Image size exceeds 10MB limit.");
-        return;
-      }
+  // Upload screenshots to public bucket 'task-attachments' and record public URLs
+  const processImageFiles = useCallback(
+    async (files) => {
+      const fileList = Array.from(files);
+      for (const file of fileList) {
+        if (!file.type.startsWith("image/")) {
+          setErrorMsg("Please upload image files only (PNG, JPG, WebP, GIF).");
+          continue;
+        }
+        if (file.size > 15 * 1024 * 1024) {
+          setErrorMsg("Image size exceeds 15MB limit.");
+          continue;
+        }
 
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const rawDataUrl = e.target.result;
-        // Compress and optimize image to keep payload small (<300KB) and prevent transmission failure
-        const img = new window.Image();
-        img.onload = () => {
-          try {
-            const maxDim = 1600;
-            let width = img.width;
-            let height = img.height;
+        const tempId = `att-temp-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        const previewUrl = URL.createObjectURL(file);
 
-            if (width > maxDim || height > maxDim) {
-              if (width > height) {
-                height = Math.round((height * maxDim) / width);
-                width = maxDim;
-              } else {
-                width = Math.round((width * maxDim) / height);
-                height = maxDim;
-              }
-            }
+        // Add temporary placeholder with local preview
+        setAttachments((prev) => [
+          ...prev,
+          {
+            id: tempId,
+            name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.png`,
+            size: `${(file.size / 1024).toFixed(1)} KB`,
+            url: previewUrl,
+            type: file.type,
+            isUploading: true,
+          },
+        ]);
+        setUploadingCount((c) => c + 1);
 
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            ctx.drawImage(img, 0, 0, width, height);
+        try {
+          const formData = new FormData();
+          formData.append("file", file);
+          if (task?.id) formData.append("taskId", task.id);
+          if (project?.id) formData.append("projectId", project.id);
 
-            // Export as optimized JPEG
-            const optimizedDataUrl = canvas.toDataURL("image/jpeg", 0.85);
-            const approxKb = Math.round((optimizedDataUrl.length * 0.75) / 1024);
+          const res = await authFetch("/api/upload/task-attachment", {
+            method: "POST",
+            body: formData,
+          });
 
-            setAttachments((prev) => [
-              ...prev,
-              {
-                id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.jpg`,
-                size: `${approxKb} KB`,
-                dataUrl: optimizedDataUrl,
-                type: "image/jpeg",
-              },
-            ]);
-          } catch (canvasErr) {
-            console.warn("Canvas compression fallback:", canvasErr);
-            setAttachments((prev) => [
-              ...prev,
-              {
-                id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-                name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.png`,
-                size: `${(file.size / 1024).toFixed(1)} KB`,
-                dataUrl: rawDataUrl,
-                type: file.type,
-              },
-            ]);
+          const data = await res.json();
+          if (res.ok && data.url) {
+            setAttachments((prev) =>
+              prev.map((att) =>
+                att.id === tempId
+                  ? {
+                      id: data.id || tempId,
+                      name: data.name || att.name,
+                      size: data.size || att.size,
+                      url: data.url,
+                      type: data.type || att.type,
+                      isUploading: false,
+                    }
+                  : att
+              )
+            );
+          } else {
+            setErrorMsg(data.message || "Failed to upload screenshot to storage.");
+            setAttachments((prev) => prev.filter((att) => att.id !== tempId));
           }
-        };
-        img.onerror = () => {
-          setAttachments((prev) => [
-            ...prev,
-            {
-              id: `att-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-              name: file.name || `Screenshot-${new Date().toLocaleTimeString().replace(/:/g, "-")}.png`,
-              size: `${(file.size / 1024).toFixed(1)} KB`,
-              dataUrl: rawDataUrl,
-              type: file.type,
-            },
-          ]);
-        };
-        img.src = rawDataUrl;
-      };
-      reader.readAsDataURL(file);
-    });
-  }, []);
+        } catch (err) {
+          console.error("Task attachment upload error:", err);
+          setErrorMsg("Network error uploading screenshot.");
+          setAttachments((prev) => prev.filter((att) => att.id !== tempId));
+        } finally {
+          setUploadingCount((c) => Math.max(0, c - 1));
+        }
+      }
+    },
+    [task?.id, project?.id]
+  );
 
   // Initialize form state and timestamp on open
   useEffect(() => {
@@ -197,7 +187,10 @@ export default function TaskProgressUpdateModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setErrorMsg("");
+    if (uploadingCount > 0) {
+      setErrorMsg("Please wait for screenshots to finish uploading.");
+      return;
+    }
 
     if (!comments.trim()) {
       setErrorMsg("Please enter comments describing your deliverable for your Team Lead.");
@@ -212,9 +205,11 @@ export default function TaskProgressUpdateModal({
         comments: comments.trim(),
         review_comments: comments.trim(),
         review_attachments: attachments.map((a) => ({
+          id: a.id,
           name: a.name,
           size: a.size,
-          dataUrl: a.dataUrl,
+          url: a.url || a.dataUrl,
+          type: a.type,
         })),
         review_submitted_at: new Date().toISOString(),
       });
@@ -480,39 +475,51 @@ export default function TaskProgressUpdateModal({
               {/* Uploaded Thumbnails list */}
               {attachments.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-1">
-                  {attachments.map((att, idx) => (
-                    <div
-                      key={att.id ? `prog-att-${att.id}` : `prog-att-idx-${idx}`}
-                      className="relative group rounded border border-slate-200 p-1 bg-white overflow-hidden flex flex-col"
-                    >
+                  {attachments.map((att, idx) => {
+                    const imgSrc = att.url || att.dataUrl;
+                    return (
                       <div
-                        className="h-16 w-full rounded overflow-hidden bg-slate-100 flex items-center justify-center relative cursor-pointer"
-                        onClick={() => setSelectedPreviewImg(att.dataUrl)}
+                        key={att.id ? `prog-att-${att.id}` : `prog-att-idx-${idx}`}
+                        className="relative group rounded border border-slate-200 p-1 bg-white overflow-hidden flex flex-col"
                       >
-                        <img
-                          src={att.dataUrl}
-                          alt={att.name}
-                          className="w-full h-full object-cover"
-                        />
-                        <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-semibold">
-                          🔍 View
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between pt-1 text-[10px]">
-                        <span className="truncate max-w-[70px] text-slate-700" title={att.name}>
-                          {att.name}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAttachment(att.id)}
-                          className="text-rose-500 hover:text-rose-700 font-bold px-1 cursor-pointer"
-                          title="Remove attachment"
+                        <div
+                          className="h-16 w-full rounded overflow-hidden bg-slate-100 flex items-center justify-center relative cursor-pointer"
+                          onClick={() => !att.isUploading && setSelectedPreviewImg(imgSrc)}
                         >
-                          ✕
-                        </button>
+                          <img
+                            src={imgSrc}
+                            alt={att.name}
+                            className="w-full h-full object-cover"
+                          />
+                          {att.isUploading ? (
+                            <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-white text-[10px] font-bold">
+                              <svg className="animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                              </svg>
+                            </div>
+                          ) : (
+                            <span className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-semibold">
+                              🔍 View
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between pt-1 text-[10px]">
+                          <span className="truncate max-w-[70px] text-slate-700" title={att.name}>
+                            {att.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(att.id)}
+                            className="text-rose-500 hover:text-rose-700 font-bold px-1 cursor-pointer"
+                            title="Remove attachment"
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

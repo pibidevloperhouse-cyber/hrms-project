@@ -111,50 +111,55 @@ export default function CreateStoryTaskModal({
     return validateTaskSprintBounds(dueDate, selectedSprint);
   }, [dueDate, selectedSprint, isKanban]);
 
-  // Strict Project Squad Filter: ONLY employees belonging to this project (Owner, Lead, Squad Members)
-  const projectTeamEmployees = useMemo(() => {
+  // Strict Project Squad Filter: ONLY employees belonging to this project (Excludes Team Lead and Manager)
+  const assignableProjectEmployees = useMemo(() => {
     const map = new Map();
     const sourcePool = Array.isArray(allEmployees) ? allEmployees : [];
 
-    // 1. Team Lead
-    if (project?.teamLead?.id) {
-      map.set(project.teamLead.id, { ...project.teamLead, roleTag: "Team Lead" });
-    } else if (project?.team_lead_id) {
-      const lead = sourcePool.find((e) => e.id === project.team_lead_id);
-      if (lead) map.set(lead.id, { ...lead, roleTag: "Team Lead" });
-    }
+    const leadId = project?.teamLead?.id || project?.team_lead_id;
+    const ownerId = project?.creator?.id || project?.owner_id || project?.created_by;
 
-    // 2. Project Owner / Creator
-    if (project?.creator?.id) {
-      map.set(project.creator.id, { ...project.creator, roleTag: "Owner" });
-    } else if (project?.created_by || project?.owner_id) {
-      const ownerId = project.owner_id || project.created_by;
-      const owner = sourcePool.find((e) => e.id === ownerId);
-      if (owner) map.set(owner.id, { ...owner, roleTag: "Owner" });
-    }
+    const isLeadOrManager = (emp) => {
+      if (!emp) return false;
+      if (emp.id === leadId || emp.id === ownerId) return true;
+      const normalizedRole = (emp.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+      return (
+        normalizedRole === "teamlead" ||
+        normalizedRole === "manager" ||
+        normalizedRole === "admin" ||
+        normalizedRole === "hrmanager"
+      );
+    };
 
-    // 3. Explicit Team Members (from project.teamMembers objects or project.team_members IDs)
+    // 1. Explicit Team Members (from project.teamMembers)
     if (Array.isArray(project?.teamMembers)) {
       project.teamMembers.forEach((m) => {
-        if (m?.id && !map.has(m.id)) {
-          map.set(m.id, {
-            ...m,
-            roleTag: project?.project_group ? project.project_group : (m.designation || m.role || "Squad Member"),
-          });
+        if (m?.id && !isLeadOrManager(m) && !map.has(m.id)) {
+          map.set(m.id, m);
         }
       });
     }
 
+    // 2. Explicit Team Members (from project.team_members IDs or objects)
     if (Array.isArray(project?.team_members)) {
       project.team_members.forEach((memberId) => {
         const cleanId = typeof memberId === "object" ? memberId?.id : memberId;
         if (cleanId && !map.has(cleanId)) {
           const emp = typeof memberId === "object" ? memberId : sourcePool.find((e) => e.id === cleanId);
-          if (emp) {
-            map.set(cleanId, {
-              ...emp,
-              roleTag: project?.project_group ? project.project_group : (emp.designation || emp.role || "Squad Member"),
-            });
+          if (emp && !isLeadOrManager(emp)) {
+            map.set(cleanId, emp);
+          }
+        }
+      });
+    }
+
+    // Fallback: If no explicit members in team list, check sourcePool for employees with matching department/group
+    if (map.size === 0 && Array.isArray(sourcePool)) {
+      sourcePool.forEach((emp) => {
+        if (emp?.id && !isLeadOrManager(emp)) {
+          const empRole = (emp.role || "").toLowerCase();
+          if (empRole === "employee" || !empRole) {
+            map.set(emp.id, emp);
           }
         }
       });
@@ -165,8 +170,8 @@ export default function CreateStoryTaskModal({
 
   // Real-time selected assignee details & sprint workload
   const selectedAssignee = useMemo(() => {
-    return projectTeamEmployees.find((e) => e.id === assigneeId) || null;
-  }, [projectTeamEmployees, assigneeId]);
+    return assignableProjectEmployees.find((e) => e.id === assigneeId) || null;
+  }, [assignableProjectEmployees, assigneeId]);
 
   const assigneeSprintWorkload = useMemo(() => {
     if (!assigneeId) return { count: 0, completedCount: 0, inProgressCount: 0, points: 0 };
@@ -349,12 +354,11 @@ export default function CreateStoryTaskModal({
                   className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer"
                 >
                   <option value="">Unassigned</option>
-                  {projectTeamEmployees.map((emp) => {
-                    const load = getEmployeeSprintWorkload(emp.id, sprintId, tasks);
-                    const tag = emp.roleTag ? `[${emp.roleTag}] ` : "";
+                  {assignableProjectEmployees.map((emp) => {
+                    const roleLabel = emp.designation || (emp.role ? (emp.role.charAt(0).toUpperCase() + emp.role.slice(1).replace(/_/g, " ")) : "Employee");
                     return (
                       <option key={emp.id} value={emp.id}>
-                        {tag}{emp.full_name} {emp.designation ? `(${emp.designation})` : ""} {sprintId ? `— ${load.count} sprint tasks` : `— ${load.count} active`}
+                        {emp.full_name} ({roleLabel})
                       </option>
                     );
                   })}

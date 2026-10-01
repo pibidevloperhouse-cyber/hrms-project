@@ -27,6 +27,17 @@ export async function GET(req) {
       return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
     }
 
+    const userRoleStr = String(role || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+    const isOwnerOrHR =
+      userRoleStr.includes("admin") ||
+      userRoleStr.includes("owner") ||
+      userRoleStr.includes("hr") ||
+      Boolean(isOwner || employeeProfile?.is_owner);
+
+    if (!isOwnerOrHR) {
+      return NextResponse.json({ message: "Access denied. HR or Admin privileges required." }, { status: 403 });
+    }
+
     const { searchParams } = new URL(req.url);
     const now = new Date();
     const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;

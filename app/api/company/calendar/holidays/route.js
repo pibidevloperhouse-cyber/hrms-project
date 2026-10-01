@@ -60,7 +60,38 @@ export async function POST(req) {
     const cleanType = holidayType?.trim() || "National / Regional";
     const cleanDesc = description?.trim() || null;
 
-    // Insert holiday into company_holidays
+    // Check if any employees have already checked in / recorded attendance on this date
+    const startRangeIso = new Date(new Date(`${date}T00:00:00Z`).getTime() - 24 * 3600 * 1000).toISOString();
+    const endRangeIso = new Date(new Date(`${date}T23:59:59Z`).getTime() + 24 * 3600 * 1000).toISOString();
+
+    const { data: attendanceRecords, error: attCheckErr } = await adminSupabase
+      .from("attendance")
+      .select("id, employee_id, check_in, status")
+      .eq("company_id", company.id)
+      .gte("check_in", startRangeIso)
+      .lte("check_in", endRangeIso);
+
+    if (attCheckErr && attCheckErr.code !== "42P01") {
+      console.warn("Attendance validation check warning:", attCheckErr.message);
+    }
+
+    const activeOrPresentToday = (attendanceRecords || []).filter((r) => {
+      if (!r.check_in) return false;
+      const recDate = new Date(r.check_in).toISOString().split("T")[0];
+      const localDate = r.check_in.split("T")[0];
+      return recDate === date || localDate === date;
+    });
+
+    if (activeOrPresentToday.length > 0) {
+      return NextResponse.json(
+        {
+          message: `Cannot declare ${date} as a company holiday: Employees have already checked in / attendance is active for this date (${activeOrPresentToday.length} employee attendance record${activeOrPresentToday.length > 1 ? "s" : ""} found).`,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Insert holiday into company_holidays (Note: company_holidays table does not have updated_at column)
     const { data: insertedHoliday, error: insertErr } = await adminSupabase
       .from("company_holidays")
       .insert({
@@ -71,7 +102,6 @@ export async function POST(req) {
         description: cleanDesc,
         created_by: user.id,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
       })
       .select()
       .single();

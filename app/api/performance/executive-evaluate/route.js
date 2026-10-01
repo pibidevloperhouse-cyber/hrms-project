@@ -26,14 +26,15 @@ export async function POST(req) {
       return NextResponse.json({ message: "Company workspace not found." }, { status: 404 });
     }
 
-    const userRoleStr = (role || "").toLowerCase();
+    const userRoleStr = String(role || employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
     const isOwnerOrAdmin =
-      ["admin", "owner", "hr_manager"].includes(userRoleStr) ||
+      userRoleStr.includes("admin") ||
+      userRoleStr.includes("owner") ||
       Boolean(isOwner || employeeProfile?.is_owner);
 
     if (!isOwnerOrAdmin) {
       return NextResponse.json(
-        { message: "Access denied. Business Owner or Executive role required to calibrate appraisals." },
+        { message: "Access denied. Only Business Owners and Executives can calibrate appraisals." },
         { status: 403 }
       );
     }
