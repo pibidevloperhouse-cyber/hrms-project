@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/api/authFetch";
 
@@ -268,9 +269,16 @@ export default function TaskExtensionModal({
 
   const presetOptions = [1, 2, 3, 5, 7];
 
-  return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-lg bg-white rounded-lg shadow-2xl border border-slate-300 overflow-hidden my-8">
+  if (!isOpen || !task || !mounted || typeof document === "undefined") return null;
+
+  const modalContent = (
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSubmitting) onClose();
+      }}
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto animate-fadeIn"
+    >
+      <div className="relative w-full max-w-lg bg-white rounded-lg shadow-2xl border border-slate-300 overflow-hidden my-auto m-auto">
         {/* Header matching Create Sprint Theme */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
           <div>
@@ -524,4 +532,6 @@ export default function TaskExtensionModal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

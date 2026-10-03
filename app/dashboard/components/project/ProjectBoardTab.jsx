@@ -1,23 +1,24 @@
 /* eslint-disable react-hooks/purity */
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { authFetch } from "@/lib/api/authFetch";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import TaskDetailModal from "./TaskDetailModal";
 import TaskProgressUpdateModal from "./TaskProgressUpdateModal";
 import CreateStoryTaskModal from "./CreateStoryTaskModal";
 import TaskSuggestionModal from "./TaskSuggestionModal";
 import TaskExtensionModal from "./TaskExtensionModal";
+import TaskExtensionReviewModal from "./TaskExtensionReviewModal";
+import { authFetch } from "@/lib/api/authFetch";
 import {
   checkTaskSprintOverdue,
-  TASK_STATUS_TRANSITIONS,
   getTaskPermissionRole,
-  isTaskStatusTransitionAllowed,
   normalizeTaskStatus,
   canUserDragBoardTask,
 } from "@/lib/projectUtils";
-
+import { useBoardFilters } from "@/hooks/useBoardFilters";
+import { useBoardDragAndDrop } from "@/hooks/useBoardDragAndDrop";
+import { useTaskMutations } from "@/hooks/useTaskMutations";
+import ToastNotification from "../common/ToastNotification";
 
 const isDueToday = (dueDateStr) => {
   if (!dueDateStr) return false;
@@ -71,75 +72,219 @@ export default function ProjectBoardTab({
   clearTaskLock,
   onTasksUpdated,
 }) {
-  const allEmployees = useMemo(() => {
-    const map = new Map();
-    const allPool = [...(departmentEmployees || []), ...(teamLeads || [])];
+  // 1. Toast Notification State
+  const [toastMsg, setToastMsg] = useState(null);
 
-    // 1. Team Lead
-    if (project?.teamLead?.id) {
-      map.set(project.teamLead.id, { ...project.teamLead, roleTag: "Team Lead" });
-    } else if (project?.team_lead_id) {
-      const lead = allPool.find((e) => e.id === project.team_lead_id);
-      if (lead) map.set(lead.id, { ...lead, roleTag: "Team Lead" });
-    }
+  const showNotificationToast = useCallback((message, type = "info") => {
+    setToastMsg({ message, type });
+  }, []);
 
-    // 2. Creator / Owner
-    if (project?.creator?.id) {
-      map.set(project.creator.id, { ...project.creator, roleTag: "Owner" });
-    } else if (project?.created_by || project?.owner_id) {
-      const ownerId = project.owner_id || project.created_by;
-      const owner = allPool.find((e) => e.id === ownerId);
-      if (owner) map.set(owner.id, { ...owner, roleTag: "Owner" });
-    }
+  // 2. Custom Filter Hook
+  const {
+    isKanban,
+    allEmployees,
+    activeSprints,
+    activeSprint,
+    sprintFilter,
+    setSprintFilter,
+    assigneeFilter,
+    setAssigneeFilter,
+    priorityFilter,
+    setPriorityFilter,
+    filteredTasks,
+    tasksByColumn,
+  } = useBoardFilters({
+    project,
+    tasks,
+    sprints,
+    epics,
+    departmentEmployees,
+    teamLeads,
+    employeeProfile,
+  });
 
-    // 3. Team Members (from project.teamMembers objects or project.team_members IDs)
-    if (Array.isArray(project?.teamMembers) && project.teamMembers.length > 0) {
-      project.teamMembers.forEach((m) => {
-        if (m?.id && !map.has(m.id)) {
-          map.set(m.id, { ...m, roleTag: m.designation || m.role || "Member" });
+  // 3. User Permission Roles
+  const cleanRole = (employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
+  const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
+  const isProjectOwnerOrCreator = project?.owner_id === employeeProfile?.id || project?.created_by === employeeProfile?.id;
+  const isAssignedLead = project?.team_lead_id === employeeProfile?.id;
+  const isManagerRole = cleanRole.includes("manager") || cleanRole.includes("lead");
+  const isLeadOrManagerOrAdmin = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManagerRole;
+
+  const userRoleCategory = useMemo(() => {
+    return getTaskPermissionRole(employeeProfile?.role, employeeProfile, project);
+  }, [employeeProfile, project]);
+
+  // Check if task is assigned to current user
+  const isTaskAssignedToCurrentUser = useCallback(
+    (task) => {
+      if (!task) return false;
+      const effectiveUserId = currentUserId || employeeProfile?.id;
+      const authId = employeeProfile?.auth_user_id || employeeProfile?.user_id;
+      const userEmail = employeeProfile?.email?.toLowerCase()?.trim();
+
+      if (effectiveUserId) {
+        if (
+          task.assigned_to === effectiveUserId ||
+          task.assignee_id === effectiveUserId ||
+          task.planned_assignee_id === effectiveUserId ||
+          task.assignee?.id === effectiveUserId ||
+          task.planned_assignee?.id === effectiveUserId
+        ) {
+          return true;
         }
-      });
-    }
+      }
 
-    if (Array.isArray(project?.team_members) && project.team_members.length > 0) {
-      project.team_members.forEach((memberId) => {
-        const cleanId = typeof memberId === "object" ? memberId?.id : memberId;
-        if (cleanId && !map.has(cleanId)) {
-          const emp = typeof memberId === "object" ? memberId : allPool.find((e) => e.id === cleanId);
-          if (emp) {
-            map.set(cleanId, { ...emp, roleTag: emp.designation || emp.role || "Member" });
-          }
+      if (authId) {
+        if (
+          task.assigned_to === authId ||
+          task.assignee_id === authId ||
+          task.planned_assignee_id === authId ||
+          task.assignee?.auth_user_id === authId ||
+          task.assignee?.id === authId ||
+          task.planned_assignee?.auth_user_id === authId ||
+          task.planned_assignee?.id === authId
+        ) {
+          return true;
         }
-      });
-    }
+      }
 
-    return Array.from(map.values()).sort((a, b) => (a.full_name || "").localeCompare(b.full_name || ""));
-  }, [project, departmentEmployees, teamLeads]);
-  const isKanban = (project?.project_type || "").toLowerCase() === "kanban";
+      if (userEmail) {
+        const taskEmail = (task.assignee?.email || task.planned_assignee?.email || "")?.toLowerCase()?.trim();
+        if (taskEmail && taskEmail === userEmail) {
+          return true;
+        }
+      }
 
-  const activeSprints = useMemo(() => {
-    if (isKanban) return [];
-    return (sprints || []).filter((s) => {
-      const raw = String(s.status || "").trim().toUpperCase();
-      return ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(raw);
-    });
-  }, [sprints, isKanban]);
+      return false;
+    },
+    [currentUserId, employeeProfile]
+  );
 
-  const activeSprintIds = useMemo(() => {
-    return new Set(activeSprints.map((s) => s.id));
-  }, [activeSprints]);
+  // Sprint Readiness Check
+  const getTaskSprintState = useCallback(
+    (task) => {
+      if (isKanban) return { isReady: true, reason: "", sprintName: "" };
+      if (!task?.sprint_id) {
+        return {
+          isReady: false,
+          reason: "Cannot update status: Task is in Backlog (no active sprint)",
+          sprintName: "Backlog",
+        };
+      }
+      const sprint = sprints.find((s) => s.id === task.sprint_id);
+      if (!sprint || String(sprint.status).toUpperCase() !== "ACTIVE") {
+        return {
+          isReady: false,
+          reason: `Cannot update status: Sprint "${sprint?.name || "Planned"}" is planned (not started)`,
+          sprintName: sprint?.name || "Planned Sprint",
+        };
+      }
+      return { isReady: true, reason: "", sprintName: sprint.name };
+    },
+    [isKanban, sprints]
+  );
 
-  const activeSprint = activeSprints.length > 0 ? activeSprints[0] : null;
+  // 4. Custom Task Mutation Hook
+  const {
+    updatingTaskId,
+    updateTaskStatus,
+    submitDeliverableForReview,
+  } = useTaskMutations({
+    project,
+    tasks,
+    setTasks,
+    setTaskLock,
+    clearTaskLock,
+    onTasksUpdated,
+    showNotificationToast,
+    employeeProfile,
+    userRoleCategory,
+  });
 
-  const [sprintFilter, setSprintFilter] = useState("active");
-  const [assigneeFilter, setAssigneeFilter] = useState("all");
-  const [priorityFilter, setPriorityFilter] = useState("all");
-  const [updatingTaskId, setUpdatingTaskId] = useState(null);
+  // Modal States
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState(null);
   const [selectedTaskForSuggestion, setSelectedTaskForSuggestion] = useState(null);
   const [selectedTaskForExtension, setSelectedTaskForExtension] = useState(null);
   const [selectedTaskForExtensionReview, setSelectedTaskForExtensionReview] = useState(null);
-  const inFlightBoardLocksRef = useRef(new Map());
+  const [pendingProgressUpdate, setPendingProgressUpdate] = useState(null);
+  const [isSubmittingProgress, setIsSubmittingProgress] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [, setFormError] = useState("");
+
+  // 5. Custom Drag and Drop Hook
+  const {
+    draggedTaskId,
+    dragOverColId,
+    handleDragStart,
+    handleDragEnd,
+    handleDragOver,
+    handleDragLeave,
+    handleDrop,
+  } = useBoardDragAndDrop({
+    tasks,
+    sprints,
+    isKanban,
+    userRoleCategory,
+    employeeProfile,
+    currentUserId,
+    isLeadOrManagerOrAdmin,
+    isTaskAssignedToCurrentUser,
+    getTaskSprintState,
+    onDirectStatusUpdate: (taskId, newStatus) => updateTaskStatus(taskId, newStatus),
+    onOpenReviewModal: (task) => setPendingProgressUpdate({ task, targetStatus: "REVIEW" }),
+    showNotificationToast,
+  });
+
+  // WIP Limit calculation per assignee for In Progress column
+  const inProgressByAssignee = useMemo(() => {
+    const map = new Map();
+    const progressTasks = tasksByColumn.IN_PROGRESS || [];
+    progressTasks.forEach((t) => {
+      const assigneeKey =
+        t.assigned_to ||
+        t.assignee_id ||
+        t.planned_assignee_id ||
+        t.assignee?.id ||
+        "unassigned";
+      const currentList = map.get(assigneeKey) || [];
+      currentList.push(t);
+      map.set(assigneeKey, currentList);
+    });
+    return map;
+  }, [tasksByColumn.IN_PROGRESS]);
+
+  // Identify any developer that has exceeded the max 2 WIP limit
+  const assigneesOverWipLimit = useMemo(() => {
+    const list = [];
+    inProgressByAssignee.forEach((devTasks, devId) => {
+      if (devTasks.length > 2) {
+        const devName =
+          devTasks[0]?.assignee?.full_name ||
+          devTasks[0]?.planned_assignee?.full_name ||
+          allEmployees.find((e) => e.id === devId)?.full_name ||
+          (devId === "unassigned" ? "Unassigned Tasks" : "Developer");
+        list.push({ devId, devName, count: devTasks.length });
+      }
+    });
+    return list;
+  }, [inProgressByAssignee, allEmployees]);
+
+  // Check if currently dragged task's assignee already has >= 2 in-progress tasks
+  const isDraggedTaskAssigneeWipBlocked = useMemo(() => {
+    if (!draggedTaskId) return false;
+    const task = tasks.find((t) => t.id === draggedTaskId);
+    if (!task || normalizeTaskStatus(task.status) === "IN_PROGRESS") return false;
+    const assignee =
+      task.assignee ||
+      task.assigned_to ||
+      task.assignee_id ||
+      task.planned_assignee_id ||
+      employeeProfile;
+    const wipCheck = checkEmployeeWipLimit(assignee, tasks, draggedTaskId, 2);
+    return !wipCheck.allowed;
+  }, [draggedTaskId, tasks, employeeProfile]);
 
   const projectKey = useMemo(() => {
     if (project?.key) return project.key;
@@ -158,7 +303,6 @@ export default function ProjectBoardTab({
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // Helper: Check if task has active Team Lead feedback / suggestions
   const hasActiveTlSuggestions = (task) => {
     if (!task) return false;
     const currentNorm = normalizeTaskStatus(task.status);
@@ -177,424 +321,7 @@ export default function ProjectBoardTab({
     return false;
   };
 
-  // Drag-and-drop & Progress Update Modal state
-  const [draggedTaskId, setDraggedTaskId] = useState(null);
-  const [dragOverColId, setDragOverColId] = useState(null);
-  const [pendingProgressUpdate, setPendingProgressUpdate] = useState(null); // { task, targetStatus }
-  const [isSubmittingProgress, setIsSubmittingProgress] = useState(false);
-
-  // Quick new story/task/bug modal state
-  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [toastMsg, setToastMsg] = useState(null);
-
-  useEffect(() => {
-    if (toastMsg) {
-      const timer = setTimeout(() => setToastMsg(null), 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [toastMsg]);
-
-  const showNotificationToast = (message, type = "info") => {
-    setToastMsg({ message, type });
-  };
-
-  // Helper: Verify if task is assigned to the currently logged in employee
-  const isTaskAssignedToCurrentUser = (task) => {
-    if (!task) return false;
-    const effectiveUserId = currentUserId || employeeProfile?.id;
-    const authId = employeeProfile?.auth_user_id || employeeProfile?.user_id;
-    const userEmail = employeeProfile?.email?.toLowerCase()?.trim();
-
-    // Check direct ID match
-    if (effectiveUserId) {
-      if (
-        task.assigned_to === effectiveUserId ||
-        task.assignee_id === effectiveUserId ||
-        task.planned_assignee_id === effectiveUserId ||
-        task.assignee?.id === effectiveUserId ||
-        task.planned_assignee?.id === effectiveUserId
-      ) {
-        return true;
-      }
-    }
-
-    if (authId) {
-      if (
-        task.assigned_to === authId ||
-        task.assignee_id === authId ||
-        task.planned_assignee_id === authId ||
-        task.assignee?.auth_user_id === authId ||
-        task.assignee?.id === authId ||
-        task.planned_assignee?.auth_user_id === authId ||
-        task.planned_assignee?.id === authId
-      ) {
-        return true;
-      }
-    }
-
-    if (userEmail) {
-      const taskEmail = (task.assignee?.email || task.planned_assignee?.email || "")?.toLowerCase()?.trim();
-      if (taskEmail && taskEmail === userEmail) {
-        return true;
-      }
-    }
-
-    return false;
-  };
-
-  const cleanRole = (employeeProfile?.role || "").toLowerCase().replace(/[\s_-]+/g, "");
-  const isOwnerOrAdmin = cleanRole.includes("admin") || cleanRole.includes("owner") || cleanRole.includes("hr");
-  const isProjectOwnerOrCreator = project?.owner_id === employeeProfile?.id || project?.created_by === employeeProfile?.id;
-  const isAssignedLead = project?.team_lead_id === employeeProfile?.id;
-  const isManagerRole = cleanRole.includes("manager") || cleanRole.includes("lead");
-  const isLeadOrManagerOrAdmin = isOwnerOrAdmin || isProjectOwnerOrCreator || isAssignedLead || isManagerRole;
-
-  const userRoleCategory = useMemo(() => {
-    return getTaskPermissionRole(employeeProfile?.role, employeeProfile, project);
-  }, [employeeProfile, project]);
-
-  // Sprint Readiness Helper: Backlog & Planned sprints are locked for regular employees until started
-  const getTaskSprintState = (task) => {
-    if (isKanban) return { isReady: true, reason: "", sprintName: "" };
-    if (!task?.sprint_id) {
-      return {
-        isReady: false,
-        reason: "Cannot update status: Task is in Backlog (no active sprint)",
-        sprintName: "Backlog",
-      };
-    }
-    const sprint = sprints.find((s) => s.id === task.sprint_id);
-    if (!sprint || String(sprint.status).toUpperCase() !== "ACTIVE") {
-      return {
-        isReady: false,
-        reason: `Cannot update status: Sprint "${sprint?.name || "Planned"}" is planned (not started)`,
-        sprintName: sprint?.name || "Planned Sprint",
-      };
-    }
-    return { isReady: true, reason: "", sprintName: sprint.name };
-  };
-
-  // Filter tasks: Strictly show only Active Sprint tasks for Scrum projects by default
-  const filteredTasks = useMemo(() => {
-    return tasks.filter((task) => {
-      if (!isKanban) {
-        if (sprintFilter === "active") {
-          if (activeSprintIds.size > 0) {
-            if (!activeSprintIds.has(task.sprint_id)) return false;
-          }
-          // If no active sprint is running, show all project tasks
-        } else if (sprintFilter === "backlog") {
-          const isInBacklog = !task.sprint_id || !sprints.some((s) => s.id === task.sprint_id);
-          if (!isInBacklog) return false;
-        } else if (sprintFilter !== "all") {
-          // Specific sprint ID filter
-          if (task.sprint_id !== sprintFilter) return false;
-        }
-      }
-
-      if (assigneeFilter !== "all") {
-        const matchesAssignee =
-          task.assigned_to === assigneeFilter ||
-          task.planned_assignee_id === assigneeFilter ||
-          task.assignee_id === assigneeFilter ||
-          task.assignee?.id === assigneeFilter ||
-          task.assignee?.auth_user_id === assigneeFilter ||
-          task.planned_assignee?.id === assigneeFilter ||
-          task.planned_assignee?.auth_user_id === assigneeFilter;
-        if (!matchesAssignee) return false;
-      }
-
-      if (priorityFilter !== "all") {
-        const taskPriority = (task.priority || "MEDIUM").toUpperCase();
-        if (taskPriority !== priorityFilter) return false;
-      }
-
-      return true;
-    });
-  }, [tasks, sprints, activeSprint, sprintFilter, assigneeFilter, priorityFilter, isKanban, isLeadOrManagerOrAdmin]);
-
-  // Direct status update for drag & drop and quick dropdown with instant optimistic UI (<10ms)
-  // Direct status update for drag & drop and quick dropdown with instant optimistic UI (<10ms)
-  const executeDirectStatusUpdate = async (taskId, newStatus) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-
-    const currentNormStatus = normalizeTaskStatus(task.status);
-    const normStatus = normalizeTaskStatus(newStatus || "TODO");
-    if (currentNormStatus === normStatus) return;
-
-    // 1. Completed tasks are finalized and locked for employees
-    if (currentNormStatus === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
-      showNotificationToast(
-        "Action Blocked: Completed tasks are finalized and cannot be moved or reopened by employees.",
-        "error"
-      );
-      return;
-    }
-
-    // 2. Tasks under review are locked for employees
-    if (currentNormStatus === "REVIEW" && userRoleCategory === "EMPLOYEE") {
-      showNotificationToast(
-        "Action Blocked: Deliverables under review cannot be moved while awaiting supervisor verification.",
-        "warning"
-      );
-      return;
-    }
-
-    if (!isTaskAssignedToCurrentUser(task) && !isLeadOrManagerOrAdmin) {
-      showNotificationToast(
-        "Only the assigned employee or supervisor can update the task status.",
-        "warning"
-      );
-      return;
-    }
-
-    if (!isLeadOrManagerOrAdmin) {
-      const sprintState = getTaskSprintState(task);
-      if (!sprintState.isReady) {
-        showNotificationToast(sprintState.reason, "warning");
-        return;
-      }
-    }
-
-    // 3. Validate role transition matrix
-    if (!isTaskStatusTransitionAllowed(userRoleCategory, currentNormStatus, normStatus)) {
-      showNotificationToast(
-        `Action Blocked: Moving from ${currentNormStatus} to ${normStatus} is not permitted for your role.`,
-        "error"
-      );
-      return;
-    }
-
-    // Determine intuitive default progress based on target status
-    let nextProgress = Number(task.progress) || 0;
-    if (normStatus === "COMPLETED") {
-      nextProgress = 100;
-    } else if (normStatus === "TODO") {
-      nextProgress = 0;
-    } else if (normStatus === "REVIEW") {
-      nextProgress = Math.max(85, nextProgress);
-    } else if (normStatus === "IN_PROGRESS") {
-      nextProgress = nextProgress > 0 && nextProgress < 100 ? nextProgress : 50;
-    }
-
-    // Record In-Flight Mutation Lock on both board and parent workspace
-    inFlightBoardLocksRef.current.set(taskId, {
-      status: normStatus,
-      progress: nextProgress,
-      timestamp: Date.now(),
-    });
-    setTaskLock?.(taskId, { status: normStatus, progress: nextProgress });
-
-    // Instant local optimistic update for immediate feedback (<10ms)
-    const previousTasks = [...tasks];
-    if (setTasks) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                status: normStatus,
-                progress: nextProgress,
-              }
-            : t
-        )
-      );
-    }
-
-    setUpdatingTaskId(taskId);
-
-    try {
-      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: normStatus,
-          progress: nextProgress,
-        }),
-      });
-
-      if (res.ok) {
-        const resData = await res.json();
-        if (setTasks && resData.task) {
-          setTasks((prev) =>
-            prev.map((t) => (t.id === taskId ? { ...t, ...resData.task, status: normStatus, progress: nextProgress } : t))
-          );
-        }
-        showNotificationToast("Item status updated.", "success");
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("project-task-updated", {
-              detail: { new: resData.task, project_id: project?.id },
-            })
-          );
-        }
-        if (onTasksUpdated) onTasksUpdated();
-        setTimeout(() => {
-          inFlightBoardLocksRef.current.delete(taskId);
-          clearTaskLock?.(taskId);
-        }, 4000);
-      } else {
-        inFlightBoardLocksRef.current.delete(taskId);
-        clearTaskLock?.(taskId);
-        if (setTasks) setTasks(previousTasks);
-        const data = await res.json();
-        throw new Error(data.message || "Failed to update task status.");
-      }
-    } catch (err) {
-      inFlightBoardLocksRef.current.delete(taskId);
-      clearTaskLock?.(taskId);
-      if (setTasks) setTasks(previousTasks);
-      console.error("Failed to update status via drag-and-drop:", err);
-      showNotificationToast(err.message || "Failed to update task status.", "error");
-    } finally {
-      setUpdatingTaskId(null);
-    }
-  };
-
-  // Drag and drop event handlers: Exclusively assigned developers can drag active development tasks
-  const handleDragStart = (e, task) => {
-    const currentNormStatus = normalizeTaskStatus(task?.status);
-
-    if (currentNormStatus === "COMPLETED") {
-      e.preventDefault();
-      showNotificationToast(
-        "Action Blocked: Completed tasks are finalized and cannot be dragged or reopened.",
-        "warning"
-      );
-      return;
-    }
-
-    if (currentNormStatus === "REVIEW") {
-      e.preventDefault();
-      showNotificationToast(
-        "Action Blocked: This deliverable is under review and cannot be dragged.",
-        "warning"
-      );
-      return;
-    }
-
-    if (!isTaskAssignedToCurrentUser(task)) {
-      e.preventDefault();
-      showNotificationToast(
-        "Only the assigned developer can drag their active tasks. Managers oversee progress and review deliverables.",
-        "warning"
-      );
-      return;
-    }
-
-    const sprintState = getTaskSprintState(task);
-    if (!sprintState.isReady) {
-      e.preventDefault();
-      showNotificationToast(sprintState.reason, "warning");
-      return;
-    }
-
-    e.dataTransfer.setData("text/plain", task.id);
-    e.dataTransfer.effectAllowed = "move";
-    setDraggedTaskId(task.id);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedTaskId(null);
-    setDragOverColId(null);
-  };
-
-  const handleDragOver = (e, colId) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dragOverColId !== colId) {
-      setDragOverColId(colId);
-    }
-  };
-
-  const handleDragLeave = (e, colId) => {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    if (dragOverColId === colId) {
-      setDragOverColId(null);
-    }
-  };
-
-  const handleDrop = (e, targetColId) => {
-    e.preventDefault();
-    setDragOverColId(null);
-    const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
-    setDraggedTaskId(null);
-    if (!taskId) return;
-
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task) return;
-
-    const currentNormStatus = normalizeTaskStatus(task.status);
-    const normTarget = normalizeTaskStatus(targetColId || "TODO");
-
-    // 1. Strictly block any drop or transition from COMPLETED (Done)
-    if (currentNormStatus === "COMPLETED") {
-      showNotificationToast(
-        "Action Blocked: Completed tasks are finalized and cannot be moved.",
-        "error"
-      );
-      return;
-    }
-
-    // 2. Strictly block any drop or transition from REVIEW (In Review)
-    if (currentNormStatus === "REVIEW") {
-      showNotificationToast(
-        "Action Blocked: Tasks under review cannot be moved while awaiting supervisor verification.",
-        "warning"
-      );
-      return;
-    }
-
-    if (!isTaskAssignedToCurrentUser(task)) {
-      showNotificationToast(
-        "Only the assigned developer can update the task status on the board.",
-        "warning"
-      );
-      return;
-    }
-
-    const sprintState = getTaskSprintState(task);
-    if (!sprintState.isReady) {
-      showNotificationToast(sprintState.reason, "warning");
-      return;
-    }
-
-    if (currentNormStatus === normTarget) return;
-
-    // 3. Prevent dropping directly onto COMPLETED for employee
-    if (normTarget === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
-      showNotificationToast(
-        "Deliverable Approval Required: Please submit for Review. Only your Manager or Team Lead can verify and mark a task as Completed.",
-        "warning"
-      );
-      return;
-    }
-
-    // 4. Validate transition against state machine
-    if (!isTaskStatusTransitionAllowed(userRoleCategory, currentNormStatus, normTarget)) {
-      showNotificationToast(
-        `Action Blocked: Moving from ${currentNormStatus} to ${normTarget} is not permitted for your role.`,
-        "error"
-      );
-      return;
-    }
-
-    // 5. Only when moving an IN_PROGRESS task to REVIEW, open progress/review modal
-    if (normTarget === "REVIEW" && currentNormStatus === "IN_PROGRESS") {
-      setPendingProgressUpdate({
-        task,
-        targetStatus: "REVIEW",
-      });
-      return;
-    }
-
-    executeDirectStatusUpdate(taskId, targetColId);
-  };
-
-  // Confirm progress status update from popup modal with instant optimistic UI update
+  // Confirm progress status update from popup modal
   const handleConfirmProgressUpdate = async ({
     taskId,
     newStatus,
@@ -604,142 +331,15 @@ export default function ProjectBoardTab({
     review_attachments,
     review_submitted_at,
   }) => {
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task || !isTaskAssignedToCurrentUser(task)) {
-      showNotificationToast(
-        "Only the assigned employee can update the task status.",
-        "warning"
-      );
-      setPendingProgressUpdate(null);
-      return;
-    }
-
-    const currentNormStatus = normalizeTaskStatus(task.status);
-    if (currentNormStatus === "COMPLETED") {
-      showNotificationToast(
-        "Action Blocked: Completed tasks are finalized and cannot be submitted for review.",
-        "error"
-      );
-      setPendingProgressUpdate(null);
-      return;
-    }
-
-    if (currentNormStatus === "REVIEW") {
-      showNotificationToast(
-        "Action Blocked: Task is already in review and awaiting supervisor verification.",
-        "warning"
-      );
-      setPendingProgressUpdate(null);
-      return;
-    }
-
-    if (!isLeadOrManagerOrAdmin) {
-      const sprintState = getTaskSprintState(task);
-      if (!sprintState.isReady) {
-        showNotificationToast(sprintState.reason, "warning");
-        setPendingProgressUpdate(null);
-        return;
-      }
-    }
-
-
-    const normStatus = (newStatus || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
-    const nextProgress = progress !== undefined ? Number(progress) : (normStatus === "COMPLETED" ? 100 : normStatus === "REVIEW" ? 85 : 50);
-
-    // Record In-Flight Mutation Lock on both board and parent workspace
-    inFlightBoardLocksRef.current.set(taskId, {
-      status: normStatus,
-      progress: nextProgress,
-      timestamp: Date.now(),
-    });
-    setTaskLock?.(taskId, { status: normStatus, progress: nextProgress });
-
-    // Optimistic local state update for instant UI feedback (<10ms)
-    const previousTasks = [...tasks];
-    if (setTasks) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                status: normStatus,
-                progress: nextProgress,
-              }
-            : t
-        )
-      );
-    }
-
     setIsSubmittingProgress(true);
-    setUpdatingTaskId(taskId);
-    try {
-      const supabase = createClient();
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = {
-        "Content-Type": "application/json",
-        ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-      };
-
-      const payload = {
-        status: normStatus,
-        progress: nextProgress,
-        comments,
-      };
-      if (review_comments !== undefined) payload.review_comments = review_comments;
-      if (review_attachments !== undefined) payload.review_attachments = review_attachments;
-      if (review_submitted_at !== undefined) payload.review_submitted_at = review_submitted_at;
-
-      const res = await authFetch(`/api/projects/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const resData = await res.json();
-        if (setTasks && resData.task) {
-          setTasks((prev) =>
-            prev.map((t) =>
-              t.id === taskId
-                ? {
-                    ...t,
-                    ...resData.task,
-                    status: normStatus,
-                    progress: nextProgress,
-                  }
-                : t
-            )
-          );
-        }
-        showNotificationToast("Item status updated.", "success");
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(
-            new CustomEvent("project-task-updated", {
-              detail: { new: resData.task, project_id: project?.id },
-            })
-          );
-        }
-        if (onTasksUpdated) onTasksUpdated();
-        setTimeout(() => {
-          inFlightBoardLocksRef.current.delete(taskId);
-          clearTaskLock?.(taskId);
-        }, 4000);
-      } else {
-        inFlightBoardLocksRef.current.delete(taskId);
-        clearTaskLock?.(taskId);
-        if (setTasks) setTasks(previousTasks);
-        const data = await res.json();
-        throw new Error(data.message || "Failed to update task progress.");
-      }
-    } catch (err) {
-      inFlightBoardLocksRef.current.delete(taskId);
-      clearTaskLock?.(taskId);
-      if (setTasks) setTasks(previousTasks);
-      console.error("Failed to update task progress:", err);
-      showNotificationToast(err.message || "Failed to update task progress.", "error");
-    } finally {
-      setIsSubmittingProgress(false);
-      setUpdatingTaskId(null);
+    const success = await submitDeliverableForReview({
+      taskId,
+      comments: comments || review_comments || "",
+      review_attachments: review_attachments || [],
+      progress: progress || 85,
+    });
+    setIsSubmittingProgress(false);
+    if (success) {
       setPendingProgressUpdate(null);
     }
   };
@@ -811,16 +411,16 @@ export default function ProjectBoardTab({
   };
 
   return (
-    <div className="space-y-4 text-xs text-slate-800">
+    <div className="space-y-4 text-xs text-slate-800 dark:text-slate-200">
       {/* Board Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs">
         <div className="flex flex-wrap items-center gap-2.5">
-          {/* Sprint Filter (Only in Scrum / Custom Agile) */}
+          {/* Sprint Filter */}
           {!isKanban && (
             <select
               value={sprintFilter}
               onChange={(e) => setSprintFilter(e.target.value)}
-              className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
+              className="h-8.5 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-semibold focus:outline-hidden focus:border-blue-600 cursor-pointer shadow-2xs"
             >
               <option value="active">
                 ⚡ Active Sprints {activeSprints.length > 0 ? `(${activeSprints.map((s) => s.name).join(", ")})` : "(None Running)"}
@@ -839,7 +439,7 @@ export default function ProjectBoardTab({
           <select
             value={assigneeFilter}
             onChange={(e) => setAssigneeFilter(e.target.value)}
-            className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
+            className="h-8.5 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:outline-hidden focus:border-blue-600 cursor-pointer shadow-2xs"
           >
             <option value="all">All Assignees</option>
             {allEmployees.map((emp) => (
@@ -853,7 +453,7 @@ export default function ProjectBoardTab({
           <select
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
-            className="h-8.5 px-2.5 rounded-lg border border-slate-300 bg-white text-xs font-medium focus:outline-none focus:border-blue-600 cursor-pointer shadow-2xs"
+            className="h-8.5 px-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium focus:outline-hidden focus:border-blue-600 cursor-pointer shadow-2xs"
           >
             <option value="all">All Priorities</option>
             <option value="LOW">Low</option>
@@ -866,7 +466,7 @@ export default function ProjectBoardTab({
         <button
           type="button"
           onClick={() => setIsTaskModalOpen(true)}
-          className="h-8.5 px-3.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+          className="h-8.5 px-3.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-sky-600/20 text-xs"
         >
           <span>+</span>
           <span>Add Task</span>
@@ -875,46 +475,46 @@ export default function ProjectBoardTab({
 
       {/* No Active Sprint Notice for Scrum */}
       {!isKanban && sprintFilter === "active" && activeSprints.length === 0 && (
-          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 flex flex-wrap items-center justify-between gap-3 text-xs animate-fadeIn">
-            <div className="flex items-center gap-2.5">
-              <span className="text-base">ℹ️</span>
-              <div>
-                <p className="font-bold">No Active Sprint Running</p>
-                <p className="text-[11px] text-amber-700">
-                  {sprints.length > 0
-                    ? `You have ${sprints.length} planned sprint(s). Start a sprint to focus deliverables on this cycle.`
-                    : "The Scrum board displays tasks for the active sprint. Create and start a sprint in the Sprints tab."}
-                </p>
-              </div>
+        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 flex flex-wrap items-center justify-between gap-3 text-xs animate-fadeIn">
+          <div className="flex items-center gap-2.5">
+            <span className="text-base">ℹ️</span>
+            <div>
+              <p className="font-bold">No Active Sprint Running</p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                {sprints.length > 0
+                  ? `You have ${sprints.length} planned sprint(s). Start a sprint to focus deliverables on this cycle.`
+                  : "The Scrum board displays tasks for the active sprint. Create and start a sprint in the Sprints tab."}
+              </p>
             </div>
-            {isLeadOrManagerOrAdmin && sprints.length > 0 && (
-              <div className="flex items-center gap-2">
-                {sprints
-                  .filter((s) => String(s.status || "").toUpperCase() === "PLANNED" || !s.status)
-                  .slice(0, 2)
-                  .map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => handleStartSprint(s.id)}
-                      className="h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold transition cursor-pointer shadow-2xs text-xs flex items-center gap-1.5"
-                    >
-                      <span>⚡ Start {s.name}</span>
-                    </button>
-                  ))}
-              </div>
-            )}
           </div>
+          {isLeadOrManagerOrAdmin && sprints.length > 0 && (
+            <div className="flex items-center gap-2">
+              {sprints
+                .filter((s) => String(s.status || "").toUpperCase() === "PLANNED" || !s.status)
+                .slice(0, 2)
+                .map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => handleStartSprint(s.id)}
+                    className="h-8 px-3 rounded-lg bg-sky-600 hover:bg-sky-700 text-white font-semibold transition cursor-pointer shadow-2xs text-xs flex items-center gap-1.5"
+                  >
+                    <span>⚡ Start {s.name}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Kanban Board Columns with HTML5 Drag and Drop */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
         {COLUMNS.map((col) => {
-          const colTasks = filteredTasks.filter((t) => {
-            const normSt = (t.status || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
-            return normSt === col.id;
-          });
+          const colTasks = tasksByColumn[col.id] || [];
           const isOver = dragOverColId === col.id;
+          const isCompletedCol = col.id === "COMPLETED";
+          const isProgressCol = col.id === "IN_PROGRESS";
+          const isRestrictedTarget = isCompletedCol && userRoleCategory === "EMPLOYEE";
 
           return (
             <div
@@ -922,28 +522,81 @@ export default function ProjectBoardTab({
               onDragOver={(e) => handleDragOver(e, col.id)}
               onDragLeave={(e) => handleDragLeave(e, col.id)}
               onDrop={(e) => handleDrop(e, col.id)}
-              className={`rounded-xl border p-3 space-y-3 min-h-[480px] flex flex-col transition-all duration-200 ${isOver
-                  ? "bg-blue-50/80 border-blue-400 border-dashed ring-2 ring-blue-500/20 shadow-md scale-[1.01]"
-                  : `${col.bg} border-slate-200/80`
-                }`}
+              className={`rounded-xl border p-3 space-y-3 min-h-[480px] flex flex-col transition-all duration-200 ${
+                isOver
+                  ? isRestrictedTarget
+                    ? "bg-rose-50/70 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 border-dashed ring-2 ring-rose-500/15 shadow-md scale-[1.01]"
+                    : "bg-sky-50/80 dark:bg-sky-950/40 border-sky-400 dark:border-sky-600 border-dashed ring-2 ring-sky-500/20 shadow-md scale-[1.01]"
+                  : `${col.bg} dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-800`
+              }`}
             >
               {/* Column Header */}
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                  <span className="font-bold text-slate-800 text-xs">{col.label}</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">{col.label}</span>
+                  {isCompletedCol && userRoleCategory === "EMPLOYEE" && (
+                    <span
+                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800"
+                      title="Deliverables are verified and marked Completed by Team Leads & Managers"
+                    >
+                      <span>🔒</span>
+                      <span>Verified</span>
+                    </span>
+                  )}
+                  {isProgressCol && userRoleCategory === "EMPLOYEE" && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                        colTasks.length >= 2
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                          : "bg-sky-100/80 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border border-sky-200/90 dark:border-sky-800"
+                      }`}
+                      title="Work In Progress (WIP) Limit: You can have at most 2 active tasks in progress at a time."
+                    >
+                      <span>⚡</span>
+                      <span>WIP: {colTasks.length}/2</span>
+                    </span>
+                  )}
                 </div>
-                <span className="text-[10px] font-mono font-bold text-slate-500 bg-white px-1.5 py-0.2 rounded border border-slate-200">
+                <span
+                  className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                    isProgressCol && userRoleCategory === "EMPLOYEE" && colTasks.length >= 2
+                      ? "bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-700"
+                      : "text-slate-500 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
+                  }`}
+                >
                   {colTasks.length}
                 </span>
               </div>
 
+              {/* In Progress Warning Banner for Employee ONLY if > 2 */}
+              {isProgressCol && userRoleCategory === "EMPLOYEE" && colTasks.length > 2 && (
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-900 dark:text-amber-200 text-[11px] font-semibold flex items-center gap-2 animate-fadeIn">
+                  <span className="text-amber-600 dark:text-amber-400">⚠️</span>
+                  <span>
+                    Limit Exceeded ({colTasks.length}/2 tasks in progress). Please complete or submit tasks for review before processing new items.
+                  </span>
+                </div>
+              )}
+
               {/* Drag Over Visual Target Banner */}
               {draggedTaskId && isOver && (
-                <div className="py-2 px-3 rounded-lg border border-dashed border-blue-400 bg-blue-100/80 text-blue-800 text-center text-[11px] font-bold animate-pulse flex items-center justify-center gap-1.5 shadow-2xs">
-                  <span>↓</span>
-                  <span>Drop to change to {col.label}</span>
-                </div>
+                isRestrictedTarget ? (
+                  <div className="py-2.5 px-3 rounded-lg border border-dashed border-rose-300 bg-rose-50 text-rose-800 text-center text-[11px] font-semibold flex items-center justify-center gap-1.5 shadow-2xs">
+                    <span className="text-rose-600">🔒</span>
+                    <span>Review &amp; Approval Required (Lead/Manager Only)</span>
+                  </div>
+                ) : isProgressCol && isDraggedTaskAssigneeWipBlocked ? (
+                  <div className="py-2.5 px-3 rounded-lg border border-dashed border-amber-400 bg-amber-50 dark:bg-amber-950/80 text-amber-900 dark:text-amber-200 text-center text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-2xs animate-pulse">
+                    <span className="text-amber-600">⚠️</span>
+                    <span>Action Blocked: Already 2 tasks in progress!</span>
+                  </div>
+                ) : (
+                  <div className="py-2 px-3 rounded-lg border border-dashed border-sky-400 bg-sky-100/80 text-sky-800 text-center text-[11px] font-bold animate-pulse flex items-center justify-center gap-1.5 shadow-2xs">
+                    <span>↓</span>
+                    <span>Drop to change to {col.label}</span>
+                  </div>
+                )
               )}
 
               {/* Column Tasks */}
@@ -995,9 +648,9 @@ export default function ProjectBoardTab({
                             setSelectedTaskForDetail(task);
                           }
                         }}
-                        className={`relative p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-md hover:border-slate-300 transition-all duration-150 group select-none ${
+                        className={`relative p-3.5 rounded-xl bg-white dark:bg-slate-800/90 border border-slate-200/90 dark:border-slate-700/80 shadow-2xs hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-150 group select-none ${
                           canMoveTask ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-                        } ${isBeingDragged ? "opacity-30 scale-95 border-dashed border-blue-500" : ""} ${
+                        } ${isBeingDragged ? "opacity-30 scale-95 border-dashed border-sky-500" : ""} ${
                           updatingTaskId === task.id ? "opacity-50 pointer-events-none" : ""
                         }`}
                         title={
@@ -1016,7 +669,6 @@ export default function ProjectBoardTab({
                             : "Drag to change status, or click to view detailed description"
                         }
                       >
-
                         {/* Left vertical accent bar */}
                         <div
                           className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${
@@ -1034,47 +686,31 @@ export default function ProjectBoardTab({
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5 min-w-0">
                             {task.task_type === "BUG" ? (
-                              <svg
-                                className="w-3.5 h-3.5 text-rose-500 shrink-0"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.2"
-                              >
+                              <svg className="w-3.5 h-3.5 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
                                 <circle cx="12" cy="12" r="9" />
                                 <path d="M12 8v4m0 4h.01" />
                               </svg>
                             ) : (
-                              <svg
-                                className="w-3.5 h-3.5 text-emerald-600 shrink-0"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2.2"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                                />
+                              <svg className="w-3.5 h-3.5 text-emerald-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                               </svg>
                             )}
-                            <span className="font-semibold text-slate-800 text-xs tracking-tight truncate">
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 text-xs tracking-tight truncate">
                               {taskCode}
                             </span>
                           </div>
 
                           {/* Assignee Avatar Initials Badge */}
                           <div
-                            className="w-6 h-6 rounded bg-slate-100/90 border border-slate-200/80 text-slate-700 font-bold text-[10px] flex items-center justify-center shrink-0 shadow-2xs"
+                            className="w-6 h-6 rounded bg-slate-100/90 dark:bg-slate-700 border border-slate-200/80 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-bold text-[10px] flex items-center justify-center shrink-0 shadow-2xs"
                             title={assignee?.full_name ? `Assignee: ${assignee.full_name}` : "Unassigned"}
                           >
                             {initials}
                           </div>
                         </div>
 
-                        {/* Middle: Clean Task Title */}
-                        <h5 className="font-medium text-slate-900 text-[13px] leading-snug group-hover:text-blue-600 transition pt-1.5 pb-0.5">
+                        {/* Middle: Task Title */}
+                        <h5 className="font-medium text-slate-900 dark:text-white text-[13px] leading-snug group-hover:text-sky-600 dark:group-hover:text-sky-400 transition pt-1.5 pb-0.5">
                           {task.title}
                         </h5>
 
@@ -1082,7 +718,7 @@ export default function ProjectBoardTab({
                         {linkedEpic && (
                           <div className="pt-1">
                             <span
-                              className="inline-flex items-center text-[11px] font-medium text-slate-800 bg-slate-100/80 px-2 py-0.5 rounded border-l-[3px] truncate max-w-full"
+                              className="inline-flex items-center text-[11px] font-medium text-slate-800 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-700/80 px-2 py-0.5 rounded border-l-[3px] truncate max-w-full"
                               style={{ borderLeftColor: linkedEpic.color || "#2563eb" }}
                               title={`Epic: ${linkedEpic.name}`}
                             >
@@ -1099,7 +735,7 @@ export default function ProjectBoardTab({
                               setSelectedTaskForDetail(task);
                             }}
                             className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-amber-950 bg-gradient-to-r from-amber-100 via-orange-100 to-amber-100 border border-amber-300 hover:border-amber-400 px-2 py-1 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
-                            title="Due Today: Please analyze deliverable status and prioritize work."
+                            title="Due Today: Please prioritize work."
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
                             <span>⏱️ Due Today · Prioritize Work</span>
@@ -1117,10 +753,9 @@ export default function ProjectBoardTab({
                                 setSelectedTaskForDetail(task);
                               }
                             }}
-                            className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-slate-800 bg-slate-100 border border-slate-300 hover:border-blue-400 hover:text-blue-700 px-2 py-1 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
-                            title={`Extension requested to ${task.extension_requested_date ? new Date(task.extension_requested_date).toLocaleDateString() : "new date"}. Click to review.`}
+                            className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 hover:border-sky-400 hover:text-sky-700 px-2 py-1 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
                           >
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-600 animate-pulse" />
                             <span>⏳ Extension Pending Review</span>
                           </div>
                         )}
@@ -1133,7 +768,6 @@ export default function ProjectBoardTab({
                               setSelectedTaskForDetail(task);
                             }}
                             className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-900 bg-emerald-50 border border-emerald-300 hover:border-emerald-400 px-2 py-0.5 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
-                            title="Deadline extension was approved by Team Lead."
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             <span>✓ Extension Approved</span>
@@ -1148,7 +782,6 @@ export default function ProjectBoardTab({
                               setSelectedTaskForSuggestion(task);
                             }}
                             className="mt-2 flex items-center gap-1.5 text-[10px] font-extrabold text-amber-950 bg-gradient-to-r from-amber-100 via-orange-100 to-amber-100 border border-amber-300 hover:border-amber-400 px-2 py-1 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
-                            title="Team Lead requested improvements. Click to view suggestions."
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
                             <span>💬 TL Review Suggestions</span>
@@ -1163,7 +796,6 @@ export default function ProjectBoardTab({
                               setSelectedTaskForDetail(task);
                             }}
                             className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-emerald-950 bg-emerald-50 border border-emerald-300 px-2 py-0.5 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
-                            title={userRoleCategory === "EMPLOYEE" ? "Deliverable approved & completed. Locked from employee changes." : "Deliverable approved & completed."}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             <span>{userRoleCategory === "EMPLOYEE" ? "🔒 Completed (Locked)" : "✓ Completed"}</span>
@@ -1178,16 +810,14 @@ export default function ProjectBoardTab({
                               setSelectedTaskForDetail(task);
                             }}
                             className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-purple-950 bg-purple-50 border border-purple-300 px-2 py-0.5 rounded-md shadow-2xs w-fit cursor-pointer transition active:scale-95 animate-fadeIn"
-                            title={userRoleCategory === "EMPLOYEE" ? "Work submitted for review. Awaiting Team Lead / Manager approval." : "Deliverable submitted. Ready for verification."}
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-purple-600 animate-pulse" />
                             <span>{userRoleCategory === "EMPLOYEE" ? "⏳ In Review (Awaiting Approval)" : "📋 In Review (Ready for Verification)"}</span>
                           </div>
                         )}
 
-
                         {/* Bottom Toolbar with dashed divider */}
-                        <div className="border-t border-dashed border-slate-200 mt-2.5 pt-2 flex items-center justify-between text-slate-400">
+                        <div className="border-t border-dashed border-slate-200 dark:border-slate-700 mt-2.5 pt-2 flex items-center justify-between text-slate-400">
                           {/* Left action icons */}
                           <div className="flex items-center gap-2">
                             {/* Timer / Due Date */}
@@ -1197,17 +827,8 @@ export default function ProjectBoardTab({
                                   ? "text-amber-900 bg-amber-50 border border-amber-300/80 font-bold font-mono"
                                   : isOverdue
                                   ? "text-rose-700 bg-rose-50 border border-rose-300/80 font-bold font-mono"
-                                  : "hover:text-slate-700"
+                                  : "hover:text-slate-700 dark:hover:text-slate-200"
                               }`}
-                              title={
-                                isDueTodayTask
-                                  ? "⏰ Due Today: Please analyze task progress and prioritize delivery"
-                                  : isOverdue
-                                  ? `⚠️ Overdue since ${new Date(task.due_date).toLocaleDateString()}`
-                                  : task.due_date
-                                  ? `Due Date: ${new Date(task.due_date).toLocaleDateString()}`
-                                  : "No due date"
-                              }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedTaskForDetail(task);
@@ -1236,28 +857,22 @@ export default function ProjectBoardTab({
                               </span>
                             </div>
 
-                            {/* Story Points / Database icon */}
+                            {/* Story Points */}
                             <div
-                              className="flex items-center gap-0.5 hover:text-slate-700 transition cursor-pointer"
+                              className="flex items-center gap-0.5 hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
                               title={`Story Points: ${task.story_points || 1} pts`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedTaskForDetail(task);
                               }}
                             >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                              >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <ellipse cx="12" cy="5" rx="9" ry="3" />
                                 <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3" />
                                 <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5" />
                               </svg>
                               {task.story_points ? (
-                                <span className="text-[10px] font-mono font-semibold text-slate-600">
+                                <span className="text-[10px] font-mono font-semibold text-slate-600 dark:text-slate-300">
                                   {task.story_points}
                                 </span>
                               ) : null}
@@ -1265,16 +880,9 @@ export default function ProjectBoardTab({
 
                             {/* Comments / Feedback icon */}
                             <div
-                              className={`relative hover:text-slate-700 transition cursor-pointer ${
+                              className={`relative hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer ${
                                 hasActiveTlSuggestions(task) ? "text-amber-600" : ""
                               }`}
-                              title={
-                                hasActiveTlSuggestions(task)
-                                  ? "Team Lead Feedback Available - Click to view"
-                                  : task.comments
-                                  ? `Comments: ${task.comments}`
-                                  : "Comments & Feedback"
-                              }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (hasActiveTlSuggestions(task)) {
@@ -1284,13 +892,7 @@ export default function ProjectBoardTab({
                                 }
                               }}
                             >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                              >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                               </svg>
                               {hasActiveTlSuggestions(task) && (
@@ -1298,17 +900,12 @@ export default function ProjectBoardTab({
                               )}
                             </div>
 
-                            {/* Request Extension Quick Trigger for Assigned Employee */}
+                            {/* Request Extension Trigger */}
                             {isTaskAssignedToCurrentUser(task) && task.status !== "COMPLETED" && (
                               <div
-                                className={`hover:text-blue-600 transition cursor-pointer text-[11px] flex items-center gap-0.5 ${
+                                className={`hover:text-sky-600 transition cursor-pointer text-[11px] flex items-center gap-0.5 ${
                                   task.extension_status === "PENDING" ? "text-amber-600" : ""
                                 }`}
-                                title={
-                                  task.extension_status === "PENDING"
-                                    ? "Extension request pending Team Lead review"
-                                    : "Request Deadline Extension from Team Lead"
-                                }
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setSelectedTaskForExtension(task);
@@ -1320,9 +917,9 @@ export default function ProjectBoardTab({
                               </div>
                             )}
 
-                            {/* Ellipsis / Details Trigger */}
+                            {/* Details Trigger */}
                             <div
-                              className="hover:text-slate-700 transition cursor-pointer font-bold text-xs tracking-widest leading-none px-0.5"
+                              className="hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer font-bold text-xs tracking-widest leading-none px-0.5"
                               title="View task details"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1333,10 +930,10 @@ export default function ProjectBoardTab({
                             </div>
                           </div>
 
-                          {/* Right action icon: Tag / Priority */}
+                          {/* Right action icon: Priority Tag */}
                           <div className="flex items-center">
                             <div
-                              className="hover:text-slate-700 transition cursor-pointer"
+                              className="hover:text-slate-700 dark:hover:text-slate-200 transition cursor-pointer"
                               title={`Priority: ${task.priority || "Medium"}`}
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -1391,7 +988,7 @@ export default function ProjectBoardTab({
         onCreateTask={handleCreateTask}
       />
 
-      {/* Detailed Description & Task Properties Modal */}
+      {/* Granular Task Detail Modal */}
       <TaskDetailModal
         task={
           selectedTaskForDetail
@@ -1413,7 +1010,7 @@ export default function ProjectBoardTab({
         }}
       />
 
-      {/* Dedicated Team Lead Suggestion / Feedback Popup Modal */}
+      {/* Suggestion / Feedback Popup Modal */}
       {selectedTaskForSuggestion && (
         <TaskSuggestionModal
           isOpen={Boolean(selectedTaskForSuggestion)}
@@ -1433,7 +1030,7 @@ export default function ProjectBoardTab({
         />
       )}
 
-      {/* Drag & Move Progress Status Update Popup Modal */}
+      {/* Progress & Review Modal */}
       {pendingProgressUpdate && (
         <TaskProgressUpdateModal
           isOpen={Boolean(pendingProgressUpdate)}
@@ -1465,7 +1062,7 @@ export default function ProjectBoardTab({
         />
       )}
 
-      {/* Task Extension Review Modal for Team Leads */}
+      {/* Task Extension Review Modal */}
       {selectedTaskForExtensionReview && (
         <TaskExtensionReviewModal
           isOpen={Boolean(selectedTaskForExtensionReview)}
@@ -1474,7 +1071,7 @@ export default function ProjectBoardTab({
           project={project}
           sprint={selectedTaskForExtensionReview?.sprint || sprints.find((s) => s.id === selectedTaskForExtensionReview?.sprint_id)}
           sprints={sprints}
-          onDecisionMade={(decision, updatedTask) => {
+          onDecisionMade={(decision) => {
             if (onTasksUpdated) onTasksUpdated();
             showNotificationToast(
               decision === "APPROVE"
@@ -1486,85 +1083,12 @@ export default function ProjectBoardTab({
         />
       )}
 
-
-      {/* Top Center Badge Notification Card */}
-      {toastMsg && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] pointer-events-auto animate-scaleIn">
-          <div className="relative pt-2.5">
-            {/* Top Left Pill Badge */}
-            <div className="absolute top-0 left-4 z-10">
-              <span
-                className={`px-3 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white shadow-xs ${
-                  toastMsg.type === "warning"
-                    ? "bg-amber-500"
-                    : toastMsg.type === "error"
-                    ? "bg-rose-500"
-                    : toastMsg.type === "info"
-                    ? "bg-sky-500"
-                    : "bg-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "WARNING"
-                  : toastMsg.type === "error"
-                  ? "ERROR"
-                  : toastMsg.type === "info"
-                  ? "INFO"
-                  : "SUCCESS"}
-              </span>
-            </div>
-
-            {/* Main Toast Box */}
-            <div
-              className={`bg-white rounded-2xl border-2 px-4 py-3 shadow-xl flex items-center gap-3 min-w-[280px] sm:min-w-[320px] max-w-md ${
-                toastMsg.type === "warning"
-                  ? "border-amber-500 shadow-amber-500/10"
-                  : toastMsg.type === "error"
-                  ? "border-rose-500 shadow-rose-500/10"
-                  : toastMsg.type === "info"
-                  ? "border-sky-500 shadow-sky-500/10"
-                  : "border-emerald-500 shadow-emerald-500/10"
-              }`}
-            >
-              {/* Circular Icon */}
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-black shrink-0 ${
-                  toastMsg.type === "warning"
-                    ? "border-amber-500 text-amber-500"
-                    : toastMsg.type === "error"
-                    ? "border-rose-500 text-rose-500"
-                    : toastMsg.type === "info"
-                    ? "border-sky-500 text-sky-500"
-                    : "border-emerald-500 text-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "!"
-                  : toastMsg.type === "error"
-                  ? "✕"
-                  : toastMsg.type === "info"
-                  ? "ℹ"
-                  : "✓"}
-              </div>
-
-              {/* Message */}
-              <span className="flex-1 text-sm font-bold text-slate-900 tracking-tight leading-snug">
-                {toastMsg.message}
-              </span>
-
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setToastMsg(null)}
-                className="text-slate-400 hover:text-slate-700 shrink-0 text-xs font-bold cursor-pointer p-1 rounded-full hover:bg-slate-100 transition"
-                title="Close"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Realistic SaaS Toast Notification with live countdown seconds */}
+      <ToastNotification
+        toast={toastMsg}
+        onClose={() => setToastMsg(null)}
+        duration={5500}
+      />
     </div>
   );
 }

@@ -198,6 +198,23 @@ export async function POST(req, { params }) {
       return NextResponse.json({ message: insertErr.message || "Failed to create sprint." }, { status: 500 });
     }
 
+    // Auto-sync lifecycle immediately for date-driven consistency
+    try {
+      if (targetProject.company_id) {
+        await syncSprintLifecycles(adminSupabase, targetProject.company_id, projectId);
+      }
+      if (newSprint?.id) {
+        const { data: refreshed } = await adminSupabase
+          .from("project_sprints")
+          .select("*")
+          .eq("id", newSprint.id)
+          .maybeSingle();
+        if (refreshed) newSprint = refreshed;
+      }
+    } catch (syncErr) {
+      console.warn("POST sprint lifecycle sync warning:", syncErr?.message);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Sprint "${newSprint?.name || "Sprint"}" created.`,

@@ -9,29 +9,18 @@ import {
   isTaskStatusTransitionAllowed,
   normalizeTaskStatus,
 } from "@/lib/projectUtils";
+import {
+  taskPatchSchema,
+  sanitizeTaskAttachments,
+} from "@/lib/validations/taskValidation";
+import {
+  checkOptimisticLockConflict,
+  createConflictResponse,
+} from "@/lib/security/optimisticLocking";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function sanitizeAttachments(rawAtts) {
-  if (!Array.isArray(rawAtts)) return [];
-  return rawAtts.map((a, idx) => {
-    if (typeof a === "string") {
-      if (a.startsWith("http://") || a.startsWith("https://")) {
-        return { id: `att-${idx}`, name: `Attachment-${idx + 1}`, url: a };
-      }
-      return { id: `att-${idx}`, name: `Attachment-${idx + 1}`, url: "" };
-    }
-    const resolvedUrl = a.url || (a.dataUrl && (a.dataUrl.startsWith("http://") || a.dataUrl.startsWith("https://")) ? a.dataUrl : "");
-    return {
-      id: a.id || `att-${Date.now()}-${idx}`,
-      name: a.name || `Screenshot-${idx + 1}.png`,
-      size: a.size || "Unknown",
-      url: resolvedUrl || a.url || "",
-      type: a.type || "image/png",
-    };
-  });
-}
 
 /**
  * GET /api/projects/tasks/[taskId]
@@ -284,7 +273,37 @@ export async function PATCH(req, { params }) {
       return NextResponse.json({ message: "Access denied. You cannot update this task." }, { status: 403 });
     }
 
-    const body = await req.json();
+    let rawBody;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return NextResponse.json({ message: "Invalid JSON request payload." }, { status: 400 });
+    }
+
+    // 1. Zod Request Schema Validation & Input Sanitization
+    const validationResult = taskPatchSchema.safeParse(rawBody);
+    if (!validationResult.success) {
+      const issues = validationResult.error.issues || validationResult.error.errors || [];
+      const firstIssue = issues[0];
+      const issueField = firstIssue?.path?.length ? firstIssue.path.join(".") : "field";
+      const issueMsg = firstIssue?.message || "Validation failed";
+      return NextResponse.json(
+        {
+          message: `Request validation error: [${issueField}] ${issueMsg}`,
+          errors: validationResult.error.flatten(),
+        },
+        { status: 400 }
+      );
+    }
+
+    const body = validationResult.data;
+
+    // 2. Concurrency Control (Optimistic Locking)
+    const expectedUpdatedAt = body.expected_updated_at || body.previous_updated_at;
+    const lockCheck = checkOptimisticLockConflict(task, expectedUpdatedAt);
+    if (lockCheck.hasConflict) {
+      return createConflictResponse(task, lockCheck.message);
+    }
 
     const updateData = {};
 
@@ -308,22 +327,31 @@ export async function PATCH(req, { params }) {
       if (validStatuses.includes(cleanStatus)) {
         // Enforce role-based status transition state machine
         if (cleanStatus !== task.status) {
-          const isAllowed = isTaskStatusTransitionAllowed(userRoleCategory, task.status, cleanStatus);
+          const isAllowed = isTaskStatusTransitionAllowed(userRoleCategory, task.status, cleanStatus, isAssignedEmployee);
           if (!isAllowed) {
-            if (userRoleCategory !== "EMPLOYEE" && (task.status === "IN_PROGRESS" || task.status === "TODO") && cleanStatus === "COMPLETED") {
+            if ((task.status === "IN_PROGRESS" || task.status === "TODO") && cleanStatus === "COMPLETED") {
               return NextResponse.json(
                 {
-                  message: "Deliverable Submission Required: In-progress tasks must be submitted for review by the assigned developer before they can be verified and marked as Completed.",
+                  message: "Deliverable Submission Required: In-progress tasks cannot be marked Completed directly. The assigned employee must submit their deliverable for Review first so quality and proof can be verified.",
                   code: "DELIVERABLE_SUBMISSION_REQUIRED",
                 },
                 { status: 403 }
               );
             }
-            if (userRoleCategory !== "EMPLOYEE" && (task.status === "IN_PROGRESS" || task.status === "TODO") && cleanStatus === "REVIEW") {
+            if ((task.status === "IN_PROGRESS" || task.status === "TODO") && cleanStatus === "REVIEW" && !isAssignedEmployee) {
               return NextResponse.json(
                 {
-                  message: "Deliverable Submission Required: Only the assigned developer can submit deliverables for review.",
+                  message: "Deliverable Submission Required: Only the assigned employee can submit deliverables for review.",
                   code: "DEVELOPER_SUBMISSION_REQUIRED",
+                },
+                { status: 403 }
+              );
+            }
+            if (cleanStatus === "COMPLETED" && userRoleCategory === "EMPLOYEE") {
+              return NextResponse.json(
+                {
+                  message: "Deliverable Approval Required: Only your Project Manager or Assigned Team Lead can validate and mark a task as Completed after reviewing the deliverable. Please submit your work for Review.",
+                  code: "COMPLETION_PERMISSION_DENIED",
                 },
                 { status: 403 }
               );
@@ -355,9 +383,18 @@ export async function PATCH(req, { params }) {
                 { status: 403 }
               );
             }
+            if (task.status === "TODO" && cleanStatus === "REVIEW") {
+              return NextResponse.json(
+                {
+                  message: "Tasks must first be moved to 'In Progress' before submitting for Review.",
+                  code: "TASK_SEQUENCE_REQUIRED",
+                },
+                { status: 403 }
+              );
+            }
             return NextResponse.json(
               {
-                message: `Unauthorized status transition: Moving task from "${task.status}" to "${cleanStatus}" is not permitted for role ${userRoleCategory}.`,
+                message: `Moving task from ${task.status} to ${cleanStatus} is restricted for your current role.`,
                 code: "INVALID_STATUS_TRANSITION",
               },
               { status: 403 }
@@ -402,6 +439,54 @@ export async function PATCH(req, { params }) {
               },
               { status: 403 }
             );
+          }
+        }
+
+        // Enforce WIP Limit Rule for Employee role: Max 2 active tasks in IN_PROGRESS
+        if (cleanStatus === "IN_PROGRESS" && normalizeTaskStatus(task.status) !== "IN_PROGRESS") {
+          try {
+            const empProfileId = employeeProfile?.id;
+            const authUserId = employeeProfile?.auth_user_id || employeeProfile?.user_id || user.id;
+            const targetIds = [
+              empProfileId,
+              authUserId,
+              task.assigned_to,
+              typeof task.assigned_to === "object" ? task.assigned_to?.id : null,
+            ]
+              .filter(Boolean)
+              .map(String);
+
+            if (targetIds.length > 0) {
+              const { data: activeDevTasks, error: devTasksErr } = await adminSupabase
+                .from("project_tasks")
+                .select("id, title, status, assigned_to")
+                .eq("company_id", company.id)
+                .neq("id", taskId);
+
+              if (!devTasksErr && Array.isArray(activeDevTasks)) {
+                const inProgressList = activeDevTasks.filter((t) => {
+                  if (normalizeTaskStatus(t.status) !== "IN_PROGRESS") return false;
+                  const tAssignee = typeof t.assigned_to === "object" ? t.assigned_to?.id : t.assigned_to;
+                  return tAssignee && targetIds.includes(String(tAssignee));
+                });
+
+                const maxAllowed = 2;
+
+                if (inProgressList.length >= maxAllowed) {
+                  const activeTitles = inProgressList.map((t) => `"${t.title || "Task"}"`).join(", ");
+                  return NextResponse.json(
+                    {
+                      message: `Already ${inProgressList.length} tasks in progress! You can have at most ${maxAllowed} tasks in 'In Progress' at the same time (${activeTitles}). Please finish or submit your remaining in-progress tasks for review first.`,
+                      code: "WIP_LIMIT_EXCEEDED",
+                      current_wip_count: inProgressList.length,
+                    },
+                    { status: 400 }
+                  );
+                }
+              }
+            }
+          } catch (wipErr) {
+            console.warn("WIP check warning in task update:", wipErr);
           }
         }
 
@@ -478,7 +563,7 @@ export async function PATCH(req, { params }) {
     }
     if ((body.review_attachments !== undefined || body.attachments !== undefined) && hasCol("review_attachments")) {
       const rawAtts = body.review_attachments || body.attachments || [];
-      updateData.review_attachments = sanitizeAttachments(rawAtts);
+      updateData.review_attachments = sanitizeTaskAttachments(rawAtts);
     }
     if (updateData.status === "REVIEW") {
       if (hasCol("submitted_at")) updateData.submitted_at = body.review_submitted_at || updateData.submitted_at || new Date().toISOString();
@@ -596,23 +681,75 @@ export async function PATCH(req, { params }) {
     if (effectiveSprintId && (body.due_date !== undefined || body.sprint_id !== undefined)) {
       const { data: targetSprint } = await adminSupabase
         .from("project_sprints")
-        .select("id, name, start_date, end_date")
+        .select("id, name, status, start_date, end_date")
         .eq("id", effectiveSprintId)
         .eq("company_id", company.id)
         .maybeSingle();
 
       if (targetSprint) {
+        const isSprintActive = String(targetSprint.status || "").toUpperCase() === "ACTIVE";
+        const isSprintCompleted = ["COMPLETED", "CLOSED"].includes(String(targetSprint.status || "").toUpperCase());
+
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
         const sprintStart = targetSprint.start_date ? String(targetSprint.start_date).split("T")[0] : null;
         const sprintEnd = targetSprint.end_date ? String(targetSprint.end_date).split("T")[0] : null;
+        const minDate = isSprintActive ? (sprintStart && sprintStart > todayStr ? sprintStart : todayStr) : sprintStart;
 
-        if (validatedDueDate) {
-          const rawDue = String(validatedDueDate).split("T")[0];
-          if ((sprintStart && rawDue < sprintStart) || (sprintEnd && rawDue > sprintEnd)) {
-            // Auto-align due date to sprint timeline so backlog tasks move into sprint smoothly
-            validatedDueDate = sprintEnd || sprintStart;
+        if (isSprintCompleted) {
+          return NextResponse.json(
+            {
+              message: `Invalid Sprint Assignment: Sprint "${targetSprint.name || "Sprint"}" is already completed/closed. Tasks cannot be scheduled or modified in finished sprints.`,
+              code: "SPRINT_ALREADY_COMPLETED",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (body.due_date !== undefined && body.due_date) {
+          const rawDue = String(body.due_date).split("T")[0];
+
+          // For active sprints, past dates are finished dates and cannot be set
+          if (isSprintActive && rawDue < todayStr) {
+            return NextResponse.json(
+              {
+                message: `Invalid Task Due Date: Due date (${rawDue}) cannot be set to a past or finished date. For active sprint "${targetSprint.name || "Active Sprint"}", tasks can only be scheduled within current active remaining days (${minDate} to ${sprintEnd || "sprint end"}).`,
+                code: "DUE_DATE_PAST_ACTIVE_SPRINT",
+              },
+              { status: 400 }
+            );
           }
-        } else if (sprintEnd) {
+
+          if (minDate && rawDue < minDate) {
+            return NextResponse.json(
+              {
+                message: `Invalid Task Due Date: Due date (${rawDue}) cannot be earlier than Sprint "${targetSprint.name || "Sprint"}" start date (${minDate}). Tasks must be scheduled within the sprint duration.`,
+                code: "DUE_DATE_OUTSIDE_SPRINT",
+              },
+              { status: 400 }
+            );
+          }
+
+          if (sprintEnd && rawDue > sprintEnd) {
+            const diffDays = Math.ceil((new Date(rawDue).getTime() - new Date(sprintEnd).getTime()) / (1000 * 60 * 60 * 24));
+            return NextResponse.json(
+              {
+                message: `Invalid Task Due Date: Due date (${rawDue}) exceeds Sprint "${targetSprint.name || "Sprint"}" end date (${sprintEnd}) by ${diffDays} day${diffDays > 1 ? "s" : ""}. Tasks must be assigned within the sprint duration (${sprintStart || ""} to ${sprintEnd}).`,
+                code: "DUE_DATE_OUTSIDE_SPRINT",
+              },
+              { status: 400 }
+            );
+          }
+          validatedDueDate = rawDue;
+        } else if (!validatedDueDate && sprintEnd) {
           validatedDueDate = sprintEnd;
+        } else if (body.sprint_id !== undefined && body.due_date === undefined && validatedDueDate) {
+          // If sprint changed without an explicit new due date, clamp to sprint bounds if previous date is outside or in the past
+          const rawDue = String(validatedDueDate).split("T")[0];
+          if ((isSprintActive && rawDue < todayStr) || (minDate && rawDue < minDate) || (sprintEnd && rawDue > sprintEnd)) {
+            validatedDueDate = sprintEnd;
+          }
         }
       }
     }
@@ -779,28 +916,28 @@ export async function PATCH(req, { params }) {
     );
 
     if (isStatusChanged || hasReviewSubmission) {
-      let auditComment = body.review_comments || body.comments || null;
-      if (updateData.status === "REVIEW" || task.status === "REVIEW") {
-        const rawComments = body.review_comments || body.comments || "Work submitted for review by employee";
-        const rawAttachments = sanitizeAttachments(body.review_attachments || body.attachments || []);
-        const payloadData = {
-          comments: rawComments,
-          attachments: rawAttachments,
-          submitted_at: body.review_submitted_at || new Date().toISOString(),
-          submitted_by: employeeProfile?.id || null,
-        };
-        auditComment = `<!--DELIVERABLE_PAYLOAD:${JSON.stringify(payloadData)}-->\n${rawComments}`;
-      } else if (!auditComment) {
-        const actorName = employeeProfile?.full_name || body.reviewed_by_name || body.approved_by_name || (cleanRole.includes("manager") ? "Project Manager" : "Team Lead");
-        auditComment =
-          isLeadOrManagerOrAdmin && task.status === "REVIEW" && (updateData.status === "IN_PROGRESS" || updateData.status === "TODO")
-            ? (body.comments || `Changes requested by ${actorName}`)
-            : isLeadOrManagerOrAdmin && updateData.status === "COMPLETED"
-            ? (body.comments || `Approved and marked completed by ${actorName}`)
-            : null;
-      }
-
       try {
+        let auditComment = body.review_comments || body.comments || null;
+        if (updateData.status === "REVIEW") {
+          const rawComments = body.review_comments || body.comments || "Work submitted for review by employee";
+          const rawAttachments = sanitizeTaskAttachments(body.review_attachments || body.attachments || []);
+          const payloadData = {
+            comments: rawComments,
+            attachments: rawAttachments,
+            submitted_at: body.review_submitted_at || new Date().toISOString(),
+            submitted_by: employeeProfile?.id || null,
+          };
+          auditComment = `<!--DELIVERABLE_PAYLOAD:${JSON.stringify(payloadData)}-->\n${rawComments}`;
+        } else if (!auditComment) {
+          const actorName = employeeProfile?.full_name || body.reviewed_by_name || body.approved_by_name || (cleanRole.includes("manager") ? "Project Manager" : "Team Lead");
+          auditComment =
+            isLeadOrManagerOrAdmin && task.status === "REVIEW" && (updateData.status === "IN_PROGRESS" || updateData.status === "TODO")
+              ? (body.comments || `Changes requested by ${actorName}`)
+              : isLeadOrManagerOrAdmin && updateData.status === "COMPLETED"
+              ? (body.comments || `Approved and marked completed by ${actorName}`)
+              : null;
+        }
+
         await adminSupabase.from("task_status_history").insert({
           company_id: company.id,
           task_id: taskId,

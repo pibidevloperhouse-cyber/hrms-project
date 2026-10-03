@@ -13,6 +13,8 @@ import TaskExtensionModal from "./project/TaskExtensionModal";
 import TaskExtensionReviewModal from "./project/TaskExtensionReviewModal";
 import TLMonthlyEvaluationModal from "./TLMonthlyEvaluationModal";
 import { calculateFinalPerformanceScore } from "@/lib/performanceUtils";
+import { normalizeTaskStatus, checkEmployeeWipLimit } from "@/lib/projectUtils";
+import ToastNotification from "./common/ToastNotification";
 
 const PRIORITY_CONFIG = {
   LOW: { label: "Low", color: "text-slate-600", bg: "bg-slate-100 border-slate-200" },
@@ -139,15 +141,8 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   const [dragOverColId, setDragOverColId] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
 
-  useEffect(() => {
-    if (toastMsg) {
-      const timer = setTimeout(() => setToastMsg(null), 2500);
-      return () => clearTimeout(timer);
-    }
-  }, [toastMsg]);
-
-  const showNotificationToast = (message, type = "info") => {
-    setToastMsg({ message, type });
+  const showNotificationToast = (message, type = "info", title = null) => {
+    setToastMsg({ message, type, title });
   };
   const [expandedAnalyticsEmpId, setExpandedAnalyticsEmpId] = useState(null);
 
@@ -689,6 +684,27 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     review_submitted_at = null
   ) => {
     const normStatus = (newStatus || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
+
+    // Enforce Employee WIP Limit (Max 2 tasks in progress)
+    if (isEmployee && normStatus === "IN_PROGRESS") {
+      const existingTask =
+        (projectTasks[projectId] || []).find((t) => t.id === taskId) ||
+        myAssignedTasks.find((t) => t.id === taskId);
+      const currentNorm = normalizeTaskStatus(existingTask?.status || "TODO");
+      if (currentNorm !== "IN_PROGRESS") {
+        const wipCheck = checkEmployeeWipLimit(employeeProfile, myAssignedTasks, taskId, 2);
+        if (!wipCheck.allowed) {
+          showNotificationToast(
+            wipCheck.message ||
+              "Already 2 tasks in progress! You can have at most 2 tasks in 'In Progress' at the same time. Please finish or submit your remaining in-progress tasks for review first.",
+            "warning",
+            "Work In Progress Limit Reached"
+          );
+          return;
+        }
+      }
+    }
+
     setUpdatingTaskId(taskId);
 
     // Record In-Flight Mutation Lock
@@ -746,7 +762,11 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
       if (!res.ok) {
         inFlightUpdatesRef.current.delete(taskId);
         const errData = await res.json().catch(() => ({}));
-        showNotificationToast(errData.message || "Failed to update task status.", "warning");
+        showNotificationToast(
+          errData.message || "Failed to update task status.",
+          "warning",
+          errData.code === "WIP_LIMIT_EXCEEDED" ? "Work In Progress Limit Reached" : "Action Notice"
+        );
         fetchBatchTasks();
       } else {
         const resData = await res.json();
@@ -795,7 +815,8 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     if (!task) return;
 
     const normStatus = (newStatus || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
-    if (task.status === normStatus) return;
+    const currentNorm = normalizeTaskStatus(task.status);
+    if (currentNorm === normStatus) return;
 
     // Scrum Review & Completion Rule: Only Project Manager / Team Lead can mark as Completed
     if (normStatus === "COMPLETED") {
@@ -820,6 +841,20 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
       return;
     }
 
+    // Agile Governance Rule: Max 2 in-progress tasks per employee
+    if (normStatus === "IN_PROGRESS" && currentNorm !== "IN_PROGRESS") {
+      const wipCheck = checkEmployeeWipLimit(employeeProfile, myAssignedTasks, taskId, 2);
+      if (!wipCheck.allowed) {
+        showNotificationToast(
+          wipCheck.message ||
+            "Already 2 tasks in progress! You can have at most 2 tasks in 'In Progress' at the same time. Please finish or submit your remaining in-progress tasks for review first.",
+          "warning",
+          "Work In Progress Limit Reached"
+        );
+        return;
+      }
+    }
+
     let nextProgress = Number(task.progress) || 0;
     if (normStatus === "TODO") {
       nextProgress = 0;
@@ -828,8 +863,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
     }
 
     const projectId = task.project_id || task.project?.id;
-    handleTaskStatusChange(projectId, taskId, normStatus, null, null, nextProgress);
-    showNotificationToast("Item status updated.", "success");
+    await handleTaskStatusChange(projectId, taskId, normStatus, null, null, nextProgress);
   };
 
   const handleEmployeeDragStart = (e, task) => {
@@ -1406,18 +1440,25 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Top Banner & Header */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-          <div className="min-w-0">
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-              {isEmployee
-                ? "My Assigned Deliverables"
-                : isTeamLead
-                ? "My Assigned Deliverables & Projects"
-                : isManager
-                ? `${employeeProfile?.department || "Department"} Project Management`
-                : "Company Project Deliverables"}
-            </h2>
+      <div className="bg-white border border-slate-200 shadow-2xs rounded-xl p-5 space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                {isEmployee
+                  ? "My Assigned Deliverables"
+                  : isTeamLead
+                  ? "My Assigned Deliverables & Projects"
+                  : isManager
+                  ? `${employeeProfile?.department || "Department"} Project Management`
+                  : "Company Project Deliverables"}
+              </h2>
+              {!isEmployee && (
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Create, configure, and assign department deliverables directly to Team Leads.
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
@@ -1432,9 +1473,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
                   }`}
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
                   <span>Deliverables &amp; Projects</span>
                   {scopedProjects.length > 0 && (
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
@@ -1453,9 +1491,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-200/50"
                   }`}
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
                   <span>Individual Member Performance</span>
                   {departmentEmployees.length > 0 && (
                     <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono ${
@@ -1496,8 +1531,6 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
           </div>
         </div>
 
-
-
         {/* Database Table Setup Guidance Banner */}
         {tableNotReady && (
           <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-200/90 text-amber-900 space-y-2 text-xs shadow-xs animate-fadeIn">
@@ -1517,78 +1550,84 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
         {/* Stat Cards & Search Toolbar */}
         {(isEmployee || activeViewMode === "projects") && (
           <>
-            {/* Summary Stat Cards */}
+            {/* Clean Summary Stat Cards matching exact product theme */}
             {isEmployee ? (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Total Tasks</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                  </div>
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Total Tasks
+                  </span>
                   <div className="text-2xl font-bold text-slate-900 font-mono">{myTotalCount}</div>
-                  <p className="text-[10px] text-slate-400">Assigned deliverables</p>
                 </div>
-                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">To Do</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                  </div>
-                  <div className="text-2xl font-bold text-slate-800 font-mono">{myTodoCount}</div>
-                  <p className="text-[10px] text-slate-400">Not started yet</p>
+
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    To Do
+                  </span>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{myTodoCount}</div>
                 </div>
-                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
+
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">In Progress</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                      In Progress
+                    </span>
+                    <span className="text-[10px] font-bold text-sky-700 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200 font-mono">
+                      WIP Limit: 2
+                    </span>
                   </div>
-                  <div className="text-2xl font-bold text-blue-700 font-mono">{myInProgressCount}</div>
-                  <p className="text-[10px] text-slate-400">Active execution</p>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className={`text-2xl font-bold font-mono ${myInProgressCount >= 2 ? "text-amber-600" : "text-slate-900"}`}>
+                      {myInProgressCount}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-400 font-mono">/ 2 max</span>
+                  </div>
                 </div>
-                <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Completed</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  </div>
-                  <div className="text-2xl font-bold text-emerald-700 font-mono">{myCompletedCount}</div>
-                  <p className="text-[10px] text-slate-400">{myCompletionRate}% completion rate</p>
+
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Completed
+                  </span>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{myCompletedCount}</div>
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      {isTeamLead ? "Assigned Projects" : "Total Projects"}
-                    </span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                  </div>
-                  <div className="text-2xl font-extrabold text-slate-900 font-mono">{totalCount}</div>
-                  <p className="text-[10px] text-slate-400">Department portfolio</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    {isTeamLead ? "Assigned Projects" : "Total Projects"}
+                  </span>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{totalCount}</div>
                 </div>
-                <div className="p-4 rounded-2xl bg-white border border-blue-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">In Progress</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-                  </div>
-                  <div className="text-2xl font-extrabold text-blue-700 font-mono">{inProgressCount}</div>
-                  <p className="text-[10px] text-blue-600">Active execution</p>
+
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    In Progress
+                  </span>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{inProgressCount}</div>
                 </div>
-                <div className="p-4 rounded-2xl bg-white border border-emerald-200/80 shadow-2xs hover:shadow-xs transition-all space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Completed</span>
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  </div>
-                  <div className="text-2xl font-extrabold text-emerald-700 font-mono">{completedCount}</div>
-                  <p className="text-[10px] text-emerald-600">{completionRate}% completion rate</p>
+
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    Completed
+                  </span>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{completedCount}</div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50/60 border border-slate-200/80 space-y-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">
+                    High Priority
+                  </span>
+                  <div className="text-2xl font-bold text-slate-900 font-mono">{urgentCount}</div>
                 </div>
               </div>
             )}
 
-            {/* Filter & Search Toolbar (Clean floating bar) */}
-            <div className="p-2.5 rounded-2xl bg-slate-100/70 border border-slate-200/70">
-              <div className="relative w-full">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            {/* Filter & Search Toolbar */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/70">
+              <div className="relative flex-1 w-full sm:max-w-xs">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </span>
@@ -1597,22 +1636,54 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                   placeholder={
                     isEmployee
                       ? "Search deliverables…"
-                      : "Search projects, products, description…"
+                      : "Search project, lead, department…"
                   }
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-white border border-slate-200/90 rounded-xl pl-10 pr-8 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1f6fb2]/20 focus:border-[#1f6fb2] transition shadow-2xs font-medium"
+                  className="w-full bg-white border border-slate-200/90 rounded-lg pl-9 pr-8 py-2 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#1f6fb2]/20 focus:border-[#1f6fb2] transition shadow-2xs font-medium"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer font-bold"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-xs cursor-pointer font-bold"
                   >
                     ✕
                   </button>
                 )}
               </div>
+
+              {!isEmployee && activeViewMode === "projects" && (
+                <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end flex-wrap">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 rounded-lg border border-slate-200/90 bg-white text-slate-700 text-xs font-medium focus:outline-none focus:border-[#1f6fb2] cursor-pointer shadow-2xs"
+                  >
+                    <option value="all">All Statuses</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="COMPLETED">Completed</option>
+                    <option value="PLANNING">Planning</option>
+                    <option value="ON_HOLD">On Hold</option>
+                  </select>
+
+                  <select
+                    value={priorityFilter}
+                    onChange={(e) => setPriorityFilter(e.target.value)}
+                    className="px-3 py-2 rounded-lg border border-slate-200/90 bg-white text-slate-700 text-xs font-medium focus:outline-none focus:border-[#1f6fb2] cursor-pointer shadow-2xs"
+                  >
+                    <option value="all">All Priorities</option>
+                    <option value="URGENT">Urgent</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+
+                  <span className="text-xs font-semibold text-slate-500 px-2.5 py-1.5 bg-white border border-slate-200/80 rounded-lg shadow-2xs font-mono">
+                    {filteredProjects.length} of {scopedProjects.length}
+                  </span>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1698,16 +1769,23 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
               {/* 4 Workflow Columns Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 items-start">
                 {[
-                  { id: "TODO", label: "To Do", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-slate-200 text-slate-700", dot: "bg-slate-400", hint: "Drop here to queue task" },
-                  { id: "IN_PROGRESS", label: "In Progress", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-blue-100 text-blue-700", dot: "bg-blue-500", hint: "Drop here to start work" },
-                  { id: "REVIEW", label: "In Review", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-purple-100 text-purple-700", dot: "bg-purple-500", hint: "Drop here to request review" },
-                  { id: "COMPLETED", label: "Completed", bg: "bg-slate-50/70", border: "border-slate-200", headerBg: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500", hint: "Drop here to finish task" },
+                  { id: "TODO", label: "To Do", headerBg: "bg-slate-100 text-slate-700 border-slate-200", dot: "bg-slate-400", hint: "Drop here to queue task" },
+                  { id: "IN_PROGRESS", label: "In Progress", headerBg: "bg-sky-50 text-sky-700 border-sky-200", dot: "bg-sky-500", hint: "Drop here to start work" },
+                  { id: "REVIEW", label: "In Review", headerBg: "bg-purple-50 text-purple-700 border-purple-200", dot: "bg-purple-500", hint: "Drop here to request review" },
+                  { id: "COMPLETED", label: "Completed", headerBg: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500", hint: "Drop here to finish task" },
                 ].map((col) => {
                   const colTasks = filteredMyTasks.filter((t) => {
                     const normSt = (t.status || "TODO").toUpperCase().replace(/[\s-]+/g, "_");
                     return normSt === col.id;
                   });
                   const isOver = dragOverColId === col.id;
+                  const isWipCol = col.id === "IN_PROGRESS";
+                  const isWipFull = isWipCol && colTasks.length >= 2;
+                  const isDraggedBlocked =
+                    isWipCol &&
+                    draggedTaskId &&
+                    colTasks.length >= 2 &&
+                    !colTasks.some((t) => t.id === draggedTaskId);
 
                   return (
                     <div
@@ -1715,43 +1793,54 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       onDragOver={(e) => handleEmployeeDragOver(e, col.id)}
                       onDragLeave={(e) => handleEmployeeDragLeave(e, col.id)}
                       onDrop={(e) => handleEmployeeDrop(e, col.id)}
-                      className={`flex flex-col rounded-2xl border transition-all duration-200 ${col.bg} ${col.border} ${
+                      className={`flex flex-col rounded-xl border border-slate-200 bg-slate-50/50 shadow-2xs overflow-hidden transition-all duration-200 ${
                         isOver
-                          ? "ring-2 ring-sky-500 border-sky-400 bg-sky-100/70 shadow-lg scale-[1.01]"
-                          : "shadow-2xs"
+                          ? isDraggedBlocked
+                            ? "ring-2 ring-rose-500 border-rose-500 bg-rose-50/70 shadow-lg scale-[1.01]"
+                            : "ring-2 ring-[#1f6fb2] border-[#1f6fb2] bg-blue-50/70 shadow-lg scale-[1.01]"
+                          : ""
                       }`}
                     >
                       {/* Column Header */}
-                      <div className="p-3.5 flex items-center justify-between border-b border-slate-200/70">
+                      <div className="p-3.5 flex items-center justify-between border-b border-slate-100 bg-white">
                         <div className="flex items-center gap-2">
                           <span className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
                           <h4 className="text-xs font-bold text-slate-900 tracking-tight">{col.label}</h4>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${col.headerBg}`}>
-                            {colTasks.length}
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono border ${col.headerBg}`}>
+                            {isWipCol ? `${colTasks.length}/2` : colTasks.length}
                           </span>
+                          {isWipCol && isWipFull && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300 font-mono">
+                              WIP Max (2)
+                            </span>
+                          )}
                         </div>
                         {isOver && (
-                          <span className="text-[10px] font-bold text-sky-700 animate-pulse font-mono">
-                            Drop ➔
+                          <span
+                            className={`text-[10px] font-bold font-mono animate-pulse ${
+                              isDraggedBlocked ? "text-rose-600" : "text-[#1f6fb2]"
+                            }`}
+                          >
+                            {isDraggedBlocked ? "Limit Reached (2/2) ✕" : "Drop ➔"}
                           </span>
                         )}
                       </div>
 
                       {/* Droppable Task List */}
-                      <div className="p-2.5 space-y-3 min-h-[420px] max-h-[calc(100vh-270px)] overflow-y-auto custom-scroll">
+                      <div className="p-2.5 space-y-3 min-h-[400px] max-h-[calc(100vh-270px)] overflow-y-auto custom-scroll">
                         {colTasks.length === 0 ? (
                           <div
-                            className={`h-44 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center p-4 text-center transition-all ${
+                            className={`h-36 rounded-xl border border-dashed flex flex-col items-center justify-center p-4 text-center transition-all ${
                               isOver
-                                ? "border-sky-500 bg-sky-50/90 text-sky-800 shadow-inner"
-                                : "border-slate-200/80 text-slate-400 bg-white/40"
+                                ? "border-[#1f6fb2] bg-blue-50/90 text-[#1f6fb2]"
+                                : "border-slate-200 text-slate-400 bg-white/60"
                             }`}
                           >
-                            <svg className="w-6 h-6 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                            <svg className="w-5 h-5 mb-1.5 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
                               <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                             </svg>
-                            <p className="text-[11px] font-bold">{isOver ? col.hint : `No tasks in ${col.label}`}</p>
-                            <p className="text-[10px] opacity-70 mt-0.5">Drag a task card here to move</p>
+                            <p className="text-[11px] font-semibold">{isOver ? col.hint : `No tasks in ${col.label}`}</p>
+                            <p className="text-[10px] opacity-70">Drag a task card here to move</p>
                           </div>
                         ) : (
                           colTasks.map((task, idx) => {
@@ -2328,13 +2417,25 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                                   <button
                                     type="button"
                                     disabled={isUpdating}
-                                    onClick={() =>
+                                    onClick={() => {
+                                      if (isEmployee) {
+                                        const wipCheck = checkEmployeeWipLimit(employeeProfile, myAssignedTasks, task.id, 2);
+                                        if (!wipCheck.allowed) {
+                                          showNotificationToast(
+                                            wipCheck.message ||
+                                              "Already 2 tasks in progress! You can have at most 2 tasks in 'In Progress' at the same time. Please finish or submit your remaining in-progress tasks for review first.",
+                                            "warning",
+                                            "Work In Progress Limit Reached"
+                                          );
+                                          return;
+                                        }
+                                      }
                                       setProgressModalTask({
                                         task,
                                         targetStatus: "IN_PROGRESS",
                                         projectId: task.project_id,
-                                      })
-                                    }
+                                      });
+                                    }}
                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-[11px] shadow-xs shadow-sky-600/20 transition cursor-pointer disabled:opacity-50"
                                   >
                                     <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -2413,26 +2514,16 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
           <div className="space-y-5 animate-fadeIn">
             {/* Top Toolbar: Member Selector */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 shadow-2xs shrink-0">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                    <span>Individual Member Performance</span>
-                    {loadingAnalytics && (
-                      <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 font-normal">
-                        <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                        <span>Updating…</span>
-                      </span>
-                    )}
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Live task execution, deliverable status, and workload metrics
-                  </p>
-                </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Individual Member Performance</span>
+                  {loadingAnalytics && (
+                    <span className="inline-flex items-center gap-1.5 text-xs text-blue-600 font-normal">
+                      <span className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                      <span>Updating…</span>
+                    </span>
+                  )}
+                </h3>
               </div>
 
               {/* Member Selector Dropdown & Monthly Evaluation Action */}
@@ -2466,7 +2557,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       setSelectedEmpForTLEval(targetId);
                       setShowTLMonthlyEvalModal(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer shadow-xs active:scale-[0.98]"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white text-xs font-semibold transition cursor-pointer shadow-xs shadow-[#1f6fb2]/20 active:scale-[0.98]"
                     title="Open Monthly Performance & Feedback Evaluation Dialog for this member"
                   >
                     <span>Monthly Evaluation</span>
@@ -2479,30 +2570,19 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
               <div className="space-y-5">
                 {/* 1. Employee Profile Header Card */}
                 <div className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 shadow-2xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 font-bold text-base flex items-center justify-center border border-blue-100 shadow-2xs shrink-0">
-                        {selectedEmployeeAnalytics.employee?.full_name?.charAt(0).toUpperCase() || "E"}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
-                            {selectedEmployeeAnalytics.employee?.full_name}
-                          </h3>
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-                            {selectedEmployeeAnalytics.employee?.designation || "Employee"}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {selectedEmployeeAnalytics.employee?.department || "Department"} • {selectedEmployeeAnalytics.total} Assigned Deliverables
-                        </p>
-                      </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-brand-gradient text-white font-bold text-xs uppercase shadow-2xs shadow-[#1f6fb2]/20 flex items-center justify-center shrink-0">
+                      {selectedEmployeeAnalytics.employee?.full_name?.charAt(0).toUpperCase() || "E"}
                     </div>
-
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-xs font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-3 py-1 rounded-lg">
-                        {selectedEmployeeAnalytics.total} Tasks Total
-                      </span>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight">
+                          {selectedEmployeeAnalytics.employee?.full_name}
+                        </h3>
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                          {selectedEmployeeAnalytics.employee?.designation || "Employee"}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2510,59 +2590,43 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 {/* 2. 4 Clean Status Cards Matching Project Theme */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
                   {/* To Do */}
-                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">To Do</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                    </div>
-                    <div className="text-2xl font-bold text-slate-800 font-mono">
+                  <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/80 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      To Do
+                    </span>
+                    <div className="text-2xl font-bold text-slate-900 font-mono">
                       {selectedEmployeeAnalytics.todo}
                     </div>
-                    <p className="text-[10px] text-slate-400">
-                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.todo / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
-                    </p>
                   </div>
 
                   {/* In Progress */}
-                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider">In Progress</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    </div>
-                    <div className="text-2xl font-bold text-blue-700 font-mono">
+                  <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/80 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      In Progress
+                    </span>
+                    <div className="text-2xl font-bold text-slate-900 font-mono">
                       {selectedEmployeeAnalytics.inProgress}
                     </div>
-                    <p className="text-[10px] text-blue-600">
-                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.inProgress / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
-                    </p>
                   </div>
 
                   {/* Completed */}
-                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider">Completed</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    </div>
-                    <div className="text-2xl font-bold text-emerald-700 font-mono">
+                  <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/80 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Completed
+                    </span>
+                    <div className="text-2xl font-bold text-slate-900 font-mono">
                       {selectedEmployeeAnalytics.completed}
                     </div>
-                    <p className="text-[10px] text-emerald-600">
-                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.completed / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
-                    </p>
                   </div>
 
                   {/* Overdue */}
-                  <div className="p-4 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider">Overdue</span>
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                    </div>
-                    <div className="text-2xl font-bold text-rose-700 font-mono">
+                  <div className="p-3.5 rounded-xl bg-slate-50/60 border border-slate-200/80 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      Overdue
+                    </span>
+                    <div className="text-2xl font-bold text-slate-900 font-mono">
                       {selectedEmployeeAnalytics.overdue}
                     </div>
-                    <p className="text-[10px] text-rose-600">
-                      {selectedEmployeeAnalytics.total > 0 ? Math.round((selectedEmployeeAnalytics.overdue / selectedEmployeeAnalytics.total) * 100) : 0}% of deliverables
-                    </p>
                   </div>
                 </div>
 
@@ -2570,18 +2634,12 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                 <div className="bg-white border border-slate-200 rounded-xl shadow-2xs overflow-hidden">
                   <div className="p-4 sm:px-5 sm:py-3.5 border-b border-slate-100 flex items-center justify-between">
                     <div>
-                      <h4 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2">
-                        <svg className="w-4 h-4 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                        </svg>
-                        <span>Assigned Tasks for {selectedEmployeeAnalytics.employee?.full_name}</span>
+                      <h4 className="text-sm font-bold text-slate-900 tracking-tight">
+                        Assigned Tasks for {selectedEmployeeAnalytics.employee?.full_name}
                       </h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        All active and completed tasks across projects
-                      </p>
                     </div>
-                    <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-lg">
-                      {selectedEmployeeAnalytics.tasks.length} Deliverables
+                    <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
+                      {selectedEmployeeAnalytics.tasks.length} {selectedEmployeeAnalytics.tasks.length === 1 ? "task" : "tasks"}
                     </span>
                   </div>
 
@@ -2679,10 +2737,8 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
             </p>
           </div>
         ) : (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden divide-y divide-slate-100">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden divide-y divide-slate-100">
             {filteredProjects.map((project) => {
-              const status = STATUS_CONFIG[project.status] || STATUS_CONFIG.PLANNING;
-              const isLead = isTeamLead && project.team_lead_id === employeeProfile?.id;
               const isCreator = isManager && project.created_by === employeeProfile?.id;
               const isDeptManager =
                 isManager &&
@@ -2693,38 +2749,53 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
               return (
                 <div
                   key={project.id}
-                  className="p-4 sm:px-5 sm:py-4.5 hover:bg-slate-50/80 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                  className="p-4 sm:px-5 sm:py-4.5 hover:bg-slate-50/70 transition-all flex items-center justify-between gap-4 group"
                 >
-                  {/* Left: Product Icon & Title & Description */}
+                  {/* Left: Product Icon & Title/Badges */}
                   <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div
                       onClick={() => setActiveWorkspaceProject(project)}
-                      className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1f6fb2] to-[#2ec4b6] text-white flex items-center justify-center shrink-0 shadow-sm shadow-[#1f6fb2]/25 cursor-pointer hover:scale-105 transition-transform"
+                      className="w-10 h-10 rounded-xl bg-blue-50/80 border border-blue-100 text-[#1f6fb2] flex items-center justify-center shrink-0 shadow-2xs cursor-pointer hover:bg-blue-100 transition-colors"
                       title="Open Product Workspace"
                     >
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                       </svg>
                     </div>
 
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <h3
-                        onClick={() => setActiveWorkspaceProject(project)}
-                        className="text-sm sm:text-base font-bold text-slate-900 tracking-tight hover:text-[#1f6fb2] transition-colors truncate cursor-pointer"
-                        title="Click to open Product Workspace"
-                      >
-                        {project.name}
-                      </h3>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3
+                          onClick={() => setActiveWorkspaceProject(project)}
+                          className="text-sm sm:text-base font-bold text-slate-900 tracking-tight hover:text-[#1f6fb2] transition-colors truncate cursor-pointer"
+                          title="Click to open Product Workspace"
+                        >
+                          {project.name}
+                        </h3>
 
-                      {/* Product Description */}
-                      <p className="text-xs text-slate-500 truncate max-w-2xl">
-                        {project.description || "Product workspace and modular deliverables"}
-                      </p>
+                        {project.project_type && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                            {project.project_type === "SCRUM" ? "Scrum" : project.project_type === "KANBAN" ? "Kanban" : project.project_type}
+                          </span>
+                        )}
+
+                        {project.key && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 uppercase font-mono">
+                            {project.key}
+                          </span>
+                        )}
+
+                        {project.project_group && project.project_group !== project.key && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                            {project.project_group}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Right: Workspace Button, Delete Button */}
-                  <div className="shrink-0 flex items-center gap-2 self-end sm:self-center">
+                  {/* Right: Workspace Button (Brand Theme) & Delete Button */}
+                  <div className="shrink-0 flex items-center gap-2.5">
                     <button
                       type="button"
                       onClick={() => setActiveWorkspaceProject(project)}
@@ -2739,7 +2810,7 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
                       <button
                         type="button"
                         onClick={() => handleDelete(project.id, project.name)}
-                        className="text-slate-400 hover:text-rose-600 p-2 transition cursor-pointer rounded-lg hover:bg-rose-50"
+                        className="text-slate-400 hover:text-rose-600 p-1.5 transition cursor-pointer rounded-lg hover:bg-rose-50"
                         title="Delete Project"
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -3401,6 +3472,18 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
           currentUserId={employeeProfile?.id}
           onAcknowledge={async (taskId) => {
             const projId = selectedTaskForSuggestion.project_id || selectedTaskForSuggestion.project?.id;
+            if (isEmployee) {
+              const wipCheck = checkEmployeeWipLimit(employeeProfile, myAssignedTasks, taskId, 2);
+              if (!wipCheck.allowed) {
+                showNotificationToast(
+                  wipCheck.message ||
+                    "Already 2 tasks in progress! You can have at most 2 tasks in 'In Progress' at the same time. Please finish or submit your remaining in-progress tasks for review first.",
+                  "warning",
+                  "Work In Progress Limit Reached"
+                );
+                return;
+              }
+            }
             await handleTaskStatusChange(projId, taskId, "IN_PROGRESS", null, null, 25);
             setSelectedTaskForSuggestion(null);
             showNotificationToast("Task moved to In Progress. Happy coding!", "success");
@@ -3462,84 +3545,12 @@ export default function ProjectManagement({ userRole, employeeProfile, company, 
         />
       )}
 
-      {/* Top Center Badge Notification Card */}
-      {toastMsg && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] pointer-events-auto animate-scaleIn">
-          <div className="relative pt-2.5">
-            {/* Top Left Pill Badge */}
-            <div className="absolute top-0 left-4 z-10">
-              <span
-                className={`px-3 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white shadow-xs ${
-                  toastMsg.type === "warning"
-                    ? "bg-amber-500"
-                    : toastMsg.type === "error"
-                    ? "bg-rose-500"
-                    : toastMsg.type === "info"
-                    ? "bg-sky-500"
-                    : "bg-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "WARNING"
-                  : toastMsg.type === "error"
-                  ? "ERROR"
-                  : toastMsg.type === "info"
-                  ? "INFO"
-                  : "SUCCESS"}
-              </span>
-            </div>
-
-            {/* Main Toast Box */}
-            <div
-              className={`bg-white rounded-2xl border-2 px-4 py-3 shadow-xl flex items-center gap-3 min-w-[280px] sm:min-w-[320px] max-w-md ${
-                toastMsg.type === "warning"
-                  ? "border-amber-500 shadow-amber-500/10"
-                  : toastMsg.type === "error"
-                  ? "border-rose-500 shadow-rose-500/10"
-                  : toastMsg.type === "info"
-                  ? "border-sky-500 shadow-sky-500/10"
-                  : "border-emerald-500 shadow-emerald-500/10"
-              }`}
-            >
-              {/* Circular Icon */}
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-black shrink-0 ${
-                  toastMsg.type === "warning"
-                    ? "border-amber-500 text-amber-500"
-                    : toastMsg.type === "error"
-                    ? "border-rose-500 text-rose-500"
-                    : toastMsg.type === "info"
-                    ? "border-sky-500 text-sky-500"
-                    : "border-emerald-500 text-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "!"
-                  : toastMsg.type === "error"
-                  ? "✕"
-                  : toastMsg.type === "info"
-                  ? "ℹ"
-                  : "✓"}
-              </div>
-
-              {/* Message */}
-              <span className="flex-1 text-sm font-bold text-slate-900 tracking-tight leading-snug">
-                {toastMsg.message}
-              </span>
-
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setToastMsg(null)}
-                className="text-slate-400 hover:text-slate-700 shrink-0 text-xs font-bold cursor-pointer p-1 rounded-full hover:bg-slate-100 transition"
-                title="Close"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Realistic SaaS Toast Notification */}
+      <ToastNotification
+        toast={toastMsg}
+        onClose={() => setToastMsg(null)}
+        duration={5500}
+      />
 
       {/* Monthly Performance & Feedback Evaluation Modal */}
       {showTLMonthlyEvalModal && (

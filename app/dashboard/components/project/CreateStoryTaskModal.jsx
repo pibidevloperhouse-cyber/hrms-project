@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import {
   checkTaskSprintOverdue,
   validateTaskSprintBounds,
+  getSprintDateBounds,
   getEmployeeSprintWorkload,
 } from "@/lib/projectUtils";
 
@@ -45,16 +46,16 @@ export default function CreateStoryTaskModal({
 
   const selectedSprint = useMemo(() => {
     if (isKanban) return null;
-    return sprints.find((s) => s.id === sprintId);
+    return sprints.find((s) => s.id === sprintId) || null;
   }, [sprints, sprintId, isKanban]);
 
-  const sprintMinDate = useMemo(() => {
-    return selectedSprint?.start_date ? selectedSprint.start_date.split("T")[0] : "";
-  }, [selectedSprint]);
+  const sprintBounds = useMemo(() => {
+    if (isKanban || !selectedSprint) return { minDate: "", maxDate: "", isSprintActive: false };
+    return getSprintDateBounds(selectedSprint);
+  }, [selectedSprint, isKanban]);
 
-  const sprintMaxDate = useMemo(() => {
-    return selectedSprint?.end_date ? selectedSprint.end_date.split("T")[0] : "";
-  }, [selectedSprint]);
+  const sprintMinDate = sprintBounds.minDate;
+  const sprintMaxDate = sprintBounds.maxDate;
 
   // Sync default sprint and issue type strictly only when modal transitions from closed to open
   useEffect(() => {
@@ -96,8 +97,9 @@ export default function CreateStoryTaskModal({
 
     const targetSprint = sprints.find((s) => s.id === newSprintId);
     if (targetSprint) {
-      const minD = targetSprint.start_date ? targetSprint.start_date.split("T")[0] : "";
-      const maxD = targetSprint.end_date ? targetSprint.end_date.split("T")[0] : "";
+      const bounds = getSprintDateBounds(targetSprint);
+      const minD = bounds.minDate;
+      const maxD = bounds.maxDate;
 
       if (!dueDate || (minD && dueDate < minD) || (maxD && dueDate > maxD)) {
         setDueDate(maxD || minD || "");
@@ -243,20 +245,20 @@ export default function CreateStoryTaskModal({
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) onClose();
       }}
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn overflow-y-auto"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs animate-fadeIn overflow-y-auto"
     >
-      <div className="relative w-full max-w-xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-scaleIn m-auto">
-        {/* Top Header with Blue Theme: Task and Bug */}
-        <div className="px-6 pt-4 pb-2.5 flex items-center justify-between border-b border-slate-100">
-          <div className="flex items-center gap-3 text-base">
-            <span className="font-bold text-slate-900 text-sm">Create:</span>
-            <div className="flex items-center gap-4 text-sm">
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-scaleIn m-auto">
+        {/* Top Header with Brand Theme */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60 shrink-0">
+          <div className="flex items-center gap-3">
+            <span className="font-bold text-slate-900 text-sm sm:text-base">Create:</span>
+            <div className="flex items-center gap-1 p-1 bg-slate-200/60 rounded-xl">
               <button
                 type="button"
                 onClick={() => setTaskType("TASK")}
-                className={`transition-colors cursor-pointer pb-0.5 ${
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                   taskType === "TASK"
-                    ? "text-blue-600 font-semibold border-b-2 border-blue-600"
+                    ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -265,9 +267,9 @@ export default function CreateStoryTaskModal({
               <button
                 type="button"
                 onClick={() => setTaskType("BUG")}
-                className={`transition-colors cursor-pointer pb-0.5 ${
+                className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                   taskType === "BUG"
-                    ? "text-blue-600 font-semibold border-b-2 border-blue-600"
+                    ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
               >
@@ -276,34 +278,37 @@ export default function CreateStoryTaskModal({
             </div>
           </div>
 
-          {/* Red square close button */}
+          {/* Close button */}
           <button
             type="button"
             disabled={isSubmitting}
             onClick={onClose}
-            className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+            className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             title="Close"
           >
             ✕
           </button>
         </div>
 
-        {/* Form Body - Full view, scrollable feature removed */}
-        <form onSubmit={handleSubmit} className="px-6 py-3 space-y-2.5">
+        {/* Form Body */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
           {errorMsg && (
-            <div className="p-2 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium">
               {errorMsg}
             </div>
           )}
 
-          {/* Row: Name / Title with red underline indicator */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
-              <span className="border-b-2 border-rose-500 pb-0.5">
-                {taskType === "BUG" ? "Bug Name" : "Task Name"}
-              </span>
-            </label>
-            <div className="flex-1">
+          {/* Section: Task / Bug Details */}
+          <div className="space-y-3">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              {taskType === "BUG" ? "Bug Details" : "Task Details"}
+            </span>
+
+            {/* Title / Name */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700 block">
+                {taskType === "BUG" ? "Bug Title" : "Task Title"} <span className="text-rose-500">*</span>
+              </label>
               <input
                 type="text"
                 required
@@ -312,210 +317,183 @@ export default function CreateStoryTaskModal({
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={
                   taskType === "BUG"
-                    ? "e.g., Task title fails to update on save"
-                    : "e.g., Implement employee attendance export"
+                    ? "e.g. Task title fails to update on save"
+                    : "e.g. Implement employee attendance export"
                 }
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 transition-colors placeholder:text-slate-400"
+                className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium"
               />
             </div>
-          </div>
 
-          {/* Row: Description */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
-              Description
-            </label>
-            <div className="flex-1">
+            {/* Description */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Description
+              </label>
               <textarea
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description or details…"
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400"
+                placeholder="Optional description or deliverable scope…"
+                className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium resize-none"
               />
             </div>
           </div>
 
-          {/* Section Divider: Default Section in Blue */}
-          <div className="text-blue-600 font-semibold border-b border-blue-500 pb-0.5 text-xs pt-1">
-            Default Section
-          </div>
+          {/* Section: Assignment & Schedule */}
+          <div className="space-y-3 pt-2">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Assignment &amp; Schedule
+            </span>
 
-          {/* Row: Owner (Assignee) */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
-              Owner
-            </label>
-            <div className="flex-1 space-y-1">
-              <div className="relative">
-                <select
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                  className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer"
-                >
-                  <option value="">Unassigned</option>
-                  {assignableProjectEmployees.map((emp) => {
-                    const roleLabel = emp.designation || (emp.role ? (emp.role.charAt(0).toUpperCase() + emp.role.slice(1).replace(/_/g, " ")) : "Employee");
-                    return (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.full_name} ({roleLabel})
-                      </option>
-                    );
-                  })}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs pb-0.5">
-                  ▼
-                </div>
-              </div>
-              <div className="text-[10px] text-slate-500 flex items-start gap-1 pt-0.5 bg-slate-50/80 p-1.5 rounded border border-slate-100">
-                <span className="text-blue-600 font-semibold shrink-0">ℹ️ Note:</span>
-                <span>
-                  Only members included in this project are shown. To assign tasks to other colleagues, first add them to this project via the <strong>Team</strong> tab.
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Row: Sprint Allocation (Scrum / Custom Agile only) */}
-          {!isKanban && (
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
-              <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
-                Sprint
+            {/* Owner (Assignee) */}
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Assignee
               </label>
-              <div className="flex-1 relative">
-                <select
-                  value={sprintId}
-                  onChange={(e) => handleSprintChange(e.target.value)}
-                  className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer"
-                >
-                  <option value="">Backlog (Unscheduled)</option>
-                  {sprints
-                    .filter((s) => s.status !== "COMPLETED")
-                    .map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.status})
-                      </option>
-                    ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                  ▼
+              <select
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+              >
+                <option value="">Unassigned</option>
+                {assignableProjectEmployees.map((emp) => {
+                  const roleLabel =
+                    emp.designation ||
+                    (emp.role
+                      ? emp.role.charAt(0).toUpperCase() + emp.role.slice(1).replace(/_/g, " ")
+                      : "Employee");
+                  return (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.full_name} ({roleLabel})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            {/* Grid for Sprint & Epic */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {!isKanban && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 block">
+                    Sprint
+                  </label>
+                  <select
+                    value={sprintId}
+                    onChange={(e) => handleSprintChange(e.target.value)}
+                    className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                  >
+                    <option value="">Backlog (Unscheduled)</option>
+                    {sprints
+                      .filter((s) => s.status !== "COMPLETED")
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.status})
+                        </option>
+                      ))}
+                  </select>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Row: Priority */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
-              Priority
-            </label>
-            <div className="flex-1 relative">
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                ▼
-              </div>
-            </div>
-          </div>
-
-          {/* Row: Story Points */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
-              Story Points
-            </label>
-            <div className="flex-1 relative">
-              <select
-                value={storyPoints}
-                onChange={(e) => setStoryPoints(Number(e.target.value))}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer"
-              >
-                {[1, 2, 3, 5, 8, 13, 21].map((pts) => (
-                  <option key={pts} value={pts}>
-                    {pts} {pts === 1 ? "point" : "points"}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                ▼
-              </div>
-            </div>
-          </div>
-
-          {/* Row: Epic */}
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-0.5">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0">
-              Epic
-            </label>
-            <div className="flex-1 relative">
-              <select
-                value={epicId}
-                onChange={(e) => setEpicId(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900 appearance-none pr-6 cursor-pointer"
-              >
-                <option value="">--None--</option>
-                {epics.map((epic) => (
-                  <option key={epic.id} value={epic.id}>
-                    {epic.name}
-                  </option>
-                ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs">
-                ▼
-              </div>
-            </div>
-          </div>
-
-          {/* Row: Due Date (Strictly locked to sprint week) */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-0.5">
-            <label className="sm:w-32 text-xs text-slate-700 font-medium shrink-0 pt-0.5">
-              Due Date
-            </label>
-            <div className="flex-1 space-y-0.5">
-              <input
-                type="date"
-                min={sprintMinDate || undefined}
-                max={sprintMaxDate || undefined}
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-0.5 text-xs bg-transparent text-slate-900"
-              />
-              {selectedSprint && (
-                <p className="text-[10px] text-blue-700 font-medium pt-0.5">
-                  Locked to sprint window: {sprintMinDate || "Start"} to {sprintMaxDate || "End"}
-                </p>
               )}
-              {!dateValidation.isValid && (
-                <p className="text-[10px] text-rose-600 font-semibold pt-0.5">
-                  ❌ {dateValidation.error}
-                </p>
-              )}
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Epic
+                </label>
+                <select
+                  value={epicId}
+                  onChange={(e) => setEpicId(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                >
+                  <option value="">None</option>
+                  {epics.map((epic) => (
+                    <option key={epic.id} value={epic.id}>
+                      {epic.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+
+            {/* Grid for Priority, Story Points, Due Date */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Priority
+                </label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                >
+                  <option value="LOW">Low</option>
+                  <option value="MEDIUM">Medium</option>
+                  <option value="HIGH">High</option>
+                  <option value="URGENT">Urgent</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Story Points
+                </label>
+                <select
+                  value={storyPoints}
+                  onChange={(e) => setStoryPoints(Number(e.target.value))}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium cursor-pointer"
+                >
+                  {[1, 2, 3, 5, 8, 13, 21].map((pts) => (
+                    <option key={pts} value={pts}>
+                      {pts} {pts === 1 ? "point" : "points"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-slate-700 block">
+                  Due Date
+                </label>
+                <input
+                  type="date"
+                  min={sprintMinDate || undefined}
+                  max={sprintMaxDate || undefined}
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs font-mono bg-white text-slate-900 outline-none shadow-2xs transition"
+                />
+              </div>
+            </div>
+
+            {!dateValidation.isValid && (
+              <p className="text-[11px] text-rose-600 font-semibold pt-1">
+                {dateValidation.error}
+              </p>
+            )}
           </div>
 
-          {/* Bottom Action Buttons: Blue Create & Clean Cancel */}
-          <div className="pt-3 pb-1 flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={isSubmitting || !title.trim() || !dateValidation.isValid}
-              className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer disabled:opacity-50 shadow-xs"
-            >
-              {isSubmitting ? "Creating…" : "Create"}
-            </button>
+          {/* Bottom Action Buttons */}
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
             <button
               type="button"
               disabled={isSubmitting}
               onClick={onClose}
-              className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-xs transition cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             >
               Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !title.trim() || !dateValidation.isValid}
+              className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20 flex items-center gap-1.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Creating…</span>
+                </>
+              ) : (
+                <span>Create {taskType === "BUG" ? "Bug" : "Task"}</span>
+              )}
             </button>
           </div>
         </form>

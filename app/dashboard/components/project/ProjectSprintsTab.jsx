@@ -16,6 +16,7 @@ export default function ProjectSprintsTab({
   currentUserId,
   onSprintsUpdated,
   onTasksUpdated,
+  onNavigateToCompletedSprints,
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedTaskForDetail, setSelectedTaskForDetail] = useState(null);
@@ -25,7 +26,6 @@ export default function ProjectSprintsTab({
   const [expandedSprintIds, setExpandedSprintIds] = useState(new Set());
 
   const [name, setName] = useState("");
-  const [goal, setGoal] = useState("");
   const todayStr = new Date().toISOString().split("T")[0];
   const [startDate, setStartDate] = useState(todayStr);
   const [durationWeeks, setDurationWeeks] = useState("2");
@@ -116,7 +116,6 @@ export default function ProjectSprintsTab({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: name.trim(),
-          goal: goal.trim(),
           start_date: startDate || null,
           end_date: endDate || null,
           status: "PLANNED",
@@ -126,7 +125,6 @@ export default function ProjectSprintsTab({
       const data = await res.json();
       if (res.ok) {
         setName("");
-        setGoal("");
         setStartDate(todayStr);
         setDurationWeeks("2");
         setEndDate(calculateSprintEndDate(todayStr, 2));
@@ -231,14 +229,14 @@ export default function ProjectSprintsTab({
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <span
               className={`text-xs text-slate-400 transition-transform duration-200 shrink-0 ${
-                isExpanded ? "rotate-90 text-blue-600 font-bold" : ""
+                isExpanded ? "rotate-90 text-[#1f6fb2] font-bold" : ""
               }`}
             >
               ▶
             </span>
 
             <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-              <span className="font-bold text-slate-900 text-sm hover:text-blue-600 transition truncate">
+              <span className="font-bold text-slate-900 text-sm hover:text-[#1f6fb2] transition truncate">
                 {sprint.name}
               </span>
 
@@ -254,14 +252,24 @@ export default function ProjectSprintsTab({
                 {isActive ? "Active" : isCompleted ? "Completed" : "Planned"}
               </span>
 
-              <span className="text-[11px] text-slate-400 font-mono shrink-0 hidden sm:inline">
-                📅 {sprint.start_date ? sprint.start_date.split("T")[0] : "—"} → {sprint.end_date ? sprint.end_date.split("T")[0] : "—"}
-              </span>
+              {sprint.start_date && (
+                <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono shrink-0 hidden sm:flex">
+                  <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                    <line x1="16" y1="2" x2="16" y2="6" />
+                    <line x1="8" y1="2" x2="8" y2="6" />
+                    <line x1="3" y1="10" x2="21" y2="10" />
+                  </svg>
+                  <span>
+                    {sprint.start_date.split("T")[0]} → {sprint.end_date ? sprint.end_date.split("T")[0] : "—"}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <span className="text-xs font-mono font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+          <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
               {sprintTasks.length} {sprintTasks.length === 1 ? "task" : "tasks"}
             </span>
 
@@ -269,7 +277,7 @@ export default function ProjectSprintsTab({
               <button
                 type="button"
                 onClick={() => handleUpdateSprintStatus(sprint.id, "ACTIVE")}
-                className="px-3 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer shadow-xs flex items-center gap-1"
+                className="px-3 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer shadow-xs shadow-[#1f6fb2]/20 flex items-center gap-1.5"
               >
                 <span>⚡</span>
                 <span>Start Sprint</span>
@@ -280,7 +288,7 @@ export default function ProjectSprintsTab({
               <button
                 type="button"
                 onClick={() => handleUpdateSprintStatus(sprint.id, "COMPLETED")}
-                className="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs transition cursor-pointer shadow-xs flex items-center gap-1"
+                className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition cursor-pointer shadow-xs flex items-center gap-1.5"
               >
                 <span>✓</span>
                 <span>Complete Sprint</span>
@@ -291,27 +299,21 @@ export default function ProjectSprintsTab({
 
         {/* Task Details Section: Shown strictly upon clicking the sprint */}
         {isExpanded && (
-          <div className="px-5 pb-5 pt-2 border-t border-slate-100 space-y-3 bg-slate-50/30 animate-fadeIn">
-            {/* Sprint Goal (if any) */}
-            {sprint.goal && (
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1 text-xs">
-                <span className="text-slate-500 font-medium sm:w-28 shrink-0">Goal:</span>
-                <span className="text-slate-700 font-normal">{sprint.goal}</span>
-              </div>
-            )}
-
-            {/* Section Divider */}
-            <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-xs pt-1 flex items-center justify-between">
-              <span>Tasks in Sprint ({sprintTasks.length})</span>
+          <div className="px-5 pb-5 pt-3 border-t border-slate-100 space-y-3 bg-slate-50/40 animate-fadeIn">
+            {/* Section Header */}
+            <div className="flex items-center justify-between pt-0.5 pb-0.5">
+              <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider">
+                Tasks in Sprint ({sprintTasks.length})
+              </span>
             </div>
 
             {/* Tasks List: Only Task Name and Task Status */}
             {sprintTasks.length === 0 ? (
-              <div className="py-5 text-center text-slate-400 text-xs italic bg-white rounded-lg border border-slate-200">
+              <div className="py-5 text-center text-slate-400 text-xs italic bg-white rounded-xl border border-slate-200">
                 No tasks assigned to this sprint.
               </div>
             ) : (
-              <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-white shadow-2xs">
                 {sprintTasks.map((task) => {
                   const status = (task.status || "TODO").toUpperCase();
                   return (
@@ -321,7 +323,7 @@ export default function ProjectSprintsTab({
                       className="py-2.5 px-3.5 hover:bg-slate-50 transition flex items-center justify-between gap-3 cursor-pointer group"
                     >
                       {/* Task Name */}
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <span
                           className={`w-2 h-2 rounded-full shrink-0 ${
                             status === "COMPLETED"
@@ -333,7 +335,7 @@ export default function ProjectSprintsTab({
                               : "bg-slate-400"
                           }`}
                         />
-                        <span className="text-xs font-medium text-slate-900 truncate group-hover:text-blue-600 transition">
+                        <span className="text-xs font-semibold text-slate-900 truncate group-hover:text-[#1f6fb2] transition">
                           {task.title}
                         </span>
                       </div>
@@ -341,7 +343,7 @@ export default function ProjectSprintsTab({
                       {/* Task Status */}
                       <div className="shrink-0">
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase ${
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border uppercase tracking-wider ${
                             status === "COMPLETED"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : status === "IN_PROGRESS"
@@ -400,17 +402,17 @@ export default function ProjectSprintsTab({
 
       {/* Action Header */}
       <div className="flex items-center justify-between p-4 rounded-xl bg-white border border-slate-200 shadow-2xs">
-        <div>
+        <div className="flex items-center gap-2.5">
           <h3 className="text-sm font-bold text-slate-900">Sprint Management</h3>
-          <p className="text-[11px] text-slate-500">
-            Sprint cycles, iteration goals, velocity, and delivery cadence. Click any sprint to view its task details.
-          </p>
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-semibold">
+            {sprints.length} {sprints.length === 1 ? "sprint" : "sprints"}
+          </span>
         </div>
 
         <button
           type="button"
           onClick={() => setIsModalOpen(true)}
-          className="h-8.5 px-3.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-[#1f6fb2]/20 text-xs"
+          className="h-8.5 px-3.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold transition flex items-center gap-1.5 cursor-pointer shadow-xs shadow-[#1f6fb2]/20 text-xs"
         >
           <span>+</span>
           <span>Create Sprint</span>
@@ -419,15 +421,12 @@ export default function ProjectSprintsTab({
 
       {/* 1. ACTIVE SPRINT */}
       <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
-            Active Sprint
-          </h4>
-        </div>
+        <h4 className="font-bold text-slate-900 uppercase tracking-wider text-[11px]">
+          Active Sprint ({activeSprints.length})
+        </h4>
 
         {activeSprints.length === 0 ? (
-          <div className="p-6 rounded-xl bg-white border border-dashed border-slate-300 text-center text-slate-400">
+          <div className="p-6 rounded-xl bg-white border border-dashed border-slate-200 text-center text-slate-400">
             No active sprint running right now. You can start a planned sprint below.
           </div>
         ) : (
@@ -454,16 +453,33 @@ export default function ProjectSprintsTab({
         )}
       </div>
 
-      {/* 3. COMPLETED SPRINTS */}
+      {/* 3. COMPLETED SPRINTS BANNER */}
       {completedSprints.length > 0 && (
-        <div className="space-y-3">
-          <h4 className="font-bold text-slate-500 uppercase tracking-wider text-[11px]">
-            Completed Sprints History ({completedSprints.length})
-          </h4>
-
-          <div className="space-y-3">
-            {completedSprints.map(renderSprintCard)}
+        <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs">
+              ✓
+            </span>
+            <div>
+              <h4 className="text-xs font-bold text-emerald-950">
+                {completedSprints.length} {completedSprints.length === 1 ? "Sprint Completed" : "Sprints Completed"}
+              </h4>
+              <p className="text-[11px] text-emerald-700">
+                View all finished sprints, velocity analytics, deliverables, and member evaluations in the dedicated Completed Sprints feature.
+              </p>
+            </div>
           </div>
+
+          {onNavigateToCompletedSprints && (
+            <button
+              type="button"
+              onClick={onNavigateToCompletedSprints}
+              className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs transition cursor-pointer shadow-xs flex items-center gap-1.5"
+            >
+              <span>View Completed Sprints Tab</span>
+              <span>↗</span>
+            </button>
+          )}
         </div>
       )}
 
@@ -525,22 +541,22 @@ export default function ProjectSprintsTab({
           }}
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
         >
-          <div className="relative w-full max-w-xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
-            {/* Top Header */}
-            <div className="px-6 pt-5 pb-3 flex items-center justify-between">
-              <div className="flex items-center gap-3 text-base">
-                <span className="font-bold text-slate-900">Create:</span>
-                <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
-                  Sprint
+          <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh] animate-scaleIn m-auto">
+            {/* Top Header matching exact product theme format */}
+            <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60 shrink-0">
+              <div className="flex items-center gap-1.5 font-sans">
+                <span className="font-bold text-slate-900 text-sm sm:text-base">Create:</span>
+                <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+                  New Sprint
                 </span>
               </div>
 
-              {/* Red square close button */}
+              {/* Close button */}
               <button
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => setIsModalOpen(false)}
-                className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+                className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                 title="Close"
               >
                 ✕
@@ -548,137 +564,126 @@ export default function ProjectSprintsTab({
             </div>
 
             {/* Form Body */}
-            <form onSubmit={handleCreateSprint} className="px-6 py-4 space-y-4 max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleCreateSprint} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
               {formError && (
-                <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium">
                   {formError}
                 </div>
               )}
 
-              {/* Row: Sprint Name with red underline indicator */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  <span className="border-b-2 border-rose-500 pb-0.5">
-                    Sprint Name
-                  </span>
-                </label>
-                <div className="flex-1">
+              {/* Section 1: Sprint Info */}
+              <div className="space-y-3">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Sprint Details
+                </span>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-700 block">
+                    Sprint Name <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="text"
                     required
                     autoFocus
-                    placeholder="e.g., Sprint 1 (Release v1.2)"
+                    placeholder="e.g. Sprint 1 (Release v1.2)"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors placeholder:text-slate-400"
+                    className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium"
                   />
                 </div>
               </div>
 
-              {/* Row: Sprint Goal */}
-              <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-2">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-                  Sprint Goal
-                </label>
-                <div className="flex-1">
-                  <textarea
-                    rows={2}
-                    placeholder="What is the primary deliverable or outcome of this sprint?"
-                    value={goal}
-                    onChange={(e) => setGoal(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 resize-none transition-colors placeholder:text-slate-400"
-                  />
+              {/* Section 2: Duration & Timeline */}
+              <div className="space-y-3 pt-2">
+                <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+                  Schedule &amp; Duration
+                </span>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-700 block">
+                    Duration Presets
+                  </label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {[
+                      { label: "1 Week", value: "1" },
+                      { label: "2 Weeks", value: "2" },
+                      { label: "3 Weeks", value: "3" },
+                      { label: "4 Weeks", value: "4" },
+                      { label: "Custom", value: "custom" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.value}
+                        type="button"
+                        onClick={() => handleDurationPreset(preset.value)}
+                        className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer border ${
+                          durationWeeks === preset.value
+                            ? "bg-brand-gradient text-white border-transparent shadow-xs shadow-[#1f6fb2]/20"
+                            : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      Start Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => handleStartDateChange(e.target.value)}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs font-mono bg-white text-slate-900 outline-none shadow-2xs transition"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700 block">
+                      End Date <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => handleEndDateChange(e.target.value)}
+                      className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs font-mono bg-white text-slate-900 outline-none shadow-2xs transition"
+                    />
+                  </div>
+                </div>
+
+                {startDate && endDate && (
+                  <div className="p-3 rounded-xl bg-blue-50/70 border border-blue-100 text-[#1f6fb2] text-xs font-medium flex items-center justify-between">
+                    <span>Estimated Sprint Duration:</span>
+                    <strong className="font-bold">{formatSprintDuration(startDate, endDate)}</strong>
+                  </div>
+                )}
               </div>
 
-              {/* Section Divider: Default Section */}
-              <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-3">
-                Default Section
-              </div>
-
-              {/* Row: Sprint Duration Presets */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  Duration
-                </label>
-                <div className="flex-1 flex items-center gap-1.5 border-b border-slate-300 pb-1.5">
-                  {[
-                    { label: "1 Week", value: "1" },
-                    { label: "2 Weeks", value: "2" },
-                    { label: "3 Weeks", value: "3" },
-                    { label: "4 Weeks", value: "4" },
-                    { label: "Custom", value: "custom" },
-                  ].map((preset) => (
-                    <button
-                      key={preset.value}
-                      type="button"
-                      onClick={() => handleDurationPreset(preset.value)}
-                      className={`px-2 py-0.5 rounded text-xs font-medium transition cursor-pointer border ${
-                        durationWeeks === preset.value
-                          ? "bg-brand-gradient text-white border-transparent shadow-2xs"
-                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Row: Start Date */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  Start Date
-                </label>
-                <div className="flex-1">
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => handleStartDateChange(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-[#1f6fb2] outline-none pb-1 text-sm bg-transparent text-slate-900"
-                  />
-                </div>
-              </div>
-
-              {/* Row: End Date */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
-                <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0">
-                  End Date
-                </label>
-                <div className="flex-1">
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => handleEndDateChange(e.target.value)}
-                    className="w-full border-b border-slate-300 focus:border-[#1f6fb2] outline-none pb-1 text-sm bg-transparent text-slate-900"
-                  />
-                </div>
-              </div>
-
-              {/* Schedule Estimation Helper */}
-              {startDate && endDate && (
-                <div className="text-xs text-[#1f6fb2] py-1 flex items-center gap-1.5 font-medium">
-                  <span>🕒</span>
-                  <span>Estimated Schedule: <strong>{formatSprintDuration(startDate, endDate)}</strong></span>
-                </div>
-              )}
-
-              {/* Bottom Action Buttons: Brand Gradient Create & Clean Cancel */}
-              <div className="pt-6 pb-2 flex items-center gap-3">
-                <button
-                  type="submit"
-                  disabled={isSubmitting || !name.trim()}
-                  className="px-4 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold text-sm transition cursor-pointer disabled:opacity-50 shadow-md shadow-[#1f6fb2]/20"
-                >
-                  {isSubmitting ? "Creating…" : "Create"}
-                </button>
+              {/* Bottom Action Buttons */}
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
                 <button
                   type="button"
                   disabled={isSubmitting}
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
                 >
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || !name.trim()}
+                  className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer shadow-xs shadow-[#1f6fb2]/20 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Creating…</span>
+                    </>
+                  ) : (
+                    <span>Create Sprint</span>
+                  )}
                 </button>
               </div>
             </form>

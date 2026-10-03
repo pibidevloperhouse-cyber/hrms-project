@@ -3,26 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient, TASK_ATTACHMENTS_BUCKET } from "@/lib/supabase/admin";
 import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
+import { getOrCreateTenantEmployeeFolder } from "@/lib/supabase/storageTenantHelper";
 import {
-  getOrCreateTenantEmployeeFolder,
-  sanitizeFilename,
-} from "@/lib/supabase/storageTenantHelper";
-
-function formatBytes(bytes) {
-  if (!bytes || bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
-}
+  inspectFileSignature,
+  sanitizeAttachmentFilename,
+  formatBytes,
+} from "@/lib/security/fileSignatureVerifier";
 
 /**
  * POST /api/upload/task-attachment
- * Uploads task deliverable proofs or suggestion screenshots to 'task-attachments' Supabase public storage bucket.
- * Multi-tenancy structure:
- *   - Deliverable proofs:    [Company_Tenant]/[Employee_Name_EMPCode]/tasks/[taskId]/[timestamp]_[file]
- *   - Suggestion feedback:   [Company_Tenant]/[Employee_Name_EMPCode]/suggestions/[taskId]/[timestamp]_[file]
- * Automatically finds and reuses the employee's existing storage folder on repeated uploads.
+ * Securely uploads deliverable screenshots and documents with server-side magic byte inspection.
  */
 export async function POST(req) {
   try {
@@ -48,26 +38,12 @@ export async function POST(req) {
 
     const formData = await req.formData();
     const file = formData.get("file");
-    const taskId = formData.get("taskId") || "general";
-    const rawContext = (formData.get("context") || "tasks").toLowerCase();
+    const taskId = String(formData.get("taskId") || "general").replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 36) || "general";
+    const rawContext = String(formData.get("context") || "tasks").toLowerCase();
     const context = rawContext === "suggestions" || rawContext === "suggestion" ? "suggestions" : "tasks";
 
     if (!file || typeof file === "string") {
       return NextResponse.json({ message: "No attachment file provided." }, { status: 400 });
-    }
-
-    // Validate MIME type (allow images, PDFs, office documents)
-    const mimeType = file.type || "";
-    if (
-      !mimeType.startsWith("image/") &&
-      !mimeType.includes("pdf") &&
-      !mimeType.includes("document") &&
-      !mimeType.includes("text")
-    ) {
-      return NextResponse.json(
-        { message: "Invalid file type. Please upload image or document proofs." },
-        { status: 400 }
-      );
     }
 
     // Limit attachment size to 15MB
@@ -78,14 +54,26 @@ export async function POST(req) {
       );
     }
 
-    const originalFilename = file.name || `screenshot_${Date.now()}.png`;
-    const safeFilename = sanitizeFilename(originalFilename);
-    const safeTaskId = sanitizeFilename(taskId).slice(0, 36) || "general";
-    const timestamp = Date.now();
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
 
+    // Perform Server-Side Magic Byte Inspection
+    const sigCheck = inspectFileSignature(buffer, file.type);
+    if (!sigCheck.valid) {
+      return NextResponse.json(
+        { message: sigCheck.error || "Invalid file signature. Disguised files are rejected." },
+        { status: 400 }
+      );
+    }
+
+    const effectiveMime = sigCheck.detectedMime || file.type || "image/png";
+    const extMatch = effectiveMime.split("/")[1] || "png";
+    const originalFilename = file.name || `proof_${Date.now()}.${extMatch}`;
+    const safeFilename = sanitizeAttachmentFilename(originalFilename, extMatch);
+    const timestamp = Date.now();
     const bucketName = TASK_ATTACHMENTS_BUCKET;
 
-    // Discover and reuse the employee's existing folder inside this company's tenant
+    // Discover and reuse tenant employee folder
     const { fullFolderPath } = await getOrCreateTenantEmployeeFolder({
       adminSupabase,
       bucketName,
@@ -94,16 +82,13 @@ export async function POST(req) {
       user,
     });
 
-    const filePath = `${fullFolderPath}/${context}/${safeTaskId}/${timestamp}_${safeFilename}`;
+    const filePath = `${fullFolderPath}/${context}/${taskId}/${timestamp}_${safeFilename}`;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    // Upload to Supabase Storage bucket 'task-attachments'
+    // Upload to Supabase Storage
     const { error: storageErr } = await adminSupabase.storage
       .from(bucketName)
       .upload(filePath, buffer, {
-        contentType: mimeType || "application/octet-stream",
+        contentType: effectiveMime,
         cacheControl: "3600",
         upsert: true,
       });
@@ -111,12 +96,11 @@ export async function POST(req) {
     if (storageErr) {
       console.error("Task Attachment Storage Upload Error:", storageErr);
       return NextResponse.json(
-        { message: `Failed to upload attachment to bucket '${bucketName}'. ${storageErr.message}` },
+        { message: `Failed to upload attachment to storage: ${storageErr.message}` },
         { status: 500 }
       );
     }
 
-    // Retrieve public CDN URL
     const { data: publicUrlData } = adminSupabase.storage
       .from(bucketName)
       .getPublicUrl(filePath);
@@ -127,9 +111,9 @@ export async function POST(req) {
       success: true,
       url: publicUrl,
       filePath,
-      name: originalFilename,
+      name: safeFilename,
       size: formatBytes(file.size || buffer.length),
-      type: mimeType,
+      type: effectiveMime,
       id: `att-${timestamp}-${Math.random().toString(36).substr(2, 6)}`,
     });
   } catch (err) {

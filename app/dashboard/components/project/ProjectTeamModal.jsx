@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { authFetch } from "@/lib/api/authFetch";
 
@@ -195,29 +196,31 @@ export default function ProjectTeamModal({
     }
   };
 
-  return (
+  if (!isOpen || typeof document === "undefined") return null;
+
+  const modalContent = (
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget && !isSubmitting) onClose();
       }}
-      className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
+      className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-4 bg-slate-900/50 backdrop-blur-xs overflow-y-auto animate-fadeIn"
     >
-      <div className="relative w-full max-w-xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col m-auto my-auto animate-scaleIn">
-        {/* Top Header matching exact Create Sprint format */}
-        <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-slate-100">
-          <div className="flex items-center gap-3 text-base">
-            <span className="font-bold text-slate-900">Add:</span>
-            <span className="text-blue-600 font-semibold border-b-2 border-blue-600 pb-0.5 text-sm">
-              Team Members
+      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[88vh] animate-scaleIn m-auto">
+        {/* Top Header matching exact product theme format */}
+        <div className="px-6 py-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/60 shrink-0">
+          <div className="flex items-center gap-1.5 font-sans">
+            <span className="font-bold text-slate-900 text-sm sm:text-base">Manage:</span>
+            <span className="text-[#1f6fb2] font-bold text-sm sm:text-base">
+              Project Team
             </span>
           </div>
 
-          {/* Red square close button */}
+          {/* Close button */}
           <button
             type="button"
             disabled={isSubmitting}
             onClick={onClose}
-            className="w-6 h-6 border border-rose-300 hover:border-rose-400 text-rose-400 hover:text-rose-600 rounded flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50"
+            className="w-7 h-7 border border-slate-200 hover:border-slate-300 text-slate-400 hover:text-slate-700 rounded-lg flex items-center justify-center text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             title="Close"
           >
             ✕
@@ -225,42 +228,44 @@ export default function ProjectTeamModal({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto text-xs">
           {errorMsg && (
-            <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-medium">
               {errorMsg}
             </div>
           )}
           {successMsg && (
-            <div className="p-2.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-medium">
               ✓ {successMsg}
             </div>
           )}
 
-          {/* Row: Project Squad / Group Name with red underline indicator */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-0.5">
-              <span className="border-b-2 border-rose-500 pb-0.5">
-                Squad Name
-              </span>
-            </label>
-            <div className="flex-1 space-y-1.5">
+          {/* Section 1: Squad Group Identification */}
+          <div className="space-y-2.5">
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Squad Identification
+            </span>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Squad / Group Name
+              </label>
               <input
                 type="text"
-                placeholder="e.g., Frontend Squad, Core Platform"
+                placeholder="e.g. Frontend Squad, Core Platform"
                 value={projectGroup}
                 onChange={(e) => setProjectGroup(e.target.value)}
-                className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors placeholder:text-slate-400"
+                className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium"
               />
-              <div className="flex flex-wrap gap-1 pt-0.5">
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
                 {GROUP_SUGGESTIONS.map((preset) => (
                   <button
                     key={preset}
                     type="button"
                     onClick={() => setProjectGroup(preset)}
-                    className={`text-[10px] px-2 py-0.5 rounded transition cursor-pointer border ${
+                    className={`text-[10px] px-2.5 py-1 rounded-lg transition cursor-pointer border font-medium ${
                       projectGroup === preset
-                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs font-semibold"
+                        ? "bg-brand-gradient text-white border-transparent shadow-xs shadow-[#1f6fb2]/20 font-semibold"
                         : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                     }`}
                   >
@@ -271,40 +276,39 @@ export default function ProjectTeamModal({
             </div>
           </div>
 
-          {/* Section Divider: Default Section */}
-          <div className="text-blue-600 font-semibold border-b border-blue-500 pb-1 text-sm pt-2">
-            Default Section
-          </div>
+          {/* Section 2: Assign Team Members */}
+          <div className="space-y-3 pt-2" ref={dropdownRef}>
+            <span className="text-[11px] font-bold text-[#1f6fb2] uppercase tracking-wider block">
+              Assign Team Members
+            </span>
 
-          {/* Row: Search & Add Employee */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1" ref={dropdownRef}>
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-              Add Employee
-            </label>
-            <div className="flex-1 relative">
+            <div className="space-y-1 relative">
+              <label className="text-xs font-semibold text-slate-700 block">
+                Search Employee to Add
+              </label>
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="Search and select employee to assign…"
+                  placeholder="Search by name, designation, or department…"
                   value={memberSearch}
                   onFocus={() => setShowDropdown(true)}
                   onChange={(e) => {
                     setMemberSearch(e.target.value);
                     setShowDropdown(true);
                   }}
-                  className="w-full border-b border-slate-300 focus:border-blue-600 outline-none pb-1 text-sm bg-transparent text-slate-900 transition-colors placeholder:text-slate-400 pr-6"
+                  className="w-full border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 rounded-xl px-3.5 py-2 text-xs bg-white text-slate-900 outline-none shadow-2xs transition font-medium pr-8"
                 />
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center text-blue-600 text-xs pb-1">
-                  ▼
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400 text-xs">
+                  🔍
                 </div>
               </div>
 
               {/* Search Dropdown list */}
               {showDropdown && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto z-50 divide-y divide-slate-100">
                   {availableToAdd.length === 0 ? (
                     <div className="p-3 text-center text-slate-400 text-xs">
-                      {memberSearch ? "No matching employees found" : "All available employees are assigned"}
+                      {memberSearch ? "No matching employees found" : "All eligible employees are assigned"}
                     </div>
                   ) : (
                     availableToAdd.map((emp) => (
@@ -312,45 +316,51 @@ export default function ProjectTeamModal({
                         key={emp.id}
                         type="button"
                         onClick={() => handleAddMember(emp.id)}
-                        className="w-full text-left px-3 py-2 hover:bg-blue-50/70 transition flex items-center justify-between gap-2 cursor-pointer group text-xs"
+                        className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 transition flex items-center justify-between gap-2 cursor-pointer group text-xs"
                       >
                         <div className="min-w-0 flex-1">
-                          <span className="font-semibold text-slate-900 group-hover:text-blue-600 block truncate">
+                          <span className="font-semibold text-slate-900 group-hover:text-[#1f6fb2] block truncate">
                             {emp.full_name}
                           </span>
                           <span className="text-[10px] text-slate-500 block truncate">
                             {emp.designation || emp.role || "Employee"} • {emp.department || "General"}
                           </span>
                         </div>
-                        <span className="text-xs text-blue-600 font-bold shrink-0">+ Add</span>
+                        <span className="text-xs text-[#1f6fb2] font-bold shrink-0 bg-blue-50 px-2 py-0.5 rounded-md group-hover:bg-blue-100 transition">
+                          + Add
+                        </span>
                       </button>
                     ))
                   )}
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Row: Assigned Team Members List */}
-          <div className="flex flex-col sm:flex-row sm:items-start gap-2 pt-1">
-            <label className="sm:w-36 text-sm text-slate-700 font-medium shrink-0 pt-1">
-              Assigned Team ({selectedMembers.length})
-            </label>
-            <div className="flex-1">
+            {/* Assigned Team Members List */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-700">
+                  Assigned Squad Members
+                </label>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                  {selectedMembers.length} members
+                </span>
+              </div>
+
               {selectedMembers.length === 0 ? (
-                <div className="text-slate-400 italic py-1 text-xs border-b border-slate-200 pb-2">
-                  No squad members assigned yet. Use the search field above to assign employees.
+                <div className="p-4 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-slate-400 text-xs">
+                  No squad members assigned yet. Use the search field above to add employees.
                 </div>
               ) : (
-                <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-3 pt-0.5">
+                <div className="flex flex-wrap gap-2 p-3 rounded-xl bg-slate-50/70 border border-slate-200/80 max-h-36 overflow-y-auto">
                   {selectedMembers.map((member) => (
                     <div
                       key={member.id}
-                      className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded bg-slate-100 border border-slate-200 text-xs text-slate-800"
+                      className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-white border border-slate-200 shadow-2xs text-xs text-slate-800"
                     >
                       <span className="font-semibold">{member.full_name}</span>
                       {member.designation && (
-                        <span className="text-[10px] text-slate-500 font-normal">({member.designation})</span>
+                        <span className="text-[10px] text-slate-400 font-normal">({member.designation})</span>
                       )}
                       <button
                         type="button"
@@ -367,42 +377,35 @@ export default function ProjectTeamModal({
             </div>
           </div>
 
-          {/* Core Leadership Attribution (Owner & Lead) */}
-          <div className="pt-2 text-[11px] text-slate-500 flex flex-wrap items-center gap-4">
-            {project.creator && (
-              <div>
-                <span className="text-slate-400">Owner:</span>{" "}
-                <strong className="text-slate-700">{project.creator.full_name}</strong>
-              </div>
-            )}
-            {project.teamLead && (
-              <div>
-                <span className="text-slate-400">Team Lead:</span>{" "}
-                <strong className="text-slate-700">{project.teamLead.full_name}</strong>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Action Buttons matching Create Sprint exact format */}
-          <div className="pt-4 pb-1 flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition cursor-pointer disabled:opacity-50 shadow-xs"
-            >
-              {isSubmitting ? "Saving…" : "Save Team"}
-            </button>
+          {/* Bottom Action Buttons */}
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
             <button
               type="button"
               disabled={isSubmitting}
               onClick={onClose}
-              className="px-4 py-1.5 rounded border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium text-sm transition cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-2xs"
             >
               Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer disabled:opacity-50 shadow-xs shadow-[#1f6fb2]/20 flex items-center gap-1.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Saving…</span>
+                </>
+              ) : (
+                <span>Save Team Roster</span>
+              )}
             </button>
           </div>
         </form>
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

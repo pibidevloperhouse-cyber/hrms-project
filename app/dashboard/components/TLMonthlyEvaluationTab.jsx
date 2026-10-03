@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from "react";
 import TLMonthlyEvaluationModal from "./TLMonthlyEvaluationModal";
+import ToastNotification from "./common/ToastNotification";
 
 export default function TLMonthlyEvaluationTab() {
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -18,13 +19,6 @@ export default function TLMonthlyEvaluationTab() {
   const showNotificationToast = (message, type = "info") => {
     setToastMsg({ message, type });
   };
-
-  useEffect(() => {
-    if (toastMsg) {
-      const timer = setTimeout(() => setToastMsg(null), 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [toastMsg]);
 
   // Generate last 24 months for dropdown
   const monthOptions = useMemo(() => {
@@ -373,79 +367,12 @@ export default function TLMonthlyEvaluationTab() {
         )}
       </div>
 
-      {/* Toast Notification Banner */}
-      {toastMsg && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] pointer-events-auto animate-scaleIn">
-          <div className="relative pt-2.5">
-            <div className="absolute top-0 left-4 z-10">
-              <span
-                className={`px-3 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white shadow-xs ${
-                  toastMsg.type === "warning"
-                    ? "bg-amber-500"
-                    : toastMsg.type === "error"
-                    ? "bg-rose-500"
-                    : toastMsg.type === "info"
-                    ? "bg-sky-500"
-                    : "bg-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "WARNING"
-                  : toastMsg.type === "error"
-                  ? "ERROR"
-                  : toastMsg.type === "info"
-                  ? "INFO"
-                  : "SUCCESS"}
-              </span>
-            </div>
-
-            <div
-              className={`bg-white rounded-2xl border-2 px-4 py-3 shadow-xl flex items-center gap-3 min-w-[280px] sm:min-w-[320px] max-w-md ${
-                toastMsg.type === "warning"
-                  ? "border-amber-500 shadow-amber-500/10"
-                  : toastMsg.type === "error"
-                  ? "border-rose-500 shadow-rose-500/10"
-                  : toastMsg.type === "info"
-                  ? "border-sky-500 shadow-sky-500/10"
-                  : "border-emerald-500 shadow-emerald-500/10"
-              }`}
-            >
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-black shrink-0 ${
-                  toastMsg.type === "warning"
-                    ? "border-amber-500 text-amber-500"
-                    : toastMsg.type === "error"
-                    ? "border-rose-500 text-rose-500"
-                    : toastMsg.type === "info"
-                    ? "border-sky-500 text-sky-500"
-                    : "border-emerald-500 text-emerald-500"
-                }`}
-              >
-                {toastMsg.type === "warning"
-                  ? "!"
-                  : toastMsg.type === "error"
-                  ? "✕"
-                  : toastMsg.type === "info"
-                  ? "ℹ"
-                  : "✓"}
-              </div>
-
-              <span className="flex-1 text-sm font-bold text-slate-900 tracking-tight leading-snug">
-                {toastMsg.message}
-              </span>
-
-              <button
-                type="button"
-                onClick={() => setToastMsg(null)}
-                className="text-slate-400 hover:text-slate-700 shrink-0 text-xs font-bold cursor-pointer p-1 rounded-full hover:bg-slate-100 transition"
-                title="Close"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Realistic SaaS Toast Notification */}
+      <ToastNotification
+        toast={toastMsg}
+        onClose={() => setToastMsg(null)}
+        duration={5500}
+      />
 
       {/* Modal Popup */}
       <TLMonthlyEvaluationModal

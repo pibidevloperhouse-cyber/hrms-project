@@ -194,12 +194,19 @@ pre,
   from { opacity: 0; transform: scale(0.96); }
   to   { opacity: 1; transform: scale(1); }
 }
-@keyframes shrinkProgress {
-  from { width: 100%; }
-  to   { width: 0%; }
+@keyframes slideDownToast {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -18px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
 }
 
-.animate-fadeIn   { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.animate-slideIn  { animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.animate-toastIn  { animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-.animate-scaleUp  { animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-fadeIn    { animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slideIn   { animation: slideInLeft 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-toastIn   { animation: toastIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-scaleUp   { animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.animate-slideDown { animation: slideDownToast 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

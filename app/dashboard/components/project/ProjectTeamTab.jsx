@@ -66,13 +66,22 @@ export default function ProjectTeamTab({
       });
   }, [projectRoster, searchQuery]);
 
+  const getRoleBadgeClass = (role) => {
+    const r = (role || "").toUpperCase();
+    if (r.includes("OWNER")) return "bg-amber-50 text-amber-700 border-amber-200";
+    if (r.includes("LEAD")) return "bg-purple-50 text-purple-700 border-purple-200";
+    if (r.includes("DEVELOPER") || r.includes("ENGINEER") || r.includes("SQUAD"))
+      return "bg-emerald-50 text-emerald-700 border-emerald-200";
+    return "bg-sky-50 text-sky-700 border-sky-200";
+  };
+
   return (
     <div className="space-y-4 animate-fadeIn">
       {/* Top Header Bar: Search & Add Member */}
-      <div className="bg-white p-3.5 rounded-lg border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
+      <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
         {/* Search Box */}
         <div className="relative flex-1 w-full sm:max-w-md">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+          <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
             <svg
               className="w-3.5 h-3.5"
               viewBox="0 0 24 24"
@@ -91,13 +100,13 @@ export default function ProjectTeamTab({
             placeholder="Search employee by name, role, department…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-8 py-1.5 rounded-md border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-xs text-slate-900 placeholder:text-slate-400 bg-slate-50 focus:bg-white transition"
+            className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 focus:border-[#1f6fb2] focus:ring-2 focus:ring-[#1f6fb2]/20 outline-none text-xs text-slate-900 placeholder:text-slate-400 bg-white shadow-2xs transition font-medium"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
               title="Clear search"
             >
               ✕
@@ -110,7 +119,7 @@ export default function ProjectTeamTab({
           <button
             type="button"
             onClick={onOpenTeamModal}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-md bg-blue-600 hover:bg-blue-700 text-white font-medium text-xs transition cursor-pointer shadow-xs shrink-0"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer shadow-xs shadow-[#1f6fb2]/20 shrink-0"
           >
             <span>+</span>
             <span>Add Member</span>
@@ -120,7 +129,7 @@ export default function ProjectTeamTab({
 
       {/* Main Employee List */}
       {filteredMembers.length === 0 ? (
-        <div className="p-12 text-center bg-white rounded-lg border border-slate-200 shadow-2xs space-y-2">
+        <div className="p-12 text-center bg-white rounded-xl border border-slate-200 shadow-2xs space-y-2">
           <p className="text-xs font-semibold text-slate-700">No project members found</p>
           <p className="text-[11px] text-slate-400">
             {searchQuery
@@ -129,7 +138,7 @@ export default function ProjectTeamTab({
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
           <div className="divide-y divide-slate-100">
             {filteredMembers.map((member) => {
               const taskCount = memberTaskCountMap.get(member.id) || 0;
@@ -141,22 +150,21 @@ export default function ProjectTeamTab({
                 <div
                   key={member.id}
                   onClick={() => setSelectedMemberForTasks(member)}
-                  className="px-4 py-3 hover:bg-slate-50/80 transition flex items-center justify-between gap-3 cursor-pointer group"
+                  className="px-4 py-3.5 hover:bg-slate-50/80 transition flex items-center justify-between gap-3 cursor-pointer group"
                 >
                   {/* Left: Employee Info */}
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase shrink-0">
+                    <div className="w-9 h-9 rounded-xl bg-brand-gradient text-white flex items-center justify-center font-bold text-xs uppercase shadow-2xs shadow-[#1f6fb2]/20 shrink-0">
                       {member.full_name?.charAt(0) || "U"}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-slate-900 group-hover:text-blue-600 transition truncate">
+                        <span className="font-bold text-sm text-slate-900 group-hover:text-[#1f6fb2] transition truncate">
                           {member.full_name}
                         </span>
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.2 rounded border shrink-0 uppercase tracking-wider ${
-                            member.badgeBg ||
-                            "bg-slate-100 text-slate-700 border-slate-200"
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border shrink-0 uppercase tracking-wider ${
+                            member.badgeBg || getRoleBadgeClass(member.projectRole)
                           }`}
                         >
                           {member.projectRole}
@@ -171,7 +179,7 @@ export default function ProjectTeamTab({
 
                   {/* Right: Task Count & Remove action */}
                   <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-xs text-slate-500 font-mono">
+                    <span className="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-lg">
                       {taskCount} {taskCount === 1 ? "task" : "tasks"}
                     </span>
 
@@ -182,7 +190,7 @@ export default function ProjectTeamTab({
                           e.stopPropagation();
                           onRemoveMember(member);
                         }}
-                        className="w-6 h-6 rounded border border-rose-200 text-rose-500 hover:bg-rose-50 flex items-center justify-center text-xs transition cursor-pointer"
+                        className="w-7 h-7 rounded-lg border border-slate-200 hover:border-rose-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center text-xs transition cursor-pointer shadow-2xs"
                         title={`Remove ${member.full_name} from project`}
                       >
                         ✕

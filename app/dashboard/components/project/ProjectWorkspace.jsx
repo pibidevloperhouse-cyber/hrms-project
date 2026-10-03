@@ -7,14 +7,18 @@ import { authFetch } from "@/lib/api/authFetch";
 import ProjectBacklogTab from "./ProjectBacklogTab";
 import ProjectEpicsTab from "./ProjectEpicsTab";
 import ProjectSprintsTab from "./ProjectSprintsTab";
+import ProjectCompletedSprintsTab from "./ProjectCompletedSprintsTab";
 import ProjectBoardTab from "./ProjectBoardTab";
 import ProjectTeamTab from "./ProjectTeamTab";
 import ProjectTeamModal from "./ProjectTeamModal";
+import ProjectConfigModal from "./ProjectConfigModal";
+import ToastNotification from "../common/ToastNotification";
 
 const TABS = [
   { id: "backlog", label: "Backlog" },
   { id: "epics", label: "Epics" },
   { id: "sprints", label: "Sprints" },
+  { id: "completed_sprints", label: "Completed Sprints" },
   { id: "board", label: "Board" },
   { id: "team", label: "Team" },
 ];
@@ -39,6 +43,13 @@ const renderTabIcon = (tabId) => {
       return (
         <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+        </svg>
+      );
+    case "completed_sprints":
+      return (
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+          <polyline points="22 4 12 14.01 9 11.01" />
         </svg>
       );
     case "board":
@@ -89,6 +100,7 @@ export default function ProjectWorkspace({
   const [epics, setEpics] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [isRemoving, setIsRemoving] = useState(false);
   const [workspaceToast, setWorkspaceToast] = useState(null);
@@ -104,7 +116,7 @@ export default function ProjectWorkspace({
 
   const availableTabs = useMemo(() => {
     if (isKanban) {
-      return TABS.filter((tab) => tab.id !== "sprints");
+      return TABS.filter((tab) => tab.id !== "sprints" && tab.id !== "completed_sprints");
     }
     return TABS;
   }, [isKanban]);
@@ -288,9 +300,9 @@ export default function ProjectWorkspace({
     }
   }, [project]);
 
-  // If project is Kanban and active tab is sprints, switch to board
+  // If project is Kanban and active tab is sprints/completed_sprints, switch to board
   useEffect(() => {
-    if (isKanban && activeTab === "sprints") {
+    if (isKanban && (activeTab === "sprints" || activeTab === "completed_sprints")) {
       setActiveTab("board");
     }
   }, [isKanban, activeTab]);
@@ -647,11 +659,29 @@ export default function ProjectWorkspace({
     return Array.from(map.values());
   }, [companyEmployees, departmentEmployees, teamLeads, projectRoster]);
 
+  // Board badge: counts tasks available in the currently active sprint (or Kanban board)
+  const boardTasksCount = useMemo(() => {
+    const isKanban = (effectiveProject?.project_type || "").toLowerCase() === "kanban";
+    if (isKanban) {
+      return (tasks || []).length;
+    }
+    const activeSprintIds = new Set(
+      (sprints || [])
+        .filter((s) => {
+          const st = String(s.status || "").trim().toUpperCase();
+          return ["ACTIVE", "IN_PROGRESS", "RUNNING", "STARTED", "CURRENT"].includes(st);
+        })
+        .map((s) => s.id)
+    );
+    if (activeSprintIds.size === 0) return 0;
+    return (tasks || []).filter((t) => t.sprint_id && activeSprintIds.has(t.sprint_id)).length;
+  }, [effectiveProject, sprints, tasks]);
+
   return (
     <div className="space-y-5 animate-fadeIn">
       {/* Top Workspace Header */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4 sm:p-5 space-y-4">
-        {/* Navigation & Add Employee Action */}
+        {/* Navigation & Header Actions */}
         <div className="flex items-center justify-between gap-3">
           <button
             type="button"
@@ -662,17 +692,32 @@ export default function ProjectWorkspace({
             <span>Back to All Projects</span>
           </button>
 
-          {canManageTeam && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setIsTeamModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs transition cursor-pointer shadow-xs shrink-0"
-              title="Add or manage employees in this project"
+              onClick={() => setIsConfigModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 font-semibold text-xs transition cursor-pointer shadow-2xs shrink-0"
+              title="View and edit project configuration"
             >
-              <span>+</span>
-              <span>Add Employee</span>
+              <svg className="w-3.5 h-3.5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <span>Project Configuration</span>
             </button>
-          )}
+
+            {canManageTeam && (
+              <button
+                type="button"
+                onClick={() => setIsTeamModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-gradient hover:opacity-95 text-white font-semibold text-xs transition cursor-pointer shadow-xs shadow-[#1f6fb2]/20 shrink-0"
+                title="Add or manage employees in this project"
+              >
+                <span>+</span>
+                <span>Add Employee</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Project Title & Metadata */}
@@ -688,22 +733,6 @@ export default function ProjectWorkspace({
               </p>
             )}
           </div>
-
-          {/* Lead & Owner attribution */}
-          <div className="flex items-center gap-5 text-xs text-slate-600 shrink-0">
-            {effectiveProject?.creator && (
-              <div>
-                <span className="text-[10px] text-slate-400 block font-medium">Owner</span>
-                <span className="font-semibold text-slate-800">{effectiveProject.creator.full_name}</span>
-              </div>
-            )}
-            {effectiveProject?.teamLead && (
-              <div>
-                <span className="text-[10px] text-slate-400 block font-medium">Team Lead</span>
-                <span className="font-semibold text-slate-800">{effectiveProject.teamLead.full_name}</span>
-              </div>
-            )}
-          </div>
         </div>
 
         {/* Feature Tabs Bar with Professional SVG Icons */}
@@ -717,7 +746,7 @@ export default function ProjectWorkspace({
                 onClick={() => setActiveTab(tab.id)}
                 className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center gap-2 shrink-0 ${
                   isActive
-                    ? "bg-blue-600 text-white shadow-2xs"
+                    ? "bg-brand-gradient text-white shadow-xs shadow-[#1f6fb2]/20 font-bold"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
                 }`}
               >
@@ -743,7 +772,16 @@ export default function ProjectWorkspace({
                       isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
                     }`}
                   >
-                    {sprints.length}
+                    {sprints.filter((s) => !["COMPLETED", "DONE", "CLOSED"].includes(String(s.status || "").toUpperCase())).length}
+                  </span>
+                )}
+                {tab.id === "completed_sprints" && (
+                  <span
+                    className={`ml-0.5 text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                      isActive ? "bg-white/20 text-white" : "bg-emerald-100 text-emerald-800 font-bold"
+                    }`}
+                  >
+                    {sprints.filter((s) => ["COMPLETED", "DONE", "CLOSED"].includes(String(s.status || "").toUpperCase())).length}
                   </span>
                 )}
                 {tab.id === "epics" && (
@@ -761,7 +799,7 @@ export default function ProjectWorkspace({
                       isActive ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
                     }`}
                   >
-                    {tasks.length}
+                    {boardTasksCount}
                   </span>
                 )}
                 {tab.id === "team" && (
@@ -787,8 +825,6 @@ export default function ProjectWorkspace({
         </div>
       ) : (
         <>
-
-
           {activeTab === "backlog" && (
             <ProjectBacklogTab
               project={effectiveProject}
@@ -831,6 +867,23 @@ export default function ProjectWorkspace({
               currentUserId={employeeProfile?.id}
               onSprintsUpdated={refreshWorkspace}
               onTasksUpdated={refreshWorkspace}
+              onNavigateToCompletedSprints={() => setActiveTab("completed_sprints")}
+            />
+          )}
+
+          {activeTab === "completed_sprints" && (
+            <ProjectCompletedSprintsTab
+              project={effectiveProject}
+              sprints={sprints}
+              tasks={tasks}
+              epics={epics}
+              departmentEmployees={effectiveEmployees}
+              teamLeads={teamLeads}
+              employeeProfile={employeeProfile}
+              currentUserId={employeeProfile?.id}
+              onTasksUpdated={refreshWorkspace}
+              onSprintsUpdated={refreshWorkspace}
+              onNavigateToSprints={() => setActiveTab("sprints")}
             />
           )}
 
@@ -939,58 +992,24 @@ export default function ProjectWorkspace({
         </div>
       )}
 
-      {/* Top Center Badge Notification Card */}
-      {workspaceToast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[300] pointer-events-auto animate-scaleIn">
-          <div className="relative pt-2.5">
-            {/* Top Left Pill Badge */}
-            <div className="absolute top-0 left-4 z-10">
-              <span
-                className={`px-3 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider text-white shadow-xs ${
-                  workspaceToast.type === "error" ? "bg-rose-500" : "bg-emerald-500"
-                }`}
-              >
-                {workspaceToast.type === "error" ? "ERROR" : "SUCCESS"}
-              </span>
-            </div>
-
-            {/* Main Toast Box */}
-            <div
-              className={`bg-white rounded-2xl border-2 px-4 py-3 shadow-xl flex items-center gap-3 min-w-[280px] sm:min-w-[320px] max-w-md ${
-                workspaceToast.type === "error"
-                  ? "border-rose-500 shadow-rose-500/10"
-                  : "border-emerald-500 shadow-emerald-500/10"
-              }`}
-            >
-              {/* Circular Icon */}
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-black shrink-0 ${
-                  workspaceToast.type === "error"
-                    ? "border-rose-500 text-rose-500"
-                    : "border-emerald-500 text-emerald-500"
-                }`}
-              >
-                {workspaceToast.type === "error" ? "✕" : "✓"}
-              </div>
-
-              {/* Message */}
-              <span className="flex-1 text-sm font-bold text-slate-900 tracking-tight leading-snug">
-                {workspaceToast.message}
-              </span>
-
-              {/* Close Button */}
-              <button
-                type="button"
-                onClick={() => setWorkspaceToast(null)}
-                className="text-slate-400 hover:text-slate-700 shrink-0 text-xs font-bold cursor-pointer p-1 rounded-full hover:bg-slate-100 transition"
-                title="Close"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Realistic SaaS Toast Notification */}
+      <ToastNotification
+        toast={workspaceToast}
+        onClose={() => setWorkspaceToast(null)}
+        duration={5500}
+      />
+      {/* Project Configuration Modal */}
+      <ProjectConfigModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+        project={effectiveProject}
+        onProjectUpdated={handleProjectUpdated}
+        departmentEmployees={departmentEmployees}
+        teamLeads={teamLeads}
+        allEmployees={companyEmployees}
+        userRole={userRole}
+        employeeProfile={employeeProfile}
+      />
     </div>
   );
 }

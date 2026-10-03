@@ -5,6 +5,7 @@ import { getAuthUser } from "@/lib/supabase/authHelper";
 import { getCompanyAndRoleForUser } from "@/lib/supabase/companyHelper";
 
 import { syncSprintLifecycles } from "@/lib/sprintAutoLifecycle";
+import { taskCreateSchema } from "@/lib/validations/taskValidation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -433,7 +434,26 @@ export async function POST(req, { params }) {
       );
     }
 
-    const body = await req.json();
+    let rawBody;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return NextResponse.json({ message: "Invalid JSON request payload." }, { status: 400 });
+    }
+
+    const validationResult = taskCreateSchema.safeParse(rawBody);
+    if (!validationResult.success) {
+      const firstError = validationResult.error.errors?.[0]?.message || "Validation failed on payload fields.";
+      return NextResponse.json(
+        {
+          message: `Request validation error: ${firstError}`,
+          errors: validationResult.error.flatten(),
+        },
+        { status: 400 }
+      );
+    }
+
+    const body = validationResult.data;
     const {
       title,
       description = "",
@@ -441,7 +461,7 @@ export async function POST(req, { params }) {
       status = "TODO",
       due_date,
     } = body;
-    const targetAssigneeId = body.assigned_to || body.assignee_id;
+    const targetAssigneeId = body.assigned_to || rawBody.assignee_id;
 
     if (!title || !title.trim()) {
       return NextResponse.json({ message: "Task title is required." }, { status: 400 });
@@ -504,21 +524,65 @@ export async function POST(req, { params }) {
 
       if (sData) {
         targetSprint = sData;
-        if (targetSprint.status === "ACTIVE") {
+        const isCompleted = ["COMPLETED", "CLOSED"].includes(String(targetSprint.status || "").toUpperCase());
+        if (isCompleted) {
+          return NextResponse.json(
+            {
+              message: `Invalid Sprint Assignment: Sprint "${targetSprint.name || "Sprint"}" is already completed/closed. Tasks cannot be scheduled in finished sprints.`,
+              code: "SPRINT_ALREADY_COMPLETED",
+            },
+            { status: 400 }
+          );
+        }
+
+        if (String(targetSprint.status || "").toUpperCase() === "ACTIVE") {
           isSprintActive = true;
         }
 
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
         const sprintStart = targetSprint.start_date ? targetSprint.start_date.split("T")[0] : null;
         const sprintEnd = targetSprint.end_date ? targetSprint.end_date.split("T")[0] : null;
+        const minDate = isSprintActive ? (sprintStart && sprintStart > todayStr ? sprintStart : todayStr) : sprintStart;
 
         if (validatedDueDate) {
           const rawDue = String(validatedDueDate).split("T")[0];
-          // Auto-snap due date to sprint bounds if not matching to ensure reliable sprint scheduling
-          if ((sprintStart && rawDue < sprintStart) || (sprintEnd && rawDue > sprintEnd)) {
-            validatedDueDate = sprintEnd || sprintStart;
+
+          // For active sprints, past dates are finished dates and cannot be set
+          if (isSprintActive && rawDue < todayStr) {
+            return NextResponse.json(
+              {
+                message: `Invalid Task Due Date: Due date (${rawDue}) cannot be set to a past or finished date. For active sprint "${targetSprint.name || "Active Sprint"}", tasks can only be scheduled within current active remaining days (${minDate} to ${sprintEnd || "sprint end"}).`,
+                code: "DUE_DATE_PAST_ACTIVE_SPRINT",
+              },
+              { status: 400 }
+            );
           }
+
+          if (minDate && rawDue < minDate) {
+            return NextResponse.json(
+              {
+                message: `Invalid Task Due Date: Due date (${rawDue}) cannot be earlier than Sprint "${targetSprint.name || "Sprint"}" start date (${minDate}). Tasks must be scheduled within the sprint duration.`,
+                code: "DUE_DATE_OUTSIDE_SPRINT",
+              },
+              { status: 400 }
+            );
+          }
+
+          if (sprintEnd && rawDue > sprintEnd) {
+            const diffDays = Math.ceil((new Date(rawDue).getTime() - new Date(sprintEnd).getTime()) / (1000 * 60 * 60 * 24));
+            return NextResponse.json(
+              {
+                message: `Invalid Task Due Date: Due date (${rawDue}) exceeds Sprint "${targetSprint.name || "Sprint"}" end date (${sprintEnd}) by ${diffDays} day${diffDays > 1 ? "s" : ""}. Tasks must be assigned within the sprint duration (${sprintStart || ""} to ${sprintEnd}).`,
+                code: "DUE_DATE_OUTSIDE_SPRINT",
+              },
+              { status: 400 }
+            );
+          }
+          validatedDueDate = rawDue;
         } else if (sprintEnd) {
-          // If sprint is assigned without an explicit due date, auto-snap to sprint end date
+          // If sprint is assigned without an explicit due date, default to sprint end date
           validatedDueDate = sprintEnd;
         }
       }
